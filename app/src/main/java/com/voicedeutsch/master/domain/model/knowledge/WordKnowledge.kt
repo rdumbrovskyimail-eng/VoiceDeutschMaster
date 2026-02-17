@@ -1,100 +1,77 @@
 package com.voicedeutsch.master.domain.model.knowledge
 
-import com.voicedeutsch.master.domain.model.user.CefrLevel
 import kotlinx.serialization.Serializable
 
 /**
- * Domain model of a single German word from the dictionary.
+ * Tracks a user's knowledge of a specific word — SRS state, scores, and error history.
  *
- * Contains the German form, Russian translation, part of speech, grammatical gender
- * (for nouns), plural form, conjugation/declension JSON, example sentences,
- * phonetic transcription, CEFR difficulty, topic, and book coordinates.
+ * This is the primary model of the SRS system. It stores the knowledge level (0–7),
+ * view/correct/incorrect counts, SRS interval, ease factor, next review timestamp,
+ * pronunciation score, usage contexts, and mistake records.
+ *
+ * This model is continuously updated during learning sessions.
  *
  * **Mappings:**
- * - Maps from/to `WordEntity`
- * - Linked to [WordKnowledge] (1:1 per user)
- * - Parsed from `vocabulary.json`
- * - Referenced in Function Calls: `save_word_knowledge`
+ * - Maps from/to `WordKnowledgeEntity`
+ * - Linked to [Word] via [wordId]
+ * - Linked to user via [userId]
+ * - Updated through `UpdateWordKnowledgeUseCase`
+ * - Included in [KnowledgeSnapshot] for Gemini context
+ *
+ * **SRS SM-2 algorithm parameters:**
+ * - quality 0–5
+ * - ease_factor: max(1.3, old_ef + (0.1 − (5−q) × (0.08 + (5−q) × 0.02)))
+ * - interval: q<3 → 0.5 day, q≥3 ∧ n=1 → 1 day, n=2 → 3 days, n>2 → old × ef
+ * - boost: 3× consecutive quality=5 → interval × 1.5
  */
 @Serializable
-data class Word(
+data class WordKnowledge(
     val id: String,
-    val german: String,
-    val russian: String,
-    val partOfSpeech: PartOfSpeech,
-    val gender: Gender? = null,          // For nouns: der/die/das
-    val plural: String? = null,          // Plural form
-    val conjugationJson: String? = null, // For verbs
-    val declensionJson: String? = null,  // For nouns/adjectives
-    val exampleSentenceDe: String,
-    val exampleSentenceRu: String,
-    val phoneticTranscription: String? = null, // IPA
-    val difficultyLevel: CefrLevel,
-    val topic: String,                   // Essen, Reisen, Arbeit, etc.
-    val bookChapter: Int? = null,
-    val bookLesson: Int? = null,
-    val audioCachePath: String? = null,
+    val userId: String,
+    val wordId: String,
+    val knowledgeLevel: Int = 0,           // 0-7
+    val timesSeen: Int = 0,
+    val timesCorrect: Int = 0,
+    val timesIncorrect: Int = 0,
+    val lastSeen: Long? = null,
+    val lastCorrect: Long? = null,
+    val lastIncorrect: Long? = null,
+    val nextReview: Long? = null,          // SRS next review timestamp
+    val srsIntervalDays: Float = 0f,       // Current SRS interval
+    val srsEaseFactor: Float = 2.5f,       // SM-2 ease factor
+    val pronunciationScore: Float = 0f,     // 0.0 - 1.0
+    val pronunciationAttempts: Int = 0,
+    val contexts: List<String> = emptyList(), // Usage contexts
+    val mistakes: List<MistakeRecord> = emptyList(),
     val createdAt: Long = System.currentTimeMillis(),
-    val source: WordSource = WordSource.BOOK
+    val updatedAt: Long = System.currentTimeMillis()
 ) {
-    /**
-     * Returns the word with its definite article when the gender is known.
-     * E.g., "der Tisch", "die Lampe", "das Buch".
-     * Falls back to the bare word when gender is `null`.
-     */
-    val displayWithArticle: String get() = when (gender) {
-        Gender.MASCULINE -> "der $german"
-        Gender.FEMININE -> "die $german"
-        Gender.NEUTER -> "das $german"
-        null -> german
-    }
+    /** The word is considered "known" at level 4 or above. */
+    val isKnown: Boolean get() = knowledgeLevel >= 4
+
+    /** The word is "active" (can be used freely) at level 5+. */
+    val isActive: Boolean get() = knowledgeLevel >= 5
+
+    /** The word is fully mastered at level 7. */
+    val isMastered: Boolean get() = knowledgeLevel >= 7
+
+    /** Returns `true` when the word is due for SRS review. */
+    val needsReview: Boolean get() = nextReview != null && nextReview <= System.currentTimeMillis()
+
+    /** Accuracy ratio (correct / seen). Returns 0 when never seen. */
+    val accuracy: Float get() = if (timesSeen == 0) 0f else timesCorrect.toFloat() / timesSeen
+
+    /** A "problem word" has more errors than successes after at least 3 encounters. */
+    val isProblemWord: Boolean get() = timesIncorrect > timesCorrect && timesSeen >= 3
 }
 
 /**
- * Grammatical part of speech.
+ * A single recorded mistake for a word.
  */
 @Serializable
-enum class PartOfSpeech {
-    NOUN, VERB, ADJECTIVE, ADVERB, PREPOSITION,
-    CONJUNCTION, PRONOUN, ARTICLE, NUMERAL, PARTICLE, INTERJECTION
-}
-
-/**
- * Grammatical gender of a German noun.
- */
-@Serializable
-enum class Gender {
-    MASCULINE,  // der
-    FEMININE,   // die
-    NEUTER;     // das
-
-    companion object {
-        /**
-         * Parses a [Gender] from various string representations.
-         * Accepts article forms ("der", "die", "das"), English names, and abbreviations.
-         *
-         * @return the matching [Gender] or `null` when the string is unrecognized
-         */
-        fun fromString(value: String): Gender? = when (value.lowercase()) {
-            "der", "masculine", "m" -> MASCULINE
-            "die", "feminine", "f" -> FEMININE
-            "das", "neuter", "n" -> NEUTER
-            else -> null
-        }
-    }
-
-    /**
-     * Returns the German definite article for this gender.
-     */
-    val article: String get() = when (this) {
-        MASCULINE -> "der"
-        FEMININE -> "die"
-        NEUTER -> "das"
-    }
-}
-
-/**
- * Origin source of a word entry.
- */
-@Serializable
-enum class WordSource { BOOK, CONVERSATION, MANUAL }
+data class MistakeRecord(
+    val expected: String,
+    val actual: String,
+    val timestamp: Long,
+    val context: String = ""
+)
