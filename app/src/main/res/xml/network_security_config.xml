@@ -1,2 +1,16 @@
-<!-- Network security config -->
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
 
+    <!-- Certificate pinning for Gemini API -->
+    <domain-config>
+        <domain includeSubdomains="true">generativelanguage.googleapis.com</domain>
+        <pin-set>
+            <!-- Pin will be set for production builds -->
+        </pin-set>
+    </domain-config>
+</network-security-config>
