@@ -1,2 +1,217 @@
-// Gradle version catalog
+[versions]
+# Kotlin & Core
+kotlin = "2.1.0"
+agp = "9.0.0"
+ksp = "2.1.0-1.0.0"
 
+# Compose
+compose-bom = "2026.01.00"
+compose-compiler = "2.1.0"
+activity-compose = "1.10.0"
+lifecycle = "2.9.0"
+
+# Architecture
+navigation = "3.0.0"
+room = "3.0.0"
+datastore = "2.0.0"
+work = "3.0.0"
+
+# DI
+koin = "4.0.0"
+
+# Network
+ktor = "3.0.0"
+
+# Coroutines
+coroutines = "2.0.0"
+
+# Serialization
+serialization = "2.0.0"
+
+# Google AI
+google-ai = "1.0.0"
+
+# Audio
+oboe = "2.0.0"
+
+# Security
+security-crypto = "1.1.0-alpha07"
+
+# Firebase
+firebase-bom = "33.0.0"
+firebase-crashlytics-plugin = "3.0.0"
+google-services = "4.5.0"
+
+# Testing
+junit5 = "5.11.0"
+mockk = "2.0.0"
+turbine = "2.0.0"
+truth = "1.4.0"
+robolectric = "4.14.0"
+
+# Code Quality
+ktlint = "12.0.0"
+detekt = "2.0.0"
+
+# Min/Target SDK
+minSdk = "31"
+targetSdk = "36"
+compileSdk = "36"
+
+[libraries]
+# Kotlin
+kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+
+# AndroidX Core
+androidx-core-ktx = { module = "androidx.core:core-ktx", version = "1.15.0" }
+androidx-appcompat = { module = "androidx.appcompat:appcompat", version = "1.7.0" }
+
+# Compose BOM
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
+compose-ui = { module = "androidx.compose.ui:ui" }
+compose-ui-graphics = { module = "androidx.compose.ui:ui-graphics" }
+compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
+compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
+compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
+compose-material3 = { module = "androidx.compose.material3:material3" }
+compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
+compose-animation = { module = "androidx.compose.animation:animation" }
+compose-foundation = { module = "androidx.compose.foundation:foundation" }
+compose-runtime = { module = "androidx.compose.runtime:runtime" }
+
+# Activity & Lifecycle
+activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity-compose" }
+lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycle" }
+lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+lifecycle-viewmodel-ktx = { module = "androidx.lifecycle:lifecycle-viewmodel-ktx", version.ref = "lifecycle" }
+
+# Navigation
+navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation" }
+
+# Room
+room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
+room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
+
+# DataStore
+datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
+datastore-proto = { module = "androidx.datastore:datastore", version.ref = "datastore" }
+
+# WorkManager
+work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
+work-testing = { module = "androidx.work:work-testing", version.ref = "work" }
+
+# Koin
+koin-android = { module = "io.insert-koin:koin-android", version.ref = "koin" }
+koin-androidx-compose = { module = "io.insert-koin:koin-androidx-compose", version.ref = "koin" }
+koin-test = { module = "io.insert-koin:koin-test", version.ref = "koin" }
+koin-test-junit5 = { module = "io.insert-koin:koin-test-junit5", version.ref = "koin" }
+koin-androidx-workmanager = { module = "io.insert-koin:koin-androidx-workmanager", version.ref = "koin" }
+
+# Ktor Client
+ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
+ktor-client-websockets = { module = "io.ktor:ktor-client-websockets", version.ref = "ktor" }
+ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
+ktor-serialization-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
+ktor-client-logging = { module = "io.ktor:ktor-client-logging", version.ref = "ktor" }
+ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
+
+# Google AI (Gemini)
+google-ai-generativeai = { module = "com.google.ai:generativeai", version.ref = "google-ai" }
+
+# Audio
+oboe = { module = "com.google.oboe:oboe", version.ref = "oboe" }
+
+# Security
+security-crypto = { module = "androidx.security:security-crypto", version.ref = "security-crypto" }
+
+# Firebase
+firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebase-bom" }
+firebase-analytics = { module = "com.google.firebase:firebase-analytics-ktx" }
+firebase-crashlytics = { module = "com.google.firebase:firebase-crashlytics-ktx" }
+firebase-performance = { module = "com.google.firebase:firebase-perf-ktx" }
+
+# Testing
+junit5-api = { module = "org.junit.jupiter:junit-jupiter-api", version.ref = "junit5" }
+junit5-engine = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junit5" }
+junit5-params = { module = "org.junit.jupiter:junit-jupiter-params", version.ref = "junit5" }
+mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
+mockk-android = { module = "io.mockk:mockk-android", version.ref = "mockk" }
+turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
+truth = { module = "com.google.truth:truth", version.ref = "truth" }
+robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+
+[bundles]
+compose = [
+    "compose-ui",
+    "compose-ui-graphics",
+    "compose-ui-tooling-preview",
+    "compose-material3",
+    "compose-material-icons-extended",
+    "compose-animation",
+    "compose-foundation",
+    "compose-runtime",
+    "activity-compose",
+    "lifecycle-runtime-compose",
+    "lifecycle-viewmodel-compose",
+    "navigation-compose"
+]
+
+compose-debug = [
+    "compose-ui-tooling",
+    "compose-ui-test-manifest"
+]
+
+room = [
+    "room-runtime",
+    "room-ktx"
+]
+
+ktor = [
+    "ktor-client-core",
+    "ktor-client-okhttp",
+    "ktor-client-websockets",
+    "ktor-client-content-negotiation",
+    "ktor-serialization-json",
+    "ktor-client-logging"
+]
+
+lifecycle = [
+    "lifecycle-runtime-ktx",
+    "lifecycle-runtime-compose",
+    "lifecycle-viewmodel-compose",
+    "lifecycle-viewmodel-ktx"
+]
+
+koin = [
+    "koin-android",
+    "koin-androidx-compose",
+    "koin-androidx-workmanager"
+]
+
+testing = [
+    "junit5-api",
+    "junit5-params",
+    "mockk",
+    "turbine",
+    "truth",
+    "kotlinx-coroutines-test"
+]
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+room = { id = "androidx.room", version.ref = "room" }
+google-services = { id = "com.google.gms.google-services", version.ref = "google-services" }
+firebase-crashlytics = { id = "com.google.firebase.crashlytics", version.ref = "firebase-crashlytics-plugin" }
