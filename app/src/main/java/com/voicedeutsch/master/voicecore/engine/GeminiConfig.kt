@@ -1,60 +1,86 @@
-package com.voicedeutsch.master.voicecore.engine
-
 /**
- * Конфигурация для подключения к Google Gemini API.
- * Содержит все необходимые параметры для инициализации и работы с LLM.
+ * Complete configuration for Gemini Live API connection.
+ * Architecture lines 562-580 (GeminiConfig).
  */
 data class GeminiConfig(
     val apiKey: String,
-    val modelId: String = "gemini-pro",
-    val temperature: Float = 0.7f,
-    val maxTokens: Int = 2048,
-    val topP: Float = 0.9f,
-    val topK: Int = 40,
-    val timeout: Long = 30000L, // milliseconds
-    val retryAttempts: Int = 3,
-    val retryDelayMs: Long = 1000L,
-    val enableSafetyFilters: Boolean = true,
-    val safetyThreshold: String = "BLOCK_MEDIUM_AND_ABOVE"
+    val modelName: String = MODEL_GEMINI_LIVE,
+    val audioInputFormat: AudioFormat = AudioFormat.PCM_16KHZ_16BIT_MONO,
+    val audioOutputFormat: AudioFormat = AudioFormat.PCM_24KHZ_16BIT_MONO,
+    val streamingEnabled: Boolean = true,
+    val maxContextTokens: Int = MAX_CONTEXT_TOKENS,
+    val temperature: Float = DEFAULT_TEMPERATURE,
+    val topP: Float = DEFAULT_TOP_P,
+    val topK: Int = DEFAULT_TOP_K,
+    val reconnectMaxAttempts: Int = DEFAULT_RECONNECT_ATTEMPTS,
+    val reconnectDelayMs: Long = DEFAULT_RECONNECT_DELAY_MS,
 ) {
     init {
-        require(apiKey.isNotBlank()) { "API Key cannot be empty" }
-        require(temperature in 0f..2f) { "Temperature must be between 0 and 2" }
-        require(maxTokens > 0) { "Max tokens must be positive" }
-        require(topP in 0f..1f) { "Top P must be between 0 and 1" }
-        require(topK > 0) { "Top K must be positive" }
+        require(apiKey.isNotBlank()) { "API key must not be blank" }
+        require(temperature in 0f..2f) { "temperature must be in [0, 2]" }
+        require(topP in 0f..1f) { "topP must be in [0, 1]" }
+        require(topK > 0) { "topK must be positive" }
+        require(reconnectMaxAttempts > 0) { "reconnectMaxAttempts must be positive" }
     }
-    
+
+    enum class AudioFormat(
+        val sampleRateHz: Int,
+        val bitsPerSample: Int,
+        val channels: Int,
+    ) {
+        PCM_16KHZ_16BIT_MONO(sampleRateHz = 16_000, bitsPerSample = 16, channels = 1),
+        PCM_24KHZ_16BIT_MONO(sampleRateHz = 24_000, bitsPerSample = 16, channels = 1),
+    }
+
     companion object {
-        /**
-         * Создает конфиг с минимальными параметрами
-         */
-        fun minimal(apiKey: String): GeminiConfig {
-            return GeminiConfig(apiKey = apiKey)
-        }
-        
-        /**
-         * Создает конфиг для быстрого ответа
-         */
-        fun fastResponse(apiKey: String): GeminiConfig {
-            return GeminiConfig(
-                apiKey = apiKey,
-                temperature = 0.5f,
-                maxTokens = 512,
-                timeout = 10000L
-            )
-        }
-        
-        /**
-         * Создает конфиг для детальных ответов
-         */
-        fun detailed(apiKey: String): GeminiConfig {
-            return GeminiConfig(
-                apiKey = apiKey,
-                temperature = 0.9f,
-                maxTokens = 4096,
-                timeout = 60000L
-            )
-        }
+        const val MODEL_GEMINI_LIVE = "gemini-2.0-flash-live-001"
+        const val MAX_CONTEXT_TOKENS = 2_000_000
+        const val DEFAULT_TEMPERATURE = 0.5f
+        const val DEFAULT_TOP_P = 0.95f
+        const val DEFAULT_TOP_K = 40
+        const val DEFAULT_RECONNECT_ATTEMPTS = 3
+        const val DEFAULT_RECONNECT_DELAY_MS = 2_000L
     }
+}
+FILE 2: voicecore/session/VoiceSessionState.kt
+package com.voicedeutsch.master.voicecore.session
+
+import com.voicedeutsch.master.domain.model.LearningStrategy
+
+/**
+ * Internal engine states — mirrors the lifecycle diagram from Architecture lines 533-538.
+ * The UI observes [VoiceSessionState] (the data class), not this enum directly.
+ */
+enum class VoiceEngineState {
+    IDLE,
+    INITIALIZING,
+    CONTEXT_LOADING,
+    CONNECTING,
+    CONNECTED,
+    SESSION_ACTIVE,
+    LISTENING,
+    PROCESSING,
+    SPEAKING,
+    WAITING,
+    SESSION_ENDING,
+    SAVING,
+    ERROR,
+    RECONNECTING,
+}
+
+/** WebSocket / gRPC connection states. */
+enum class ConnectionState {
+    DISCONNECTED,
+    CONNECTING,
+    CONNECTED,
+    RECONNECTING,
+    FAILED,
+}
+
+/** Current state of the audio subsystem. */
+enum class AudioState {
+    IDLE,
+    RECORDING,
+    PLAYING,
+    PAUSED,
 }
