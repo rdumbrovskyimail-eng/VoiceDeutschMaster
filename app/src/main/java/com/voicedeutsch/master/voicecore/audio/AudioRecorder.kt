@@ -1,228 +1,133 @@
 package com.voicedeutsch.master.voicecore.audio
 
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
+import com.voicedeutsch.master.util.AudioUtils
+import com.voicedeutsch.master.util.Constants
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Конфигурация для записи аудио
+ * Records PCM audio from the device microphone.
+ *
+ * Specification (Architecture lines 574-580):
+ *   - Sample rate : 16 000 Hz
+ *   - Bit depth   : 16-bit (PCM_16BIT)
+ *   - Channels    : Mono
+ *   - Frame size  : [FRAME_SIZE_SAMPLES] samples (~10 ms per frame)
+ *
+ * Usage:
+ * ```
+ * recorder.start()
+ * recorder.audioFrameFlow.collect { pcmShorts -> /* send to Gemini / VAD */ }
+ * recorder.stop()
+ * recorder.release()
+ * ```
  */
-data class RecorderConfig(
-    val sampleRate: Int = 16000,
-    val channels: Int = 1,
-    val bitsPerSample: Int = 16,
-    val encoding: AudioEncoding = AudioEncoding.PCM,
-    val bufferSize: Int = 4096
-)
+class AudioRecorder {
 
-/**
- * Форматы кодирования аудио
- */
-enum class AudioEncoding {
-    PCM,
-    OPUS,
-    AAC,
-    FLAC
-}
+    // ── Constants ─────────────────────────────────────────────────────────────
 
-/**
- * Состояния рекордера
- */
-enum class RecorderState {
-    Idle,
-    Recording,
-    Paused,
-    Stopped,
-    Error
-}
+    companion object {
+        /** Input sample rate required by Gemini Live API. */
+        const val SAMPLE_RATE = Constants.AUDIO_INPUT_SAMPLE_RATE   // 16 000 Hz
 
-/**
- * Интерфейс для записи аудио
- */
-interface AudioRecorder {
-    
-    /**
-     * Начинает запись аудио
-     */
-    suspend fun startRecording(): Result<Unit>
-    
-    /**
-     * Останавливает запись
-     */
-    suspend fun stopRecording(): Result<ByteArray>
-    
-    /**
-     * Приостанавливает запись
-     */
-    suspend fun pauseRecording(): Result<Unit>
-    
-    /**
-     * Возобновляет запись
-     */
-    suspend fun resumeRecording(): Result<Unit>
-    
-    /**
-     * Получает поток аудиокадров
-     */
-    fun getAudioStream(): Flow<AudioFrame>
-    
-    /**
-     * Получает текущее состояние
-     */
-    fun getState(): RecorderState
-    
-    /**
-     * Получает длительность записи в миллисекундах
-     */
-    fun getDuration(): Long
-    
-    /**
-     * Освобождает ресурсы
-     */
-    suspend fun release()
-}
+        /** 10 ms frame duration at 16 kHz = 160 samples */
+        const val FRAME_SIZE_SAMPLES = 160
 
-/**
- * Реализация аудиорекордера
- */
-class AudioRecorderImpl(
-    private val config: RecorderConfig = RecorderConfig()
-) : AudioRecorder {
-    
-    private var state = RecorderState.Idle
-    private var startTime: Long = 0
-    private val recordedFrames = mutableListOf<AudioFrame>()
-    
-    override suspend fun startRecording(): Result<Unit> {
-        return try {
-            if (state != RecorderState.Idle && state != RecorderState.Stopped) {
-                throw IllegalStateException("Recorder is already recording or in error state")
+        /** Minimum buffer size in bytes for AudioRecord. */
+        private val MIN_BUFFER_SIZE: Int = AudioRecord.getMinBufferSize(
+            SAMPLE_RATE,
+            AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT,
+        ).coerceAtLeast(FRAME_SIZE_SAMPLES * 2 * 4) // at least 4 frames
+    }
+
+    // ── State ─────────────────────────────────────────────────────────────────
+
+    private var audioRecord: AudioRecord? = null
+    private val _isRecording = AtomicBoolean(false)
+
+    /** Current RMS amplitude, normalized to [0.0, 1.0]. Updated on every frame. */
+    @Volatile
+    var currentAmplitude: Float = 0f
+        private set
+
+    // ── Audio frame flow ──────────────────────────────────────────────────────
+
+    private val frameChannel = Channel<ShortArray>(capacity = Channel.UNLIMITED)
+
+    /**
+     * Flow of raw PCM frames (ShortArray, [FRAME_SIZE_SAMPLES] samples each).
+     * Collect this to receive microphone input.
+     */
+    val audioFrameFlow: Flow<ShortArray> = frameChannel.receiveAsFlow()
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    /**
+     * Initializes [AudioRecord] and starts a background recording thread.
+     *
+     * @throws IllegalStateException if AudioRecord cannot be initialized
+     *         (e.g. RECORD_AUDIO permission not granted).
+     */
+    fun start() {
+        if (_isRecording.getAndSet(true)) return
+
+        val ar = AudioRecord(
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+            SAMPLE_RATE,
+            AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT,
+            MIN_BUFFER_SIZE,
+        )
+        check(ar.state == AudioRecord.STATE_INITIALIZED) {
+            "AudioRecord failed to initialize. Check RECORD_AUDIO permission."
+        }
+        audioRecord = ar
+        ar.startRecording()
+
+        // Blocking read loop — runs on a dedicated thread via the caller's coroutine dispatcher
+        Thread(::recordingLoop, "AudioRecorder-Thread").start()
+    }
+
+    /** Signals the recording thread to stop. Non-blocking. */
+    fun stop() {
+        _isRecording.set(false)
+    }
+
+    /** Releases native AudioRecord resources. Must be called after [stop]. */
+    fun release() {
+        stop()
+        audioRecord?.apply {
+            if (state == AudioRecord.STATE_INITIALIZED) {
+                stop()
+                release()
             }
-            
-            state = RecorderState.Recording
-            startTime = System.currentTimeMillis()
-            recordedFrames.clear()
-            
-            // TODO: Initialize actual audio recording from device microphone
-            
-            Result.success(Unit)
-        } catch (e: Exception) {
-            state = RecorderState.Error
-            Result.failure(e)
         }
+        audioRecord = null
+        frameChannel.close()
     }
-    
-    override suspend fun stopRecording(): Result<ByteArray> {
-        return try {
-            if (state != RecorderState.Recording && state != RecorderState.Paused) {
-                throw IllegalStateException("Recorder is not recording")
-            }
-            
-            state = RecorderState.Stopped
-            
-            // Combine all frames into single ByteArray
-            val totalSize = recordedFrames.sumOf { it.data.size }
-            val combinedData = ByteArray(totalSize)
-            var offset = 0
-            recordedFrames.forEach { frame ->
-                frame.data.copyInto(combinedData, offset)
-                offset += frame.data.size
-            }
-            
-            Result.success(combinedData)
-        } catch (e: Exception) {
-            state = RecorderState.Error
-            Result.failure(e)
-        }
-    }
-    
-    override suspend fun pauseRecording(): Result<Unit> {
-        return try {
-            if (state != RecorderState.Recording) {
-                throw IllegalStateException("Recorder is not recording")
-            }
-            
-            state = RecorderState.Paused
-            Result.success(Unit)
-        } catch (e: Exception) {
-            state = RecorderState.Error
-            Result.failure(e)
-        }
-    }
-    
-    override suspend fun resumeRecording(): Result<Unit> {
-        return try {
-            if (state != RecorderState.Paused) {
-                throw IllegalStateException("Recorder is not paused")
-            }
-            
-            state = RecorderState.Recording
-            Result.success(Unit)
-        } catch (e: Exception) {
-            state = RecorderState.Error
-            Result.failure(e)
-        }
-    }
-    
-    override fun getAudioStream(): Flow<AudioFrame> {
-        return kotlinx.coroutines.flow.emptyFlow()
-        // TODO: Implement actual audio stream from microphone
-    }
-    
-    override fun getState(): RecorderState {
-        return state
-    }
-    
-    override fun getDuration(): Long {
-        return if (state == RecorderState.Recording || state == RecorderState.Paused) {
-            System.currentTimeMillis() - startTime
-        } else {
-            0
-        }
-    }
-    
-    override suspend fun release() {
-        if (state == RecorderState.Recording || state == RecorderState.Paused) {
-            stopRecording()
-        }
-        state = RecorderState.Idle
-        recordedFrames.clear()
-        // TODO: Release audio resources
-    }
-    
-    /**
-     * Добавляет кадр в буфер записи (для тестирования)
-     */
-    fun addFrame(frame: AudioFrame) {
-        if (state == RecorderState.Recording) {
-            recordedFrames.add(frame)
-        }
-    }
-}
 
-/**
- * Слушатель для отслеживания уровня громкости во время записи
- */
-interface RecorderAmplitudeListener {
-    fun onAmplitude(rms: Float, db: Float)
-}
+    // ── Private recording loop ────────────────────────────────────────────────
 
-/**
- * Рекордер с поддержкой отслеживания громкости
- */
-class AmplitudeAwareAudioRecorder(
-    config: RecorderConfig = RecorderConfig()
-) : AudioRecorderImpl(config) {
-    
-    private val amplitudeListeners = mutableListOf<RecorderAmplitudeListener>()
-    
-    fun addAmplitudeListener(listener: RecorderAmplitudeListener) {
-        amplitudeListeners.add(listener)
-    }
-    
-    fun removeAmplitudeListener(listener: RecorderAmplitudeListener) {
-        amplitudeListeners.remove(listener)
-    }
-    
-    fun notifyAmplitude(rms: Float, db: Float) {
-        amplitudeListeners.forEach { it.onAmplitude(rms, db) }
+    private fun recordingLoop() {
+        val buffer = ShortArray(FRAME_SIZE_SAMPLES)
+        while (_isRecording.get()) {
+            val read = audioRecord?.read(buffer, 0, buffer.size) ?: break
+            if (read > 0) {
+                val frame = buffer.copyOf(read)
+                // Update amplitude for waveform UI
+                currentAmplitude = AudioUtils.calculateRMS(frame) / Short.MAX_VALUE.toFloat()
+                // Non-blocking send — if consumer is slow, older frames are discarded
+                frameChannel.trySend(frame)
+            }
+        }
+        audioRecord?.stop()
     }
 }
