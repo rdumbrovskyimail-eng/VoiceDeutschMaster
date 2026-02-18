@@ -44,9 +44,28 @@ val dataModule = module {
     single { BookFileReader(androidContext(), get()) }
 
     // ─── Repositories (interface → implementation) ──────────────
-    single<UserRepository> { UserRepositoryImpl(get(), get(), get(), get()) }
-    single<KnowledgeRepository> { KnowledgeRepositoryImpl(get(), get(), get(), get(), get(), get()) }
-    single<BookRepository> { BookRepositoryImpl(get(), get(), get(), get()) }
-    single<SessionRepository> { SessionRepositoryImpl(get(), get()) }
-    single<ProgressRepository> { ProgressRepositoryImpl(get(), get(), get(), get()) }
+    // UserRepositoryImpl(userDao, knowledgeDao, preferencesDataStore, json) — 4 params
+    single<UserRepository> {
+        UserRepositoryImpl(get(), get(), get(), get())
+    }
+
+    // KnowledgeRepositoryImpl(wordDao, knowledgeDao, grammarRuleDao, phraseDao, progressDao, mistakeDao, json) — 7 params
+    single<KnowledgeRepository> {
+        KnowledgeRepositoryImpl(get(), get(), get(), get(), get(), get(), get())
+    }
+
+    // BookRepositoryImpl(bookFileReader, bookProgressDao, wordDao, grammarRuleDao, preferencesDataStore, json) — 6 params
+    single<BookRepository> {
+        BookRepositoryImpl(get(), get(), get(), get(), get(), get())
+    }
+
+    // SessionRepositoryImpl(sessionDao, progressDao, json) — 3 params
+    single<SessionRepository> {
+        SessionRepositoryImpl(get(), get(), get())
+    }
+
+    // ProgressRepositoryImpl(knowledgeDao, wordDao, grammarRuleDao, sessionDao, bookProgressDao, progressDao, userDao, json) — 8 params
+    single<ProgressRepository> {
+        ProgressRepositoryImpl(get(), get(), get(), get(), get(), get(), get(), get())
+    }
 }
