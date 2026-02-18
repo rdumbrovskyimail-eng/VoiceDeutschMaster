@@ -133,4 +133,15 @@ interface KnowledgeDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertPhraseKnowledge(knowledge: PhraseKnowledgeEntity)
+
+    @Query("SELECT * FROM phrase_knowledge WHERE user_id = :userId")
+    suspend fun getAllPhraseKnowledge(userId: String): List<PhraseKnowledgeEntity>
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM phrase_knowledge 
+        WHERE user_id = :userId AND next_review <= :now AND next_review IS NOT NULL
+        """
+    )
+    suspend fun getPhrasesForReviewCount(userId: String, now: Long): Int
 }
