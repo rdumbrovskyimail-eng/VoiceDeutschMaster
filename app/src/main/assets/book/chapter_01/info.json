@@ -1,9 +1,9 @@
 {
-    "number": 2,
-    "titleDe": "Meine Familie",
-    "titleRu": "Моя семья",
+    "number": 1,
+    "titleDe": "Hallo! Ich bin...",
+    "titleRu": "Привет! Я...",
     "level": "A1.1",
-    "topics": ["семья", "родственники", "артикли", "притяжательные местоимения"],
+    "topics": ["приветствия", "знакомство", "алфавит", "числа 1-20"],
     "lessonsCount": 6,
     "estimatedHours": 3.0
 }
