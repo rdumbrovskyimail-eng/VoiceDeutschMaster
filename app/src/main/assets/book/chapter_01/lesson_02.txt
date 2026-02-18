@@ -1,0 +1,133 @@
+[TITLE]
+Числа 1-20 и немецкий алфавит — Zahlen 1-20 und das deutsche Alphabet
+
+[INTRODUCTION]
+В этом уроке мы познакомимся с немецким алфавитом и его особенностями.
+Вы узнаете, чем немецкий алфавит отличается от русского и английского.
+Мы также выучим числа от 1 до 20 — они пригодятся вам в повседневной жизни.
+После урока вы сможете продиктовать свой номер телефона по-немецки!
+
+[CONTENT]
+=== Немецкий алфавит (Das deutsche Alphabet) ===
+
+Немецкий алфавит основан на латинице и содержит 26 стандартных букв плюс 4 особых символа:
+
+Особые буквы (Sonderbuchstaben):
+• Ä ä (а-умлаут) — произносится как «э» (Äpfel = эпфель — яблоки)
+• Ö ö (о-умлаут) — округлённое «ё» без начального «й» (schön = шён — красивый)
+• Ü ü (у-умлаут) — произносится как «ю» без начального «й» (Tür = тюр — дверь)
+• ß (эсцет / острое S) — произносится как «сс» (Straße = штрассе — улица)
+
+Как произносить буквы при спеллинге:
+A — а, B — бэ, C — цэ, D — дэ, E — э, F — эф, G — гэ, H — ха,
+I — и, J — йот, K — ка, L — эль, M — эм, N — эн, O — о, P — пэ,
+Q — ку, R — эр, S — эс, T — тэ, U — у, V — фау, W — вэ, X — икс,
+Y — юпсилон, Z — цэт
+
+Пример спеллинга:
+— Wie buchstabiert man Ihren Namen? (Как пишется ваше имя?)
+— M-Ü-L-L-E-R. Эм-ю-эль-эль-э-эр.
+
+Ещё один пример:
+— Können Sie das bitte buchstabieren? (Вы можете это произнести по буквам?)
+— S-C-H-M-I-D-T. Эс-цэ-ха-эм-и-дэ-тэ.
+
+=== Числа от 1 до 20 (Zahlen von 1 bis 20) ===
+
+1 — eins (айнс)
+2 — zwei (цвай)
+3 — drei (драй)
+4 — vier (фир)
+5 — fünf (фюнф)
+6 — sechs (зэкс)
+7 — sieben (зибен)
+8 — acht (ахт)
+9 — neun (нойн)
+10 — zehn (цэн)
+11 — elf (эльф)
+12 — zwölf (цвёльф)
+13 — dreizehn (драйцэн)
+14 — vierzehn (фирцэн)
+15 — fünfzehn (фюнфцэн)
+16 — sechzehn (зэхцэн) — обратите внимание: НЕ «sechszehn»!
+17 — siebzehn (зибцэн) — обратите внимание: НЕ «siebenzehn»!
+18 — achtzehn (ахцэн)
+19 — neunzehn (нойнцэн)
+20 — zwanzig (цванциг)
+
+Запоминалка: числа 13-19 образуются по формуле: единица + zehn (десять).
+Исключения: 16 (sechzehn, а не sechszehn) и 17 (siebzehn, а не siebenzehn).
+
+=== Практические диалоги с числами ===
+
+Диалог 1 — номер телефона:
+— Wie ist Ihre Telefonnummer? (Какой у вас номер телефона?)
+— Meine Nummer ist: null-eins-sieben-zwei — drei-vier-fünf-sechs-sieben-acht-neun.
+   (Мой номер: 0172-3456789)
+
+Диалог 2 — возраст:
+— Wie alt sind Sie? (Сколько вам лет?)
+— Ich bin zwanzig Jahre alt. (Мне двадцать лет.)
+— Und wie alt ist Ihre Schwester? (А сколько лет вашей сестре?)
+— Sie ist siebzehn. (Ей семнадцать.)
+
+Диалог 3 — адрес:
+— Wie ist Ihre Adresse? (Какой ваш адрес?)
+— Berliner Straße fünfzehn. (Берлинер Штрассе, пятнадцать.)
+
+=== Совет по запоминанию ===
+
+Немецкие числа лучше учить группами:
+• Группа 1: eins, zwei, drei, vier, fünf (1-5)
+• Группа 2: sechs, sieben, acht, neun, zehn (6-10)
+• Группа 3: elf, zwölf (11-12 — особые!)
+• Группа 4: dreizehn bis zwanzig (13-20 — по формуле)
+
+[PHONETIC_NOTES]
+1. Умлауты (ä, ö, ü):
+   - ä произносится как открытое «э» (шире, чем обычное e)
+   - ö — округлите губы для «о» и произнесите «э»
+   - ü — округлите губы для «у» и произнесите «и»
+
+2. Звук «z» в немецком = русское «ц»:
+   zwei (цвай), zehn (цэн), zwanzig (цванциг)
+
+3. «ch» после «a, o, u» = русское «х» (acht = ахт)
+   «ch» после «e, i» = мягкое «хь» (ich = ихь)
+
+4. «s» перед гласной = русское «з»:
+   sechs (зэкс), sieben (зибен), sein (зайн)
+
+5. «v» = «ф» в немецких словах (vier = фир)
+   «v» = «в» в заимствованных словах (Vase = вазэ)
+
+6. Двойные гласные произносятся длинно:
+   zehn (цэ-эн — долгое э), sieben (зи-ибен — долгое и)
+
+[EXERCISES_MARKERS]
+exercise_ch01_alphabet_spell
+exercise_ch01_numbers_listen
+exercise_ch01_numbers_order
+exercise_ch01_phone_number
+exercise_ch01_umlauts_practice
+
+[VOCABULARY]
+german|russian|gender|plural|level
+das Alphabet|алфавит|das|die Alphabete|A1
+der Buchstabe|буква|der|die Buchstaben|A1
+die Zahl|число|die|die Zahlen|A1
+die Nummer|номер|die|die Nummern|A1
+die Telefonnummer|номер телефона|die|die Telefonnummern|A1
+eins|один|||A1
+zwei|два|||A1
+drei|три|||A1
+vier|четыре|||A1
+fünf|пять|||A1
+sechs|шесть|||A1
+sieben|семь|||A1
+acht|восемь|||A1
+neun|девять|||A1
+zehn|десять|||A1
+zwanzig|двадцать|||A1
+wie alt|сколько лет|||A1
+das Jahr|год|das|die Jahre|A1
