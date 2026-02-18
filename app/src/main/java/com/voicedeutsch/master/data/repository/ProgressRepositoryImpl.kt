@@ -188,6 +188,28 @@ class ProgressRepositoryImpl(
         )
     }
 
+    override suspend fun getBookOverallProgress(userId: String): BookOverallProgress {
+        val currentPosition = bookProgressDao.getCurrentPosition(userId)
+        val currentCh = currentPosition?.chapter ?: 1
+        val currentLes = currentPosition?.lesson ?: 1
+        val completedLessons = bookProgressDao.getCompletedCount(userId)
+        val allProgress = bookProgressDao.getAllProgress(userId)
+        val totalLessons = allProgress.size.coerceAtLeast(1)
+
+        return BookOverallProgress(
+            currentChapter = currentCh,
+            currentLesson = currentLes,
+            totalChapters = 20,
+            totalLessons = totalLessons,
+            completionPercentage = if (totalLessons > 0) {
+                completedLessons.toFloat() / totalLessons
+            } else {
+                0f
+            },
+            currentTopic = ""
+        )
+    }
+
     override suspend fun getSkillProgress(userId: String): SkillProgress {
         val vocab = getVocabularyProgress(userId)
         val grammar = getGrammarProgress(userId)
