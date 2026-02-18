@@ -1,0 +1,106 @@
+[
+    {
+        "id": "rule_ch02_definite_articles",
+        "nameRu": "Определённые артикли",
+        "nameDe": "Bestimmte Artikel",
+        "level": "A1",
+        "description": "В немецком языке каждое существительное имеет род: мужской (Maskulinum), женский (Femininum) или средний (Neutrum). Род определяется артиклем, который стоит перед существительным. Определённый артикль используется, когда речь идёт о конкретном, известном предмете или лице.",
+        "content": "Мужской род: der (der Vater — отец)\nЖенский род: die (die Mutter — мать)\nСредний род: das (das Kind — ребёнок)\nМножественное число (все роды): die (die Kinder — дети)\n\nСоветы по определению рода:\n- Мужской род: мужчины, дни недели, месяцы, времена года, стороны света\n- Женский род: женщины, числа, слова на -ung, -heit, -keit, -schaft\n- Средний род: уменьшительные на -chen и -lein, слова на -um, -ment",
+        "examples": [
+            {
+                "german": "Der Vater ist groß.",
+                "russian": "Отец высокий.",
+                "explanation": "der Vater — мужской род, используется определённый артикль der"
+            },
+            {
+                "german": "Die Mutter ist Lehrerin.",
+                "russian": "Мать — учительница.",
+                "explanation": "die Mutter — женский род, используется определённый артикль die"
+            },
+            {
+                "german": "Das Kind spielt.",
+                "russian": "Ребёнок играет.",
+                "explanation": "das Kind — средний род, используется определённый артикль das"
+            }
+        ],
+        "lesson": 1
+    },
+    {
+        "id": "rule_ch02_indefinite_articles",
+        "nameRu": "Неопределённые артикли",
+        "nameDe": "Unbestimmte Artikel",
+        "level": "A1",
+        "description": "Неопределённый артикль используется, когда речь идёт о предмете в первый раз, о неконкретном или одном из многих. Во множественном числе неопределённый артикль отсутствует.",
+        "content": "Мужской род: ein (ein Bruder — брат)\nЖенский род: eine (eine Schwester — сестра)\nСредний род: ein (ein Kind — ребёнок)\nМножественное число: — (без артикля) (Kinder — дети)\n\nОтрицательная форма (kein/keine):\nМужской род: kein (kein Bruder — никакой брат / нет брата)\nЖенский род: keine (keine Schwester — нет сестры)\nСредний род: kein (kein Kind — нет ребёнка)\nМножественное число: keine (keine Kinder — нет детей)",
+        "examples": [
+            {
+                "german": "Ich habe einen Bruder.",
+                "russian": "У меня есть брат.",
+                "explanation": "einen — винительный падеж от ein (мужской род). Haben требует Akkusativ."
+            },
+            {
+                "german": "Ich habe eine Schwester.",
+                "russian": "У меня есть сестра.",
+                "explanation": "eine — неопределённый артикль для женского рода (форма одинакова в Nominativ и Akkusativ)"
+            },
+            {
+                "german": "Ich habe kein Auto.",
+                "russian": "У меня нет машины.",
+                "explanation": "kein — отрицание неопределённого артикля, средний род"
+            }
+        ],
+        "lesson": 1
+    },
+    {
+        "id": "rule_ch02_possessive_pronouns",
+        "nameRu": "Притяжательные местоимения",
+        "nameDe": "Possessivpronomen",
+        "level": "A1",
+        "description": "Притяжательные местоимения показывают принадлежность. Они склоняются так же, как неопределённый артикль ein/eine. Окончание зависит от рода и числа существительного, к которому относится местоимение.",
+        "content": "ich → mein (мой)\ndu → dein (твой)\ner → sein (его)\nsie → ihr (её)\nes → sein (его — для среднего рода)\nwir → unser (наш)\nihr → euer (ваш — мн.ч.)\nsie → ihr (их)\nSie → Ihr (Ваш — формальное)\n\nОкончания:\nМужской род: mein Vater (мой отец)\nЖенский род: meine Mutter (моя мать)\nСредний род: mein Kind (мой ребёнок)\nМножественное число: meine Kinder (мои дети)",
+        "examples": [
+            {
+                "german": "Mein Vater heißt Igor.",
+                "russian": "Моего отца зовут Игорь.",
+                "explanation": "mein + мужской род (Vater) — без окончания"
+            },
+            {
+                "german": "Meine Mutter ist Lehrerin.",
+                "russian": "Моя мать — учительница.",
+                "explanation": "meine + женский род (Mutter) — окончание -e"
+            },
+            {
+                "german": "Seine Schwester studiert Medizin.",
+                "russian": "Его сестра изучает медицину.",
+                "explanation": "seine + женский род (Schwester) — sein с окончанием -e"
+            }
+        ],
+        "lesson": 1
+    },
+    {
+        "id": "rule_ch02_haben",
+        "nameRu": "Глагол haben (иметь)",
+        "nameDe": "Das Verb haben",
+        "level": "A1",
+        "description": "Глагол haben (иметь) — второй по важности глагол после sein. Он используется для выражения обладания, а также как вспомогательный глагол для образования прошедшего времени Perfekt. Haben — неправильный глагол.",
+        "content": "ich habe — я имею\ndu hast — ты имеешь\ner/sie/es hat — он/она/оно имеет\nwir haben — мы имеем\nihr habt — вы имеете\nsie/Sie haben — они/Вы имеете\n\nВажно: после haben существительное стоит в винительном падеже (Akkusativ):\nmaskulin: einen (Ich habe einen Bruder.)\nfeminin: eine (Ich habe eine Schwester.)\nneutral: ein (Ich habe ein Kind.)\nPlural: — (Ich habe Kinder.)",
+        "examples": [
+            {
+                "german": "Ich habe einen Bruder.",
+                "russian": "У меня есть брат.",
+                "explanation": "habe + einen (Akkusativ мужского рода) Bruder"
+            },
+            {
+                "german": "Hast du Geschwister?",
+                "russian": "У тебя есть братья или сёстры?",
+                "explanation": "Вопрос: Hast du...? — глагол на первом месте"
+            },
+            {
+                "german": "Sie hat zwei Kinder.",
+                "russian": "У неё двое детей.",
+                "explanation": "hat — форма haben для 3-го лица ед.ч."
+            }
+        ],
+        "lesson": 1
+    }
+]
