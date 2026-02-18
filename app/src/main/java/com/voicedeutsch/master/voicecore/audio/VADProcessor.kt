@@ -1,307 +1,183 @@
 package com.voicedeutsch.master.voicecore.audio
 
-/**
- * Конфигурация для Voice Activity Detection (VAD)
- */
-data class VADConfig(
-    val silenceThresholdDb: Float = -40f,
-    val speechStartThresholdDb: Float = -35f,
-    val minSpeechDurationMs: Int = 300,
-    val maxSilenceDurationMs: Int = 500,
-    val frameSize: Int = 512,
-    val modelPath: String? = null
-)
+import com.voicedeutsch.master.util.AudioUtils
+import com.voicedeutsch.master.util.Constants
+import java.util.LinkedList
 
 /**
- * Результат обнаружения голоса
+ * Voice Activity Detection (VAD) processor.
+ *
+ * Architecture lines 615-622 (VAD parameters):
+ *   - Speech-start threshold : adaptive (based on noise floor estimate)
+ *   - Speech-end silence     : [SILENCE_END_FRAMES] * frame_duration ≈ 1 500 ms
+ *   - Minimum speech length  : [MIN_SPEECH_FRAMES] * frame_duration ≈ 300 ms
+ *
+ * State machine:
+ * ```
+ *  SILENCE ──(energy > threshold)──→ SPEECH
+ *  SPEECH  ──(energy < threshold, count >= SILENCE_END_FRAMES)──→ SPEECH_END
+ *  SPEECH_END ──(always next frame)──→ SILENCE
+ * ```
+ *
+ * Adaptive noise floor:
+ *   The [noiseFloor] is continuously updated from silent frames using an EMA
+ *   (exponential moving average). This prevents false triggers in noisy
+ *   environments and adapts when background noise changes.
  */
-data class VADResult(
-    val hasVoice: Boolean,
-    val confidence: Float, // 0.0 - 1.0
-    val voiceAmplitude: Float,
-    val noiseLevel: Float,
-    val timestamp: Long = System.currentTimeMillis()
-)
+class VADProcessor {
 
-/**
- * Состояния VAD
- */
-enum class VADState {
-    Silence,
-    SpeechStarting,
-    Speaking,
-    SpeechEnding,
-    Silence_LongPause
-}
+    // ── Public state ──────────────────────────────────────────────────────────
 
-/**
- * Интерфейс для обнаружения голоса (Voice Activity Detection)
- */
-interface VADProcessor {
-    
-    /**
-     * Инициализирует процессор
-     */
-    suspend fun initialize(): Result<Unit>
-    
-    /**
-     * Обрабатывает аудиокадр и определяет наличие голоса
-     */
-    fun processFrame(frame: AudioFrame): VADResult
-    
-    /**
-     * Обрабатывает аудиокадр и возвращает состояние
-     */
-    fun processFrameWithState(frame: AudioFrame): Pair<VADResult, VADState>
-    
-    /**
-     * Получает текущее состояние VAD
-     */
-    fun getCurrentState(): VADState
-    
-    /**
-     * Устанавливает порог обнаружения (0.0 - 1.0)
-     */
-    fun setSensitivity(sensitivity: Float)
-    
-    /**
-     * Сбрасывает состояние
-     */
-    fun reset()
-    
-    /**
-     * Освобождает ресурсы
-     */
-    suspend fun release()
-}
+    enum class VadState {
+        /** No voice detected — background noise / silence. */
+        SILENCE,
+        /** Voice activity detected — user is speaking. */
+        SPEECH,
+        /** Silence after speech; the utterance has just ended. */
+        SPEECH_END,
+    }
 
-/**
- * Реализация VAD на основе анализа громкости и энергии
- */
-class SimpleVADProcessor(
-    private val config: VADConfig = VADConfig()
-) : VADProcessor {
-    
-    private var currentState = VADState.Silence
-    private var silenceDuration = 0L
-    private var speechDuration = 0L
-    private var sensitivity = 0.5f
-    private var lastFrameTime = 0L
-    
-    override suspend fun initialize(): Result<Unit> {
-        return try {
-            reset()
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-    
-    override fun processFrame(frame: AudioFrame): VADResult {
-        val (result, _) = processFrameWithState(frame)
-        return result
-    }
-    
-    override fun processFrameWithState(frame: AudioFrame): Pair<VADResult, VADState> {
-        val currentTime = System.currentTimeMillis()
-        val frameTime = if (lastFrameTime > 0) currentTime - lastFrameTime else 0
-        lastFrameTime = currentTime
-        
-        // Анализируем энергию аудиосигнала
-        val (amplitudeDb, noiseLevel) = analyzeFrame(frame)
-        
-        // Определяем, есть ли голос
-        val hasVoice = amplitudeDb > config.silenceThresholdDb
-        val confidence = calculateConfidence(amplitudeDb)
-        
-        // Обновляем состояние
-        updateState(hasVoice, frameTime)
-        
-        val result = VADResult(
-            hasVoice = hasVoice,
-            confidence = confidence,
-            voiceAmplitude = amplitudeDb,
-            noiseLevel = noiseLevel
-        )
-        
-        return Pair(result, currentState)
-    }
-    
-    override fun getCurrentState(): VADState = currentState
-    
-    override fun setSensitivity(sensitivity: Float) {
-        require(sensitivity in 0.0f..1.0f) { "Sensitivity must be between 0.0 and 1.0" }
-        this.sensitivity = sensitivity
-    }
-    
-    override fun reset() {
-        currentState = VADState.Silence
-        silenceDuration = 0
-        speechDuration = 0
-        lastFrameTime = 0
-    }
-    
-    override suspend fun release() {
-        reset()
-    }
-    
-    /**
-     * Анализирует кадр и получает амплитуду в дБ и уровень шума
-     */
-    private fun analyzeFrame(frame: AudioFrame): Pair<Float, Float> {
-        if (frame.data.isEmpty()) {
-            return Pair(Float.NEGATIVE_INFINITY, 0f)
-        }
-        
-        // Рассчитываем RMS (Root Mean Square) энергию
-        var sumSquares = 0.0
-        var i = 0
-        while (i < frame.data.size step 2) {
-            val sample = (frame.data[i].toInt() shl 8) or (frame.data[i + 1].toInt() and 0xFF)
-            sumSquares += sample * sample
-            i += 2
-        }
-        
-        val rms = Math.sqrt(sumSquares / (frame.data.size / 2))
-        val amplitudeDb = 20 * Math.log10(rms / 32768.0).toFloat()
-        
-        // Оценка уровня шума (простой метод)
-        val noiseLevel = Math.max(0f, amplitudeDb + 40) / 40 // Нормализуем от -40dB до 0
-        
-        return Pair(amplitudeDb, noiseLevel)
-    }
-    
-    /**
-     * Рассчитывает уверенность в обнаружении голоса
-     */
-    private fun calculateConfidence(amplitudeDb: Float): Float {
-        val threshold = config.silenceThresholdDb
-        val confidence = when {
-            amplitudeDb < threshold - 10 -> 0.0f
-            amplitudeDb < threshold -> (amplitudeDb - (threshold - 10)) / 10 * sensitivity
-            amplitudeDb < threshold + 10 -> 0.5f + ((amplitudeDb - threshold) / 10 * 0.5f) * sensitivity
-            else -> Math.min(1.0f, sensitivity)
-        }
-        
-        return confidence.coerceIn(0f, 1f)
-    }
-    
-    /**
-     * Обновляет состояние VAD на основе текущего фрейма
-     */
-    private fun updateState(hasVoice: Boolean, frameTime: Long) {
-        when {
-            hasVoice -> {
-                silenceDuration = 0
-                speechDuration += frameTime
-                
-                currentState = when (currentState) {
-                    VADState.Silence, VADState.Silence_LongPause -> {
-                        if (speechDuration > config.minSpeechDurationMs) {
-                            VADState.Speaking
-                        } else {
-                            VADState.SpeechStarting
-                        }
-                    }
-                    VADState.SpeechStarting -> {
-                        if (speechDuration > config.minSpeechDurationMs) {
-                            VADState.Speaking
-                        } else {
-                            VADState.SpeechStarting
-                        }
-                    }
-                    VADState.SpeechEnding -> VADState.Speaking
-                    else -> currentState
-                }
-            }
-            else -> {
-                speechDuration = 0
-                silenceDuration += frameTime
-                
-                currentState = when (currentState) {
-                    VADState.Speaking, VADState.SpeechStarting -> {
-                        VADState.SpeechEnding
-                    }
-                    VADState.SpeechEnding -> {
-                        if (silenceDuration > config.maxSilenceDurationMs) {
-                            VADState.Silence
-                        } else {
-                            VADState.SpeechEnding
-                        }
-                    }
-                    VADState.Silence -> {
-                        if (silenceDuration > config.maxSilenceDurationMs * 2) {
-                            VADState.Silence_LongPause
-                        } else {
-                            VADState.Silence
-                        }
-                    }
-                    else -> currentState
-                }
-            }
-        }
-    }
-}
+    @Volatile
+    var currentState: VadState = VadState.SILENCE
+        private set
 
-/**
- * VAD в реальном времени с буферизацией
- */
-class BufferedVADProcessor(
-    private val config: VADConfig = VADConfig()
-) : VADProcessor {
-    
-    private val vadProcessor = SimpleVADProcessor(config)
-    private val audioBuffer = mutableListOf<AudioFrame>()
-    private var isInitialized = false
-    
-    override suspend fun initialize(): Result<Unit> {
-        return try {
-            vadProcessor.initialize()
-            isInitialized = true
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-    
-    override fun processFrame(frame: AudioFrame): VADResult {
-        val (result, _) = processFrameWithState(frame)
-        return result
-    }
-    
-    override fun processFrameWithState(frame: AudioFrame): Pair<VADResult, VADState> {
-        audioBuffer.add(frame)
-        
-        // Ограничиваем размер буфера
-        if (audioBuffer.size > 10) {
-            audioBuffer.removeAt(0)
-        }
-        
-        return vadProcessor.processFrameWithState(frame)
-    }
-    
-    override fun getCurrentState(): VADState {
-        return vadProcessor.getCurrentState()
-    }
-    
-    override fun setSensitivity(sensitivity: Float) {
-        vadProcessor.setSensitivity(sensitivity)
-    }
-    
-    override fun reset() {
-        vadProcessor.reset()
-        audioBuffer.clear()
-    }
-    
-    override suspend fun release() {
-        vadProcessor.release()
-        audioBuffer.clear()
-    }
-    
+    /** Estimated noise floor RMS (0.0–1.0, normalized to Short.MAX_VALUE). */
+    @Volatile
+    var noiseFloor: Float = INITIAL_NOISE_FLOOR
+        private set
+
+    // ── Internal counters ─────────────────────────────────────────────────────
+
+    /** Consecutive silent frames during speech — resets on every speech frame. */
+    private var silentFrameCount   = 0
+
+    /** Consecutive speech frames — used to discard spurious blips. */
+    private var speechFrameCount   = 0
+
+    /** Whether we are currently inside a speech segment. */
+    private var inSpeech = false
+
+    /** Recent RMS history for adaptive threshold (ring buffer). */
+    private val recentRmsHistory = LinkedList<Float>()
+
+    // ── Processing ────────────────────────────────────────────────────────────
+
     /**
-     * Получает буферизованные аудиокадры
+     * Processes a single PCM frame and returns the new [VadState].
+     *
+     * @param samples  16-bit PCM frame ([AudioRecorder.FRAME_SIZE_SAMPLES] samples).
+     * @return         The VAD state after processing this frame.
      */
-    fun getBufferedFrames(): List<AudioFrame> {
-        return audioBuffer.toList()
+    fun process(samples: ShortArray): VadState {
+        val rms = AudioUtils.calculateRMS(samples) / Short.MAX_VALUE.toFloat()
+
+        // Maintain recent RMS history
+        recentRmsHistory.add(rms)
+        if (recentRmsHistory.size > HISTORY_LENGTH) recentRmsHistory.poll()
+
+        val threshold = computeAdaptiveThreshold()
+
+        return when {
+            rms > threshold -> onEnergyAboveThreshold(rms)
+            else            -> onEnergyBelowThreshold(rms)
+        }.also { currentState = it }
+    }
+
+    /** Resets internal state (call between utterances or after a session restart). */
+    fun reset() {
+        silentFrameCount = 0
+        speechFrameCount = 0
+        inSpeech         = false
+        currentState     = VadState.SILENCE
+        recentRmsHistory.clear()
+        noiseFloor       = INITIAL_NOISE_FLOOR
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    private fun onEnergyAboveThreshold(rms: Float): VadState {
+        silentFrameCount = 0
+        speechFrameCount++
+
+        if (!inSpeech && speechFrameCount >= MIN_SPEECH_FRAMES) {
+            inSpeech = true
+        }
+        return if (inSpeech) VadState.SPEECH else VadState.SILENCE
+    }
+
+    private fun onEnergyBelowThreshold(rms: Float): VadState {
+        if (!inSpeech) {
+            speechFrameCount = 0
+            // Update noise floor using EMA — only on clearly quiet frames
+            noiseFloor = NOISE_EMA_ALPHA * rms + (1f - NOISE_EMA_ALPHA) * noiseFloor
+            return VadState.SILENCE
+        }
+
+        silentFrameCount++
+
+        return if (silentFrameCount >= SILENCE_END_FRAMES) {
+            // Long enough silence after speech → end of utterance
+            inSpeech         = false
+            silentFrameCount = 0
+            speechFrameCount = 0
+            VadState.SPEECH_END
+        } else {
+            // Short pause inside speech — still considered speaking
+            VadState.SPEECH
+        }
+    }
+
+    /**
+     * Computes an adaptive speech-start threshold.
+     *
+     * Base threshold = [Constants.VAD_SPEECH_START_THRESHOLD].
+     * Adaptive factor = noiseFloor * [NOISE_MARGIN_FACTOR].
+     *
+     * The larger of the two is used, ensuring we always require speech
+     * to be meaningfully louder than the noise floor.
+     */
+    private fun computeAdaptiveThreshold(): Float {
+        val adaptiveThreshold = noiseFloor * NOISE_MARGIN_FACTOR
+        return maxOf(Constants.VAD_SPEECH_START_THRESHOLD, adaptiveThreshold)
+    }
+
+    // ── Timing utilities ──────────────────────────────────────────────────────
+
+    /**
+     * Converts a frame count to milliseconds.
+     * Frame duration = [AudioRecorder.FRAME_SIZE_SAMPLES] / [AudioRecorder.SAMPLE_RATE].
+     */
+    fun framesToMs(frames: Int): Long =
+        (frames.toLong() * AudioRecorder.FRAME_SIZE_SAMPLES * 1000L) / AudioRecorder.SAMPLE_RATE
+
+    // ── Constants ─────────────────────────────────────────────────────────────
+
+    companion object {
+        /** Initial (cold-start) noise floor estimate. */
+        const val INITIAL_NOISE_FLOOR = 0.01f
+
+        /**
+         * Number of consecutive silent frames required to end an utterance.
+         * At 10 ms / frame → 150 frames × 10 ms = 1 500 ms (matches architecture spec).
+         */
+        const val SILENCE_END_FRAMES = 150   // ≈ 1 500 ms
+
+        /**
+         * Minimum speech frames before declaring voice onset.
+         * At 10 ms / frame → 30 × 10 ms = 300 ms (filters out brief clicks).
+         */
+        const val MIN_SPEECH_FRAMES = 30     // ≈ 300 ms
+
+        /** Number of recent RMS values kept for threshold adaptation. */
+        const val HISTORY_LENGTH = 50
+
+        /** EMA coefficient for noise floor update (0 = never update, 1 = instant). */
+        const val NOISE_EMA_ALPHA = 0.05f
+
+        /**
+         * How many times louder than the noise floor speech must be
+         * to trigger voice onset. Higher = less sensitive.
+         */
+        const val NOISE_MARGIN_FACTOR = 4.0f
     }
 }
