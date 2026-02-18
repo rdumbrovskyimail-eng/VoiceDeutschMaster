@@ -1,0 +1,252 @@
+package com.voicedeutsch.master.app
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
+
+class MainActivity : ComponentActivity() {
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent {
+            MaterialTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    PlaceholderScreen()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaceholderScreen() {
+    Scaffold { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "VoiceDeutschMaster\n\nUI создаётся в сессиях 7-9",
+                style = MaterialTheme.typography.headlineMedium,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+```
+
+---
+
+### ФАЙЛ 8: `app/src/main/assets/book/metadata.json`
+
+```json
+{
+    "title": "Sprechen & Lernen: Deutsch von Anfang an",
+    "titleRu": "Говори и учи: немецкий с нуля",
+    "author": "VoiceDeutsch Team",
+    "edition": "1.0",
+    "targetLevel": "A1-B1",
+    "totalChapters": 20,
+    "totalLessons": 120,
+    "description": "Полный курс немецкого языка от уровня A1 до B1. Курс построен на принципе живого общения: вы учитесь говорить, слушать и думать по-немецки с первого урока. Каждая глава посвящена отдельной теме из повседневной жизни и включает лексику, грамматику, фонетику и практические диалоги.",
+    "chapters": [
+        {
+            "number": 1,
+            "titleDe": "Hallo! Ich bin...",
+            "titleRu": "Привет! Я...",
+            "level": "A1.1",
+            "topics": ["приветствия", "знакомство", "алфавит", "числа 1-20"],
+            "lessonsCount": 6,
+            "estimatedHours": 3.0
+        },
+        {
+            "number": 2,
+            "titleDe": "Meine Familie",
+            "titleRu": "Моя семья",
+            "level": "A1.1",
+            "topics": ["семья", "родственники", "артикли", "притяжательные местоимения"],
+            "lessonsCount": 6,
+            "estimatedHours": 3.0
+        },
+        {
+            "number": 3,
+            "titleDe": "Essen und Trinken",
+            "titleRu": "Еда и напитки",
+            "level": "A1.2",
+            "topics": ["продукты", "напитки", "в ресторане", "винительный падеж"],
+            "lessonsCount": 6,
+            "estimatedHours": 3.0
+        },
+        {
+            "number": 4,
+            "titleDe": "Mein Tag",
+            "titleRu": "Мой день",
+            "level": "A1.2",
+            "topics": ["распорядок дня", "время", "отделяемые приставки", "возвратные глаголы"],
+            "lessonsCount": 6,
+            "estimatedHours": 3.0
+        },
+        {
+            "number": 5,
+            "titleDe": "Die Stadt",
+            "titleRu": "Город",
+            "level": "A1.3",
+            "topics": ["городские объекты", "ориентация", "предлоги места", "дательный падеж"],
+            "lessonsCount": 6,
+            "estimatedHours": 3.0
+        },
+        {
+            "number": 6,
+            "titleDe": "Einkaufen",
+            "titleRu": "Покупки",
+            "level": "A1.3",
+            "topics": ["магазины", "одежда", "цвета", "степени сравнения"],
+            "lessonsCount": 6,
+            "estimatedHours": 3.0
+        },
+        {
+            "number": 7,
+            "titleDe": "Freizeit und Hobbys",
+            "titleRu": "Свободное время и хобби",
+            "level": "A1.4",
+            "topics": ["хобби", "спорт", "модальные глаголы", "наречия частотности"],
+            "lessonsCount": 6,
+            "estimatedHours": 3.0
+        },
+        {
+            "number": 8,
+            "titleDe": "Wohnen",
+            "titleRu": "Жильё",
+            "level": "A1.5",
+            "topics": ["квартира", "мебель", "предлоги с двойным управлением", "описание жилья"],
+            "lessonsCount": 6,
+            "estimatedHours": 3.0
+        },
+        {
+            "number": 9,
+            "titleDe": "Reisen",
+            "titleRu": "Путешествия",
+            "level": "A2.1",
+            "topics": ["транспорт", "бронирование", "прошедшее время Perfekt", "предлоги направления"],
+            "lessonsCount": 6,
+            "estimatedHours": 3.5
+        },
+        {
+            "number": 10,
+            "titleDe": "Gesundheit",
+            "titleRu": "Здоровье",
+            "level": "A2.1",
+            "topics": ["части тела", "у врача", "повелительное наклонение", "модальные глаголы sollen и dürfen"],
+            "lessonsCount": 6,
+            "estimatedHours": 3.5
+        },
+        {
+            "number": 11,
+            "titleDe": "Arbeit und Beruf",
+            "titleRu": "Работа и профессия",
+            "level": "A2.2",
+            "topics": ["профессии", "рабочее место", "Präteritum вспомогательных глаголов", "подчинённые предложения с weil"],
+            "lessonsCount": 6,
+            "estimatedHours": 3.5
+        },
+        {
+            "number": 12,
+            "titleDe": "Medien und Kommunikation",
+            "titleRu": "Медиа и коммуникация",
+            "level": "A2.3",
+            "topics": ["интернет", "телефон", "письма и электронная почта", "косвенная речь"],
+            "lessonsCount": 6,
+            "estimatedHours": 3.5
+        },
+        {
+            "number": 13,
+            "titleDe": "Feste und Traditionen",
+            "titleRu": "Праздники и традиции",
+            "level": "A2.4",
+            "topics": ["немецкие праздники", "поздравления", "придаточные предложения с dass", "порядковые числительные"],
+            "lessonsCount": 6,
+            "estimatedHours": 3.5
+        },
+        {
+            "number": 14,
+            "titleDe": "Natur und Umwelt",
+            "titleRu": "Природа и окружающая среда",
+            "level": "A2.5",
+            "topics": ["погода", "животные", "ландшафт", "придаточные предложения с wenn"],
+            "lessonsCount": 6,
+            "estimatedHours": 3.5
+        },
+        {
+            "number": 15,
+            "titleDe": "Bildung und Lernen",
+            "titleRu": "Образование и обучение",
+            "level": "B1.1",
+            "topics": ["школа и университет", "языковые курсы", "относительные предложения", "Konjunktiv II"],
+            "lessonsCount": 6,
+            "estimatedHours": 4.0
+        },
+        {
+            "number": 16,
+            "titleDe": "Gesellschaft und Politik",
+            "titleRu": "Общество и политика",
+            "level": "B1.1",
+            "topics": ["политическая система", "выборы", "пассивный залог", "причастия"],
+            "lessonsCount": 6,
+            "estimatedHours": 4.0
+        },
+        {
+            "number": 17,
+            "titleDe": "Kultur und Kunst",
+            "titleRu": "Культура и искусство",
+            "level": "B1.2",
+            "topics": ["музыка", "кино", "литература", "инфинитивные обороты с zu"],
+            "lessonsCount": 6,
+            "estimatedHours": 4.0
+        },
+        {
+            "number": 18,
+            "titleDe": "Wirtschaft und Finanzen",
+            "titleRu": "Экономика и финансы",
+            "level": "B1.2",
+            "topics": ["банк", "деньги", "работа и экономика", "Plusquamperfekt"],
+            "lessonsCount": 6,
+            "estimatedHours": 4.0
+        },
+        {
+            "number": 19,
+            "titleDe": "Wissenschaft und Technik",
+            "titleRu": "Наука и техника",
+            "level": "B1.3",
+            "topics": ["технологии", "изобретения", "научные открытия", "Futur I и Futur II"],
+            "lessonsCount": 6,
+            "estimatedHours": 4.0
+        },
+        {
+            "number": 20,
+            "titleDe": "Zukunft und Träume",
+            "titleRu": "Будущее и мечты",
+            "level": "B1.3",
+            "topics": ["планы на будущее", "мечты и цели", "итоговое повторение", "Konjunktiv II продвинутый"],
+            "lessonsCount": 6,
+            "estimatedHours": 4.0
+        }
+    ]
+}
