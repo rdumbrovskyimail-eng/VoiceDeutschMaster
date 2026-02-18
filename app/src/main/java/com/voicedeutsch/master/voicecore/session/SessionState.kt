@@ -1,65 +1,60 @@
-package com.voicedeutsch.master.voicecore.session
-
-import java.time.LocalDateTime
-
 /**
- * Состояния сессии голосового взаимодействия
+ * Observable session state — consumed by the UI layer (Presentation → VoiceCore).
+ * Architecture lines 545-560 (SessionState structure).
+ *
+ * [FloatArray] fields have custom [equals] / [hashCode] to prevent spurious recompositions.
  */
-sealed class SessionState {
-    /**
-     * Сессия неактивна
-     */
-    object Idle : SessionState()
-    
-    /**
-     * Сессия активна и готова к приему аудио
-     */
-    object Active : SessionState()
-    
-    /**
-     * Система слушает входящий голос
-     */
-    object Listening : SessionState()
-    
-    /**
-     * Происходит обработка аудио и генерация ответа
-     */
-    data class Processing(val startTime: LocalDateTime = LocalDateTime.now()) : SessionState()
-    
-    /**
-     * Воспроизведение ответа пользователю
-     */
-    object Playing : SessionState()
-    
-    /**
-     * Ошибка в сессии
-     */
-    data class Error(val exception: Throwable, val message: String) : SessionState()
-    
-    /**
-     * Сессия завершена
-     */
-    object Completed : SessionState()
+data class VoiceSessionState(
+    val engineState: VoiceEngineState = VoiceEngineState.IDLE,
+    val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
+    val audioState: AudioState = AudioState.IDLE,
+    val isVoiceActive: Boolean = false,
+    val isListening: Boolean = false,
+    val isSpeaking: Boolean = false,
+    val isProcessing: Boolean = false,
+    val currentStrategy: LearningStrategy = LearningStrategy.LINEAR_BOOK,
+    val sessionDurationMs: Long = 0L,
+    val wordsLearnedInSession: Int = 0,
+    val wordsReviewedInSession: Int = 0,
+    val exercisesCompleted: Int = 0,
+    val currentTranscript: String = "",
+    val voiceTranscript: String = "",
+    val voiceWaveformData: FloatArray = FloatArray(0),
+    val userWaveformData: FloatArray = FloatArray(0),
+    val errorMessage: String? = null,
+    val sessionId: String? = null,
+) {
+    /** Derived: user is active in a session. */
+    val isSessionActive: Boolean
+        get() = engineState == VoiceEngineState.SESSION_ACTIVE ||
+                engineState == VoiceEngineState.LISTENING ||
+                engineState == VoiceEngineState.PROCESSING ||
+                engineState == VoiceEngineState.SPEAKING ||
+                engineState == VoiceEngineState.WAITING
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is VoiceSessionState) return false
+        // FloatArray has reference equality by default — compare structurally
+        return engineState == other.engineState &&
+                connectionState == other.connectionState &&
+                audioState == other.audioState &&
+                isVoiceActive == other.isVoiceActive &&
+                isListening == other.isListening &&
+                isSpeaking == other.isSpeaking &&
+                isProcessing == other.isProcessing &&
+                currentStrategy == other.currentStrategy &&
+                sessionDurationMs == other.sessionDurationMs &&
+                wordsLearnedInSession == other.wordsLearnedInSession &&
+                wordsReviewedInSession == other.wordsReviewedInSession &&
+                exercisesCompleted == other.exercisesCompleted &&
+                currentTranscript == other.currentTranscript &&
+                voiceTranscript == other.voiceTranscript &&
+                voiceWaveformData.contentEquals(other.voiceWaveformData) &&
+                userWaveformData.contentEquals(other.userWaveformData) &&
+                errorMessage == other.errorMessage &&
+                sessionId == other.sessionId
+    }
+
+    override fun hashCode(): Int = engineState.hashCode() * 31 + sessionId.hashCode()
 }
-
-/**
- * Данные текущей сессии
- */
-data class SessionData(
-    val sessionId: String,
-    val startTime: LocalDateTime,
-    val state: SessionState = SessionState.Idle,
-    val conversationHistory: List<ConversationTurn> = emptyList(),
-    val language: String = "de",
-    val userId: String? = null
-)
-
-/**
- * Один обмен в диалоге
- */
-data class ConversationTurn(
-    val userInput: String,
-    val assistantOutput: String,
-    val timestamp: LocalDateTime,
-    val processingTimeMs: Long
-)
