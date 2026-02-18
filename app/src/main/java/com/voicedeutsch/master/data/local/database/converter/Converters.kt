@@ -22,16 +22,4 @@ class Converters {
     } catch (e: Exception) {
         emptyList()
     }
-
-    @TypeConverter
-    fun fromLongNullable(value: Long?): Long? = value
-
-    @TypeConverter
-    fun toLongNullable(value: Long?): Long? = value
-
-    @TypeConverter
-    fun fromFloatNullable(value: Float?): Float? = value
-
-    @TypeConverter
-    fun toFloatNullable(value: Float?): Float? = value
 }
