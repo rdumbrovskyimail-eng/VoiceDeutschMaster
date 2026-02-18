@@ -27,38 +27,38 @@ import org.koin.dsl.module
 val domainModule = module {
 
     // ─── User ───────────────────────────────────────────────────
-    factory { GetUserProfileUseCase(get()) }
-    factory { ConfigureUserPreferencesUseCase(get()) }
-    factory { UpdateUserLevelUseCase(get()) }
+    factory { GetUserProfileUseCase(get()) }                         // (UserRepository)
+    factory { ConfigureUserPreferencesUseCase(get()) }               // (UserRepository)
+    factory { UpdateUserLevelUseCase(get(), get()) }                 // (UserRepository, KnowledgeRepository)
 
     // ─── Knowledge ──────────────────────────────────────────────
-    factory { UpdateWordKnowledgeUseCase(get()) }
-    factory { UpdateRuleKnowledgeUseCase(get()) }
-    factory { UpdatePhraseKnowledgeUseCase(get()) }
-    factory { BuildKnowledgeSummaryUseCase(get(), get(), get(), get()) }
-    factory { GetUserKnowledgeUseCase(get()) }
-    factory { GetWordsForRepetitionUseCase(get()) }
-    factory { GetRulesForRepetitionUseCase(get()) }
-    factory { GetPhrasesForRepetitionUseCase(get()) }
-    factory { GetWeakPointsUseCase(get()) }
-    factory { LogMistakeUseCase(get()) }
+    factory { UpdateWordKnowledgeUseCase(get()) }                    // (KnowledgeRepository)
+    factory { UpdateRuleKnowledgeUseCase(get()) }                    // (KnowledgeRepository)
+    factory { UpdatePhraseKnowledgeUseCase(get()) }                  // (KnowledgeRepository)
+    factory { BuildKnowledgeSummaryUseCase(get(), get(), get(), get()) } // (KnowledgeRepo, SessionRepo, BookRepo, ProgressRepo)
+    factory { GetUserKnowledgeUseCase(get()) }                       // (KnowledgeRepository)
+    factory { GetWordsForRepetitionUseCase(get()) }                  // (KnowledgeRepository)
+    factory { GetRulesForRepetitionUseCase(get()) }                  // (KnowledgeRepository)
+    factory { GetPhrasesForRepetitionUseCase(get()) }                // (KnowledgeRepository)
+    factory { GetWeakPointsUseCase(get()) }                          // (KnowledgeRepository)
+    factory { LogMistakeUseCase(get()) }                             // (KnowledgeRepository)
 
     // ─── Session ────────────────────────────────────────────────
-    factory { SaveSessionEventUseCase(get()) }
+    factory { SaveSessionEventUseCase(get()) }                       // (SessionRepository)
 
     // ─── Learning ───────────────────────────────────────────────
-    factory { StartLearningSessionUseCase(get(), get()) }
-    factory { EndLearningSessionUseCase(get(), get()) }
-    factory { SelectStrategyUseCase(get(), get(), get()) }
+    factory { StartLearningSessionUseCase(get(), get(), get()) }     // (SessionRepo, UserRepo, BookRepo)
+    factory { EndLearningSessionUseCase(get(), get(), get()) }       // (SessionRepo, UserRepo, BookRepo)
+    factory { SelectStrategyUseCase(get(), get(), get(), get()) }    // (KnowledgeRepo, BookRepo, SessionRepo, UserRepo)
 
     // ─── Speech ─────────────────────────────────────────────────
-    factory { RecordPronunciationResultUseCase(get()) }
+    factory { RecordPronunciationResultUseCase(get()) }              // (KnowledgeRepository)
 
     // ─── Progress ───────────────────────────────────────────────
-    factory { CalculateOverallProgressUseCase(get()) }
-    factory { GetDailyProgressUseCase(get()) }
+    factory { CalculateOverallProgressUseCase(get(), get()) }        // (ProgressRepository, UserRepository)
+    factory { GetDailyProgressUseCase(get(), get()) }                // (SessionRepository, ProgressRepository)
 
     // ─── Book ───────────────────────────────────────────────────
-    factory { GetCurrentLessonUseCase(get()) }
-    factory { AdvanceBookProgressUseCase(get()) }
+    factory { GetCurrentLessonUseCase(get()) }                       // (BookRepository)
+    factory { AdvanceBookProgressUseCase(get()) }                    // (BookRepository)
 }
