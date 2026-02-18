@@ -42,6 +42,15 @@ firebase-bom = "33.0.0"
 firebase-crashlytics-plugin = "3.0.0"
 google-services = "4.5.0"
 
+# Android SDK
+compileSdk = "36"
+minSdk = "31"
+targetSdk = "36"
+
+# AndroidX
+core-ktx = "1.15.0"
+appcompat = "1.7.0"
+
 # Testing
 junit5 = "5.11.0"
 mockk = "2.0.0"
@@ -53,10 +62,7 @@ robolectric = "4.14.0"
 ktlint = "12.0.0"
 detekt = "2.0.0"
 
-# Min/Target SDK
-minSdk = "31"
-targetSdk = "36"
-compileSdk = "36"
+# ─────────────────────────────────────────────────
 
 [libraries]
 # Kotlin
@@ -67,8 +73,8 @@ kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-t
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 
 # AndroidX Core
-androidx-core-ktx = { module = "androidx.core:core-ktx", version = "1.15.0" }
-androidx-appcompat = { module = "androidx.appcompat:appcompat", version = "1.7.0" }
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "core-ktx" }
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 
 # Compose BOM
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
@@ -125,7 +131,7 @@ ktor-client-logging = { module = "io.ktor:ktor-client-logging", version.ref = "k
 ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
 
 # Google AI (Gemini)
-google-ai-generativeai = { module = "com.google.ai:generativeai", version.ref = "google-ai" }
+google-ai-generativeai = { group = "com.google.ai.client.generativeai", name = "generativeai", version.ref = "google-ai" }
 
 # Audio
 oboe = { module = "com.google.oboe:oboe", version.ref = "oboe" }
@@ -149,6 +155,8 @@ turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
 truth = { module = "com.google.truth:truth", version.ref = "truth" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 
+# ─────────────────────────────────────────────────
+
 [bundles]
 compose = [
     "compose-ui",
@@ -170,6 +178,13 @@ compose-debug = [
     "compose-ui-test-manifest"
 ]
 
+lifecycle = [
+    "lifecycle-runtime-ktx",
+    "lifecycle-runtime-compose",
+    "lifecycle-viewmodel-compose",
+    "lifecycle-viewmodel-ktx"
+]
+
 room = [
     "room-runtime",
     "room-ktx"
@@ -182,13 +197,6 @@ ktor = [
     "ktor-client-content-negotiation",
     "ktor-serialization-json",
     "ktor-client-logging"
-]
-
-lifecycle = [
-    "lifecycle-runtime-ktx",
-    "lifecycle-runtime-compose",
-    "lifecycle-viewmodel-compose",
-    "lifecycle-viewmodel-ktx"
 ]
 
 koin = [
@@ -205,6 +213,8 @@ testing = [
     "truth",
     "kotlinx-coroutines-test"
 ]
+
+# ─────────────────────────────────────────────────
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
