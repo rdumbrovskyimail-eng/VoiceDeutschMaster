@@ -1,0 +1,141 @@
+[TITLE]
+Моя семья — Meine Familie
+
+[INTRODUCTION]
+В этом уроке вы научитесь рассказывать о своей семье на немецком языке.
+Вы выучите названия членов семьи и научитесь использовать притяжательные местоимения.
+Также мы познакомимся с определёнными артиклями der, die, das — одной из главных
+особенностей немецкого языка. После урока вы сможете описать свою семью по-немецки.
+
+[CONTENT]
+=== Члены семьи (Familienmitglieder) ===
+
+Мужской род (der):
+• der Vater — отец
+• der Bruder — брат
+• der Sohn — сын
+• der Großvater (der Opa) — дедушка
+• der Onkel — дядя
+• der Mann — муж, мужчина
+
+Женский род (die):
+• die Mutter — мать
+• die Schwester — сестра
+• die Tochter — дочь
+• die Großmutter (die Oma) — бабушка
+• die Tante — тётя
+• die Frau — жена, женщина
+
+Средний род (das):
+• das Kind — ребёнок
+• das Baby — малыш
+
+Множественное число (всегда die):
+• die Eltern — родители
+• die Geschwister — братья и сёстры
+• die Großeltern — бабушка и дедушка
+• die Kinder — дети
+
+=== Притяжательные местоимения (Possessivpronomen) ===
+
+Основные формы (для мужского и среднего рода единственного числа):
+• mein — мой
+• dein — твой
+• sein — его
+• ihr — её
+• unser — наш
+• euer — ваш (мн.ч.)
+• ihr — их
+• Ihr — Ваш (формальное)
+
+Для женского рода и множественного числа добавляется -e:
+• meine Mutter — моя мать
+• deine Schwester — твоя сестра
+• seine Tochter — его дочь
+• ihre Kinder — её/их дети
+
+Пример: Mein Vater heißt Igor. (Моего отца зовут Игорь.)
+Пример: Meine Mutter ist Lehrerin. (Моя мать — учительница.)
+
+=== Диалог о семье ===
+
+— Hast du Geschwister? (У тебя есть братья или сёстры?)
+— Ja, ich habe einen Bruder und eine Schwester.
+   (Да, у меня есть брат и сестра.)
+— Wie heißt dein Bruder? (Как зовут твоего брата?)
+— Mein Bruder heißt Thomas. Er ist fünfundzwanzig Jahre alt.
+   (Моего брата зовут Томас. Ему двадцать пять лет.)
+— Und deine Schwester? (А твоя сестра?)
+— Meine Schwester heißt Julia. Sie ist achtzehn Jahre alt.
+   (Мою сестру зовут Юлия. Ей восемнадцать лет.)
+— Hast du auch Großeltern? (У тебя есть бабушка и дедушка?)
+— Ja, meine Großmutter wohnt in Moskau. Mein Großvater auch.
+   (Да, моя бабушка живёт в Москве. Мой дедушка тоже.)
+
+=== Описание семьи (пример рассказа) ===
+
+Meine Familie ist nicht sehr groß.
+(Моя семья не очень большая.)
+
+Mein Vater heißt Igor. Er ist Ingenieur. Er ist fünfzig Jahre alt.
+(Моего отца зовут Игорь. Он инженер. Ему пятьдесят лет.)
+
+Meine Mutter heißt Olga. Sie ist Lehrerin. Sie ist siebenundvierzig Jahre alt.
+(Мою мать зовут Ольга. Она учительница. Ей сорок семь лет.)
+
+Ich habe eine Schwester. Sie heißt Katja. Sie ist zwanzig Jahre alt. Sie studiert Medizin.
+(У меня есть сестра. Её зовут Катя. Ей двадцать лет. Она изучает медицину.)
+
+Ich habe auch eine Katze. Sie heißt Murka.
+(У меня также есть кошка. Её зовут Мурка.)
+
+=== Вопросы о семье (типичные) ===
+
+• Wie groß ist deine Familie? — Насколько большая твоя семья?
+• Hast du Kinder? — У тебя есть дети?
+• Wie heißt deine Frau / dein Mann? — Как зовут твою жену / твоего мужа?
+• Wo wohnen deine Eltern? — Где живут твои родители?
+• Was macht dein Bruder? — Чем занимается твой брат?
+
+[PHONETIC_NOTES]
+1. «Sch» в «Schwester» — читается как «ш» (Швестер).
+
+2. «V» в «Vater» — читается как «ф» (Фатер). В немецких словах V = Ф.
+
+3. «Br» в «Bruder» — оба звука произносятся отчётливо: «Бр-удер».
+
+4. «Ö» в «Töchter» (мн.ч. от Tochter) — округлённое «ё» без «й»: «Тёхтер».
+
+5. Ударение: GROSSvater (на первый слог), GeSCHWISter (на второй слог).
+
+6. «Ch» после «o» в «Tochter» — произносится как русское «х»: «Тохтер».
+
+7. Долгое «u» в «Bruder» — произносите длинное «у»: «Бру-удер».
+
+8. «Ei» в «mein», «dein», «sein» — произносится как «ай»: майн, дайн, зайн.
+
+[EXERCISES_MARKERS]
+exercise_ch02_family_members_match
+exercise_ch02_possessive_fill
+exercise_ch02_describe_family
+exercise_ch02_articles_practice
+exercise_ch02_dialog_family
+
+[VOCABULARY]
+german|russian|gender|plural|level
+die Familie|семья|die|die Familien|A1
+der Vater|отец|der|die Väter|A1
+die Mutter|мать|die|die Mütter|A1
+der Bruder|брат|der|die Brüder|A1
+die Schwester|сестра|die|die Schwestern|A1
+der Sohn|сын|der|die Söhne|A1
+die Tochter|дочь|die|die Töchter|A1
+das Kind|ребёнок|das|die Kinder|A1
+der Großvater|дедушка|der|die Großväter|A1
+die Großmutter|бабушка|die|die Großmütter|A1
+die Eltern|родители|die||A1
+die Geschwister|братья и сёстры|die||A1
+der Mann|муж, мужчина|der|die Männer|A1
+die Frau|жена, женщина|die|die Frauen|A1
+mein|мой|||A1
+dein|твой|||A1
