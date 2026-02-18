@@ -1,0 +1,106 @@
+[
+    {
+        "id": "rule_ch01_pronouns",
+        "nameRu": "Личные местоимения",
+        "nameDe": "Personalpronomen",
+        "level": "A1",
+        "description": "Личные местоимения в немецком языке используются для замены существительных и указания на лица. В немецком есть важное различие между неформальным du (ты) и формальным Sie (Вы).",
+        "content": "ich — я\ndu — ты\ner — он\nsie — она\nes — оно\nwir — мы\nihr — вы (множественное число, неформальное)\nsie — они\nSie — Вы (вежливая форма, всегда с большой буквы)",
+        "examples": [
+            {
+                "german": "Ich bin Peter.",
+                "russian": "Я Петер.",
+                "explanation": "ich (я) + bin (форма глагола sein для 1-го лица ед.ч.)"
+            },
+            {
+                "german": "Du bist Anna.",
+                "russian": "Ты Анна.",
+                "explanation": "du (ты) + bist (форма глагола sein для 2-го лица ед.ч. неформально)"
+            },
+            {
+                "german": "Wir sind Studenten.",
+                "russian": "Мы студенты.",
+                "explanation": "wir (мы) + sind (форма глагола sein для 1-го лица мн.ч.)"
+            }
+        ],
+        "lesson": 1
+    },
+    {
+        "id": "rule_ch01_sein",
+        "nameRu": "Глагол sein (быть)",
+        "nameDe": "Das Verb sein",
+        "level": "A1",
+        "description": "Глагол sein (быть) — один из важнейших глаголов немецкого языка. Он неправильный и спрягается особым образом. В русском языке глагол «быть» часто опускается, но в немецком он обязателен.",
+        "content": "ich bin — я есть\ndu bist — ты есть\ner/sie/es ist — он/она/оно есть\nwir sind — мы есть\nihr seid — вы есть\nsie/Sie sind — они/Вы есть",
+        "examples": [
+            {
+                "german": "Ich bin Lehrer.",
+                "russian": "Я учитель.",
+                "explanation": "В немецком нельзя сказать просто 'Ich Lehrer' — глагол sein обязателен"
+            },
+            {
+                "german": "Sie ist Ärztin.",
+                "russian": "Она врач.",
+                "explanation": "sie (она) + ist (форма sein для 3-го лица ед.ч.)"
+            },
+            {
+                "german": "Sind Sie Herr Müller?",
+                "russian": "Вы господин Мюллер?",
+                "explanation": "В вопросе глагол стоит на первом месте: Sind Sie...?"
+            }
+        ],
+        "lesson": 1
+    },
+    {
+        "id": "rule_ch01_word_order",
+        "nameRu": "Порядок слов в простом предложении",
+        "nameDe": "Wortstellung im einfachen Satz",
+        "level": "A1",
+        "description": "В немецком повествовательном предложении глагол ВСЕГДА стоит на втором месте (позиция 2). Это главное правило немецкого синтаксиса. В вопросительном предложении без вопросительного слова глагол стоит на первом месте.",
+        "content": "Повествование: Subjekt + Verb + Rest\n  Ich komme aus Russland.\n  (Я приезжаю из России.)\n\nВопрос с вопросительным словом: W-Wort + Verb + Subjekt + Rest\n  Woher kommen Sie?\n  (Откуда вы?)\n\nВопрос без вопросительного слова: Verb + Subjekt + Rest\n  Kommen Sie aus Russland?\n  (Вы из России?)",
+        "examples": [
+            {
+                "german": "Ich heiße Anna.",
+                "russian": "Меня зовут Анна.",
+                "explanation": "Порядок: Subjekt (Ich) + Verb (heiße) + Rest (Anna)"
+            },
+            {
+                "german": "Woher kommen Sie?",
+                "russian": "Откуда вы?",
+                "explanation": "Порядок: W-Wort (Woher) + Verb (kommen) + Subjekt (Sie)"
+            },
+            {
+                "german": "Sprechen Sie Deutsch?",
+                "russian": "Вы говорите по-немецки?",
+                "explanation": "Да/Нет вопрос: Verb (Sprechen) + Subjekt (Sie) + Rest (Deutsch)"
+            }
+        ],
+        "lesson": 1
+    },
+    {
+        "id": "rule_ch01_heissen",
+        "nameRu": "Глагол heißen (называться)",
+        "nameDe": "Das Verb heißen",
+        "level": "A1",
+        "description": "Глагол heißen используется для того, чтобы назвать своё имя или спросить имя другого человека. Это один из первых глаголов, которые нужно выучить.",
+        "content": "ich heiße — меня зовут\ndu heißt — тебя зовут\ner/sie/es heißt — его/её зовут\nwir heißen — нас зовут\nihr heißt — вас зовут\nsie/Sie heißen — их/Вас зовут",
+        "examples": [
+            {
+                "german": "Wie heißen Sie?",
+                "russian": "Как вас зовут?",
+                "explanation": "Формальный вопрос об имени с Sie"
+            },
+            {
+                "german": "Ich heiße Maria.",
+                "russian": "Меня зовут Мария.",
+                "explanation": "Стандартный ответ с ich heiße + имя"
+            },
+            {
+                "german": "Wie heißt du?",
+                "russian": "Как тебя зовут?",
+                "explanation": "Неформальный вопрос об имени с du"
+            }
+        ],
+        "lesson": 1
+    }
+]
