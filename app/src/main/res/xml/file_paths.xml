@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Internal storage logs -->
+    <files-path
+        name="logs"
+        path="logs/" />
+
+    <!-- Download folder logs -->
+    <external-path
+        name="download_logs"
+        path="Download/VoiceDeutsch_Logs/" />
+</paths>
