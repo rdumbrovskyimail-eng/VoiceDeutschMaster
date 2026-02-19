@@ -3,6 +3,7 @@ package com.voicedeutsch.master.voicecore.context
 import com.voicedeutsch.master.domain.model.LearningStrategy
 import com.voicedeutsch.master.domain.model.knowledge.KnowledgeSnapshot
 import com.voicedeutsch.master.voicecore.functions.FunctionRouter
+import com.voicedeutsch.master.voicecore.prompt.MasterPrompt
 import com.voicedeutsch.master.voicecore.prompt.PromptTemplates
 import kotlinx.serialization.json.Json
 
@@ -21,7 +22,6 @@ import kotlinx.serialization.json.Json
  * Total budget: 2 000 000 tokens (Gemini Live).
  */
 class ContextBuilder(
-    private val systemPromptBuilder: SystemPromptBuilder,
     private val userContextProvider: UserContextProvider,
     private val bookContextProvider: BookContextProvider,
     private val functionRouter: FunctionRouter,
@@ -76,10 +76,11 @@ class ContextBuilder(
         currentChapter: Int,
         currentLesson: Int,
     ): SessionContext {
-        val systemPrompt    = systemPromptBuilder.build()
-        val userContext     = userContextProvider.buildUserContext(knowledgeSnapshot)
-        val bookContext     = bookContextProvider.buildBookContext(currentChapter, currentLesson)
-        val strategyPrompt  = PromptTemplates.getStrategyPrompt(currentStrategy, knowledgeSnapshot)
+        // MasterPrompt — pure object, no dependencies needed
+        val systemPrompt   = MasterPrompt.build()
+        val userContext    = userContextProvider.buildUserContext(knowledgeSnapshot)
+        val bookContext    = bookContextProvider.buildBookContext(currentChapter, currentLesson)
+        val strategyPrompt = PromptTemplates.getStrategyPrompt(currentStrategy, knowledgeSnapshot)
 
         // Декларации функций берём из FunctionRouter — единственный источник правды.
         // PromptTemplates.getFunctionDeclarationsJson() больше не используется
