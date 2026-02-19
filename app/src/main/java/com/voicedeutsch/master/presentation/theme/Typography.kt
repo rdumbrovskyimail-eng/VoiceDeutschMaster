@@ -1,34 +1,26 @@
 package com.voicedeutsch.master.presentation.theme
 
-import android.util.Log
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
-import com.voicedeutsch.master.R
 
 // ── Font family ───────────────────────────────────────────────────────────────
-// Inter is the primary typeface; fall back to default sans-serif if fonts
-// are not bundled in res/font/. Add inter_regular.ttf / inter_bold.ttf to
-// app/src/main/res/font/ to activate custom fonts.
+// FIX: R.font.inter_regular/medium/semibold/bold resources don't exist in
+// res/font/ — referencing them causes a compile-time unresolved reference error.
+// Using FontFamily.Default until the actual Inter .ttf files are added to
+// app/src/main/res/font/ and the Font() declarations are restored.
 //
-// M2 FIX: The catch block now logs a warning so missing or malformed font
-// resources are visible in logcat during QA, instead of being silently
-// swallowed. Previously a misconfigured res/font/ directory would cause an
-// invisible fallback to system fonts with no diagnostic output.
-val InterFontFamily = try {
-    FontFamily(
-        Font(R.font.inter_regular, FontWeight.Normal),
-        Font(R.font.inter_medium, FontWeight.Medium),
-        Font(R.font.inter_semibold, FontWeight.SemiBold),
-        Font(R.font.inter_bold, FontWeight.Bold),
-    )
-} catch (e: Exception) {
-    Log.w("Typography", "Inter fonts not found in res/font/, falling back to system default", e)
-    FontFamily.Default
-}
+// To re-enable Inter: add inter_regular.ttf, inter_medium.ttf,
+// inter_semibold.ttf, inter_bold.ttf to res/font/ and replace the line below with:
+//   val InterFontFamily = FontFamily(
+//       Font(R.font.inter_regular, FontWeight.Normal),
+//       Font(R.font.inter_medium, FontWeight.Medium),
+//       Font(R.font.inter_semibold, FontWeight.SemiBold),
+//       Font(R.font.inter_bold, FontWeight.Bold),
+//   )
+val InterFontFamily: FontFamily = FontFamily.Default
 
 val VoiceDeutschTypography = Typography(
     // ── Display ─────────────────────────────────────────────────────────────
