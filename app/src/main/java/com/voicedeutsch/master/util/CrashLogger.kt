@@ -2,7 +2,6 @@ package com.voicedeutsch.master.util
 
 import android.content.Context
 import android.os.Build
-import android.os.Environment
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -33,14 +32,9 @@ class CrashLogger private constructor(
     }
 
     private val logDirectory: File by lazy {
-        val downloadsDir = Environment.getExternalStoragePublicDirectory(
-            Environment.DIRECTORY_DOWNLOADS
-        )
-        val logsDir = File(downloadsDir, "LOG5")
-        if (!logsDir.exists()) {
-            logsDir.mkdirs()
+        File(context.filesDir, "crash_logs").also { dir ->
+            if (!dir.exists()) dir.mkdirs()
         }
-        logsDir
     }
 
     private fun install() {
@@ -68,8 +62,6 @@ class CrashLogger private constructor(
         val crashFile = File(logDirectory, "${CRASH_PREFIX}${timestamp}.txt")
 
         try {
-            val logcatOutput = captureLogcat()
-
             crashFile.writeText(buildString {
                 append("=".repeat(70)).append("\n")
                 append("🔥 CRASH REPORT - VoiceDeutschMaster\n")
@@ -84,86 +76,32 @@ class CrashLogger private constructor(
                     append("App Version: unknown\n")
                 }
                 append("\n")
-
                 append("=".repeat(70)).append("\n")
-                append("EXCEPTION DETAILS\n")
+                append("EXCEPTION\n")
                 append("=".repeat(70)).append("\n")
-                append("Type: ${throwable.javaClass.simpleName}\n")
+                append("Type: ${throwable.javaClass.name}\n")
                 append("Message: ${throwable.message}\n")
                 append("\nStack Trace:\n")
                 append(throwable.stackTraceToString())
-                append("\n\n")
+                append("\n")
 
-                throwable.cause?.let { cause ->
+                var cause = throwable.cause
+                var depth = 0
+                while (cause != null && depth < 5) {
                     append("=".repeat(70)).append("\n")
                     append("CAUSED BY\n")
                     append("=".repeat(70)).append("\n")
-                    append("Type: ${cause.javaClass.simpleName}\n")
+                    append("Type: ${cause.javaClass.name}\n")
                     append("Message: ${cause.message}\n")
                     append("\nStack Trace:\n")
                     append(cause.stackTraceToString())
-                    append("\n\n")
+                    cause = cause.cause
+                    depth++
                 }
-
-                append("=".repeat(70)).append("\n")
-                append("LOGCAT DUMP (Last 1000 lines)\n")
-                append("=".repeat(70)).append("\n")
-                append(logcatOutput)
             })
-
-            android.util.Log.e("CrashLogger", "✅ Crash log saved: ${crashFile.absolutePath} (${crashFile.length() / 1024} KB)")
-
+            android.util.Log.e("CrashLogger", "✅ Crash log saved: ${crashFile.absolutePath}")
         } catch (e: Exception) {
             android.util.Log.e("CrashLogger", "❌ Failed to write crash log", e)
-        }
-    }
-
-    private fun captureLogcat(): String {
-        return try {
-            val pid = android.os.Process.myPid()
-            val process = Runtime.getRuntime().exec(
-                arrayOf(
-                    "logcat",
-                    "-d",
-                    "-t", "1000",
-                    "-v", "threadtime",
-                    "--pid=$pid",
-                    "*:V"
-                )
-            )
-            val output = process.inputStream.bufferedReader().use { it.readText() }
-            process.waitFor()
-            output.ifBlank { "(No logcat output captured)" }
-        } catch (e: Exception) {
-            "(Failed to capture logcat: ${e.message})"
-        }
-    }
-
-    fun saveLogCatErrors(): File? {
-        val timestamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault()).format(Date())
-        val logcatFile = File(logDirectory, "${LOGCAT_PREFIX}${timestamp}.txt")
-
-        return try {
-            logcatFile.writeText(buildString {
-                append("=".repeat(70)).append("\n")
-                append("📋 LOGCAT ERRORS - VoiceDeutschMaster\n")
-                append("=".repeat(70)).append("\n\n")
-
-                val process = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-s", "E:*", "W:*"))
-                process.inputStream.bufferedReader().use { reader ->
-                    var lineCount = 0
-                    reader.forEachLine { line ->
-                        append(line).append("\n")
-                        lineCount++
-                    }
-                    if (lineCount == 0) {
-                        append("\n✅ No errors or warnings found in logcat!\n")
-                    }
-                }
-            })
-            logcatFile
-        } catch (e: Exception) {
-            null
         }
     }
 
@@ -197,9 +135,12 @@ class CrashLogger private constructor(
     }
 
     fun getCrashLogDirectory(): String = logDirectory.absolutePath
+
     fun startLogging() {
         android.util.Log.i("CrashLogger", "📁 Logs: ${logDirectory.absolutePath}")
     }
+
+    fun saveLogCatErrors(): File? = null
 }
 
 data class LogFile(val file: File, val type: LogType, val timestamp: Long) {
@@ -213,25 +154,3 @@ enum class LogType { CRASH, LOGCAT }
 data class LogStats(val totalCrashes: Int, val totalLogCats: Int, val totalSizeBytes: Long, val location: String) {
     val totalSizeKB: Long get() = totalSizeBytes / 1024
 }
-2. file_paths.xml — заменить целиком:
-<?xml version="1.0" encoding="utf-8"?>
-<paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-path
-        name="crash_logs"
-        path="Download/LOG5/" />
-    <external-path
-        name="downloads"
-        path="Download/" />
-    <external-path
-        name="external_files"
-        path="." />
-    <files-path
-        name="files"
-        path="." />
-    <external-files-path
-        name="app_files"
-        path="." />
-    <cache-path
-        name="cache"
-        path="." />
-</paths>
