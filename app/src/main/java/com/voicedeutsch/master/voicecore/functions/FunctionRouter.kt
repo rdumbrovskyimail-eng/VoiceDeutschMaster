@@ -77,7 +77,7 @@ class FunctionRouter(
     /**
      * Dispatches a single Gemini function call to the correct handler.
      *
-     * @param functionName  Exact name matching a declaration in PromptTemplates.
+     * @param functionName  Exact name matching a declaration in getDeclarations().
      * @param argsJson      Raw JSON object string produced by Gemini.
      * @param userId        Active user identifier.
      * @param sessionId     Current session id, or null before session is open.
@@ -329,7 +329,6 @@ class FunctionRouter(
         args:      JsonObject,
         sessionId: String?,
     ): FunctionCallResult {
-        // Informational only — the engine logs to analytics; acknowledge to Gemini
         return FunctionCallResult(
             functionName = "log_session_event",
             success      = true,
@@ -436,6 +435,228 @@ class FunctionRouter(
             }.toString(),
         )
     }
+
+    // ── Function declarations для Gemini Setup ────────────────────────────────
+    // Вызывается из ContextBuilder при формировании SessionContext.
+    // Каждая строка — валидный JSON объект functionDeclaration по спецификации
+    // ai.google.dev/api/live (BidiGenerateContentSetup.tools).
+
+    fun getDeclarations(): List<String> = listOf(
+        // ── Knowledge ─────────────────────────────────────────────────────────
+        """
+        {
+          "name": "save_word_knowledge",
+          "description": "Сохраняет прогресс изучения немецкого слова пользователем после практики.",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "word":                { "type": "STRING",  "description": "Немецкое слово" },
+              "translation":         { "type": "STRING",  "description": "Перевод на русский" },
+              "level":               { "type": "INTEGER", "description": "Уровень знания 1-5 (1=новое, 5=освоено)" },
+              "quality":             { "type": "INTEGER", "description": "Качество ответа 1-5 (SM-2)" },
+              "pronunciation_score": { "type": "NUMBER",  "description": "Оценка произношения 0.0-1.0, опционально" },
+              "context":             { "type": "STRING",  "description": "Предложение-контекст использования слова" }
+            },
+            "required": ["word", "translation", "level", "quality"]
+          }
+        }
+        """,
+        """
+        {
+          "name": "save_rule_knowledge",
+          "description": "Сохраняет прогресс изучения грамматического правила.",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "rule_id":    { "type": "STRING",  "description": "Идентификатор правила из грамматики урока" },
+              "rule_title": { "type": "STRING",  "description": "Название правила" },
+              "level":      { "type": "INTEGER", "description": "Уровень знания 1-5" },
+              "quality":    { "type": "INTEGER", "description": "Качество ответа 1-5 (SM-2)" },
+              "context":    { "type": "STRING",  "description": "Пример использования правила" }
+            },
+            "required": ["rule_id", "rule_title", "level", "quality"]
+          }
+        }
+        """,
+        """
+        {
+          "name": "record_mistake",
+          "description": "Фиксирует ошибку пользователя для последующего анализа и повторения.",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "mistake_type": { "type": "STRING", "description": "Тип ошибки: grammar, vocabulary, pronunciation, word_order" },
+              "user_input":   { "type": "STRING", "description": "Что сказал/написал пользователь" },
+              "correct_form": { "type": "STRING", "description": "Правильный вариант" },
+              "context":      { "type": "STRING", "description": "Контекст где возникла ошибка" },
+              "explanation":  { "type": "STRING", "description": "Объяснение ошибки" }
+            },
+            "required": ["mistake_type", "user_input", "correct_form"]
+          }
+        }
+        """,
+
+        // ── Book ──────────────────────────────────────────────────────────────
+        """
+        {
+          "name": "get_current_lesson",
+          "description": "Возвращает информацию о текущем уроке пользователя.",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {},
+            "required": []
+          }
+        }
+        """,
+        """
+        {
+          "name": "advance_to_next_lesson",
+          "description": "Переводит пользователя к следующему уроку после завершения текущего.",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "completed_lesson":  { "type": "INTEGER", "description": "Номер завершённого урока" },
+              "completed_chapter": { "type": "INTEGER", "description": "Номер завершённой главы" }
+            },
+            "required": ["completed_lesson", "completed_chapter"]
+          }
+        }
+        """,
+        """
+        {
+          "name": "mark_lesson_complete",
+          "description": "Отмечает урок как пройденный без перехода к следующему.",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "chapter": { "type": "INTEGER", "description": "Номер главы" },
+              "lesson":  { "type": "INTEGER", "description": "Номер урока" }
+            },
+            "required": ["chapter", "lesson"]
+          }
+        }
+        """,
+
+        // ── Session ───────────────────────────────────────────────────────────
+        """
+        {
+          "name": "get_words_for_repetition",
+          "description": "Возвращает список слов для повторения по алгоритму SRS.",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "limit": { "type": "INTEGER", "description": "Максимальное количество слов (по умолчанию 15)" }
+            },
+            "required": []
+          }
+        }
+        """,
+        """
+        {
+          "name": "get_weak_points",
+          "description": "Возвращает слабые места пользователя для целенаправленной практики.",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {},
+            "required": []
+          }
+        }
+        """,
+        """
+        {
+          "name": "set_current_strategy",
+          "description": "Переключает стратегию обучения в текущей сессии.",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "strategy": {
+                "type": "STRING",
+                "description": "Название стратегии",
+                "enum": ["LINEAR_BOOK", "SPACED_REPETITION", "CONVERSATION", "GRAMMAR_FOCUS", "PRONUNCIATION_FOCUS"]
+              }
+            },
+            "required": ["strategy"]
+          }
+        }
+        """,
+        """
+        {
+          "name": "log_session_event",
+          "description": "Логирует важное событие сессии для аналитики.",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "event_type": { "type": "STRING", "description": "Тип события" },
+              "event_data": { "type": "STRING", "description": "JSON-данные события" }
+            },
+            "required": ["event_type"]
+          }
+        }
+        """,
+
+        // ── User ──────────────────────────────────────────────────────────────
+        """
+        {
+          "name": "update_user_level",
+          "description": "Обновляет уровень CEFR пользователя на основе оценки Gemini.",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "cefr_level": {
+                "type": "STRING",
+                "description": "Уровень CEFR",
+                "enum": ["A1", "A2", "B1", "B2", "C1", "C2"]
+              },
+              "sub_level": { "type": "INTEGER", "description": "Подуровень 1-3 внутри CEFR" }
+            },
+            "required": ["cefr_level"]
+          }
+        }
+        """,
+        """
+        {
+          "name": "get_user_statistics",
+          "description": "Возвращает сводную статистику обучения пользователя.",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {},
+            "required": []
+          }
+        }
+        """,
+
+        // ── Pronunciation ─────────────────────────────────────────────────────
+        """
+        {
+          "name": "save_pronunciation_result",
+          "description": "Сохраняет результат оценки произношения слова.",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "word":           { "type": "STRING",  "description": "Немецкое слово" },
+              "score":          { "type": "NUMBER",  "description": "Оценка произношения 0.0-1.0" },
+              "problem_sounds": {
+                "type": "ARRAY",
+                "description": "Список проблемных звуков",
+                "items": { "type": "STRING" }
+              }
+            },
+            "required": ["word", "score"]
+          }
+        }
+        """,
+        """
+        {
+          "name": "get_pronunciation_targets",
+          "description": "Возвращает звуки/слова для целенаправленной практики произношения.",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {},
+            "required": []
+          }
+        }
+        """
+    )
 
     // ── Tiny JsonObject extension helpers ─────────────────────────────────────
 
