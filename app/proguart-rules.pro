@@ -29,9 +29,10 @@
 -keep class kotlinx.coroutines.** { *; }
 -dontwarn kotlinx.coroutines.**
 
-# ── Google AI / Gemini ────────────────────────────────────────────────────────
--keep class com.google.ai.client.generativeai.** { *; }
--dontwarn com.google.ai.client.generativeai.**
+# ── Firebase AI Logic (Gemini Live API) ───────────────────────────────────────
+# Заменяет устаревший блок com.google.ai.client.generativeai (SDK deprecated)
+-keep class com.google.firebase.ai.** { *; }
+-dontwarn com.google.firebase.ai.**
 
 # ── Koin ──────────────────────────────────────────────────────────────────────
 -keep class org.koin.** { *; }
