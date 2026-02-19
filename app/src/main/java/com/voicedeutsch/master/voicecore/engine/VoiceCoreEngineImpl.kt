@@ -18,6 +18,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,6 +53,8 @@ class VoiceCoreEngineImpl(
     private val buildKnowledgeSummary: BuildKnowledgeSummaryUseCase,
     private val startLearningSession: StartLearningSessionUseCase,
     private val endLearningSession: EndLearningSessionUseCase,
+    // TODO [C3]: Inject GeminiClient here once Session 6 is implemented
+    // private val geminiClient: GeminiClient,
 ) : VoiceCoreEngine {
 
     // ── Coroutine infrastructure ─────────────────────────────────────────────
@@ -109,6 +112,12 @@ class VoiceCoreEngineImpl(
 
     // ── VoiceCoreEngine: lifecycle ────────────────────────────────────────────
 
+    /**
+     * Prepares the engine for use.
+     *
+     * **C2 contract:** expects [AudioPipeline.initialize] to exist.
+     * If AudioPipeline doesn't have it yet, add it — see AudioPipeline audit fix.
+     */
     override suspend fun initialize(config: GeminiConfig) {
         lifecycleMutex.withLock {
             val current = _sessionState.value.engineState
@@ -193,13 +202,19 @@ class VoiceCoreEngineImpl(
         _sessionState.value
     }
 
+    /**
+     * Ends the current voice session, saves progress, and returns the result.
+     *
+     * **C1 FIX:** Replaced broken `result -> sessionResult` with correct
+     * `runCatching` that returns [SessionResult] as its last expression.
+     * The `.getOrNull()` propagates `null` on failure (error is logged via `onFailure`).
+     */
     override suspend fun endSession(): SessionResult? {
         val sessionId = activeSessionId ?: return null
 
         lifecycleMutex.withLock {
             val current = _sessionState.value.engineState
             if (!current.isActiveSession()) return@withLock
-
             transitionEngine(VoiceEngineState.SESSION_ENDING)
         }
 
@@ -207,40 +222,46 @@ class VoiceCoreEngineImpl(
         sessionJob?.cancel()
         sessionJob = null
 
-        lifecycleMutex.withLock {
+        return lifecycleMutex.withLock {
             transitionEngine(VoiceEngineState.SAVING)
 
-            return@withLock withContext(Dispatchers.IO) {
-                val result = runCatching {
+            val sessionResult: SessionResult? = withContext(Dispatchers.IO) {
+                runCatching {
                     audioPipeline.stopAll()
                     transitionAudio(AudioState.IDLE)
                     transitionConnection(ConnectionState.DISCONNECTED)
                     disconnectFromGemini()
-
-                    val sessionResult = endLearningSession(sessionId)
-                    result -> sessionResult
+                    endLearningSession(sessionId)
                 }.onFailure { error ->
                     updateState { copy(errorMessage = "Session save failed: ${error.message}") }
                 }.getOrNull()
-
-                activeSessionId = null
-                activeUserId = null
-                transitionEngine(VoiceEngineState.IDLE)
-                updateState {
-                    copy(
-                        isVoiceActive = false,
-                        isListening = false,
-                        isSpeaking = false,
-                        isProcessing = false,
-                        currentTranscript = "",
-                        voiceTranscript = "",
-                    )
-                }
-                result
             }
+
+            // Clean up regardless of save success
+            activeSessionId = null
+            activeUserId = null
+            transitionEngine(VoiceEngineState.IDLE)
+            updateState {
+                copy(
+                    isVoiceActive = false,
+                    isListening = false,
+                    isSpeaking = false,
+                    isProcessing = false,
+                    currentTranscript = "",
+                    voiceTranscript = "",
+                )
+            }
+
+            sessionResult
         }
     }
 
+    /**
+     * Releases all resources. Call once when the engine is no longer needed.
+     *
+     * **C2 contract:** expects [AudioPipeline.release] to exist.
+     * If AudioPipeline doesn't have it yet, add it — see AudioPipeline audit fix.
+     */
     override suspend fun destroy() {
         // Best-effort: end session if active, then release everything
         runCatching { endSession() }
@@ -314,7 +335,7 @@ class VoiceCoreEngineImpl(
      */
     private suspend fun runSessionLoop() {
         try {
-            while (isActive) {
+            while (currentCoroutineContext().isActive) {
                 // Receive the next chunk from Gemini (audio bytes | function call | transcript)
                 val response = receiveGeminiResponse() ?: continue
 
@@ -365,7 +386,7 @@ class VoiceCoreEngineImpl(
                 }
             }
         } catch (e: Exception) {
-            if (isActive) handleSessionError(e)
+            if (currentCoroutineContext().isActive) handleSessionError(e)
         }
     }
 
@@ -407,29 +428,39 @@ class VoiceCoreEngineImpl(
     }
 
     // ── Gemini API stubs ─────────────────────────────────────────────────────
+    // TODO [C3]: Replace these stubs with real GeminiClient delegation.
+    //
     // These are thin delegation points. The actual WebSocket/gRPC connection
-    // is managed by GeminiClient (Session 6). In production these are replaced
-    // by injected GeminiClient calls.
+    // will be managed by GeminiClient (Session 6). In production these must be
+    // replaced by injected GeminiClient calls. Without GeminiClient, the app
+    // compiles but voice sessions are non-functional (connect → immediate idle).
+    //
+    // Target implementation:
+    //   private suspend fun connectToGemini(ctx) = geminiClient.connect(config!!, ctx)
+    //   private suspend fun disconnectFromGemini() = geminiClient.disconnect()
+    //   private suspend fun sendTextToGemini(text) = geminiClient.sendText(text)
+    //   private suspend fun sendFunctionResultToGemini(id, json) = geminiClient.sendFunctionResult(id, json)
+    //   private suspend fun receiveGeminiResponse() = geminiClient.receiveNextResponse()
 
     private suspend fun connectToGemini(context: ContextBuilder.SessionContext) {
-        // GeminiClient.connect(config!!, context) — wired in Session 6
+        // TODO: geminiClient.connect(config!!, context)
     }
 
     private suspend fun disconnectFromGemini() {
-        // GeminiClient.disconnect()
+        // TODO: geminiClient.disconnect()
     }
 
     private suspend fun sendTextToGemini(text: String) {
-        // GeminiClient.sendText(text)
+        // TODO: geminiClient.sendText(text)
     }
 
     private suspend fun sendFunctionResultToGemini(callId: String, resultJson: String) {
-        // GeminiClient.sendFunctionResult(callId, resultJson)
+        // TODO: geminiClient.sendFunctionResult(callId, resultJson)
     }
 
     /** Returns the next response chunk from Gemini, or null if the stream is momentarily empty. */
     private suspend fun receiveGeminiResponse(): GeminiResponse? {
-        // GeminiClient.receiveNextResponse()
+        // TODO: return geminiClient.receiveNextResponse()
         return null
     }
 
@@ -478,20 +509,4 @@ internal data class GeminiResponse(
     }
 
     override fun hashCode(): Int = transcript.hashCode() * 31 + isTurnComplete.hashCode()
-}
-Note on endSession: The compiler will catch the syntax error in the runCatching lambda — corrected below in the final clean version. Let me write the rest of the files first, then provide the corrected endSession.
-FILE 5: voicecore/context/ContextBuilder.kt + sub-providers
-// ─────────────────────────────────────────────────────────────────────────────
-// FILE: voicecore/context/SystemPromptBuilder.kt
-// ─────────────────────────────────────────────────────────────────────────────
-package com.voicedeutsch.master.voicecore.context
-
-import com.voicedeutsch.master.voicecore.prompt.MasterPrompt
-
-/**
- * Thin wrapper that produces the system instruction string from [MasterPrompt].
- * Kept as a class (not an object) so it is injectable and mockable in tests.
- */
-class SystemPromptBuilder {
-    fun build(): String = MasterPrompt.build()
 }
