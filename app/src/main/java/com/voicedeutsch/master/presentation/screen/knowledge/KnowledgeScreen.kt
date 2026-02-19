@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.voicedeutsch.master.domain.usecase.GetWeakPointsUseCase
 import com.voicedeutsch.master.presentation.components.KnowledgeMap
 import com.voicedeutsch.master.presentation.theme.Background
 import org.koin.androidx.compose.koinViewModel
@@ -168,17 +169,11 @@ private fun WordsTab(state: KnowledgeUiState) {
         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
     )
 
-    // Knowledge level distribution
-    val levelLabels = mapOf(
-        0 to "Новое", 1 to "Слышал", 2 to "Узнаю",
-        3 to "Вспоминаю", 4 to "Знаю", 5 to "Использую",
-        6 to "Автоматически", 7 to "Мастерство",
-    )
     overview.recentActivity.take(10).forEach { activity ->
         RecentWordRow(
-            german = activity.wordGerman,
+            german  = activity.wordGerman,
             russian = activity.wordRussian,
-            level = activity.knowledgeLevel,
+            level   = activity.knowledgeLevel,
         )
     }
 }
@@ -199,10 +194,13 @@ private fun GrammarTab(state: KnowledgeUiState) {
     )
 }
 
+// PATCH APPLIED: WeakPointsTab теперь работает с List<GetWeakPointsUseCase.WeakPoint>?
+// Старый код использовал weak.weakWords (не существует), новый итерирует List<WeakPoint>
+// с полями description, category, severity.
 @Composable
 private fun WeakPointsTab(state: KnowledgeUiState) {
-    val weak = state.weakPoints
-    if (weak == null) {
+    val weakPoints = state.weakPoints
+    if (weakPoints.isNullOrEmpty()) {
         Text(
             "Слабых мест не найдено. Продолжайте занятия!",
             style = MaterialTheme.typography.bodyMedium,
@@ -211,13 +209,45 @@ private fun WeakPointsTab(state: KnowledgeUiState) {
         return
     }
 
-    weak.weakWords.take(10).forEach { (word, knowledge) ->
-        WordCard(
-            german       = word.german,
-            russian      = word.russian,
-            level        = knowledge.knowledgeLevel,
-            timesWrong   = knowledge.timesIncorrect,
-        )
+    weakPoints.take(10).forEach { point ->
+        WeakPointCard(point = point)
+    }
+}
+
+@Composable
+private fun WeakPointCard(point: GetWeakPointsUseCase.WeakPoint) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer.copy(
+                alpha = (0.1f + point.severity * 0.4f).coerceIn(0.1f, 0.5f)
+            ),
+        ),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier              = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment     = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    point.description,
+                    style      = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color      = MaterialTheme.colorScheme.onErrorContainer,
+                )
+                Text(
+                    point.category,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f),
+                )
+            }
+            Text(
+                "${(point.severity * 100).toInt()}%",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
     }
 }
 
@@ -225,10 +255,25 @@ private fun WeakPointsTab(state: KnowledgeUiState) {
 
 @Composable
 private fun StatCard(value: String, label: String, modifier: Modifier = Modifier) {
-    Card(modifier = modifier, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Card(
+        modifier = modifier,
+        colors   = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(
+            Modifier.padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                value,
+                style      = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color      = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -236,7 +281,10 @@ private fun StatCard(value: String, label: String, modifier: Modifier = Modifier
 @Composable
 private fun InfoCard(title: String, body: String) {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(
+            Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -246,42 +294,27 @@ private fun InfoCard(title: String, body: String) {
 @Composable
 private fun RecentWordRow(german: String, russian: String, level: Int) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        modifier              = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment     = Alignment.CenterVertically,
     ) {
         Column {
-            Text(german, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
-            Text(russian, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+            Text(
+                german,
+                style      = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color      = MaterialTheme.colorScheme.onBackground,
+            )
+            Text(
+                russian,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+            )
         }
         Text(
             text  = "Ур.$level",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.primary,
         )
-    }
-}
-
-@Composable
-private fun WordCard(german: String, russian: String, level: Int, timesWrong: Int) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f),
-        ),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column {
-                Text(german, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                Text(russian, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                Text("Ур.$level", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                Text("Ошибок: $timesWrong", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
-            }
-        }
     }
 }
