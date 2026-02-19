@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Не бэкапим зашифрованные преференсы — ключи Android Keystore
+         не переносятся между устройствами, данные станут нечитаемыми -->
+    <exclude domain="sharedpref" path="voice_deutsch_secure_prefs.xml" />
+</full-backup-content>
