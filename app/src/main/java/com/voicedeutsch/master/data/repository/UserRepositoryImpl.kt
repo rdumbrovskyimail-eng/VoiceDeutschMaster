@@ -122,7 +122,7 @@ class UserRepositoryImpl(
             wordsForReviewToday = wordsForReview,
             rulesForReviewToday = rulesForReview,
             bookProgress = bookProgress,
-            currentChapter = user.currentChapter,
+            currentChapter = 1, // FIX: UserEntity doesn't have currentChapter; use default
             totalChapters = 20,
         )
     }
