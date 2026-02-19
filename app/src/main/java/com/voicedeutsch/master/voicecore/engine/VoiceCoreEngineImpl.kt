@@ -456,36 +456,3 @@ class VoiceCoreEngineImpl(
         else -> false
     }
 }
-
-// ── Gemini response model ─────────────────────────────────────────────────────
-
-internal data class GeminiFunctionCall(
-    val id: String,
-    val name: String,
-    val argsJson: String,
-)
-
-internal data class GeminiResponse(
-    val audioData: ByteArray?,
-    val transcript: String?,
-    val functionCall: GeminiFunctionCall?,
-    val isTurnComplete: Boolean = false,
-) {
-    fun hasAudio(): Boolean = audioData != null && audioData.isNotEmpty()
-    fun hasFunctionCall(): Boolean = functionCall != null
-    fun hasTranscript(): Boolean =
-        !transcript.isNullOrEmpty() && audioData == null && functionCall == null
-
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other !is GeminiResponse) return false
-        return transcript == other.transcript &&
-                functionCall == other.functionCall &&
-                isTurnComplete == other.isTurnComplete &&
-                (audioData == null && other.audioData == null ||
-                        audioData != null && other.audioData != null &&
-                        audioData.contentEquals(other.audioData))
-    }
-
-    override fun hashCode(): Int = transcript.hashCode() * 31 + isTurnComplete.hashCode()
-}
