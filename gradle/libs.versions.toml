@@ -59,7 +59,7 @@ security-crypto = "1.1.0-alpha07"
 # minSdk requirement raised to 23 in BOM 34.x.
 firebase-bom = "34.9.0"
 firebase-crashlytics-plugin = "3.0.0"
-google-services = "4.5.0"
+google-services = "4.4.2"
 
 # Android SDK
 compileSdk = "36"
