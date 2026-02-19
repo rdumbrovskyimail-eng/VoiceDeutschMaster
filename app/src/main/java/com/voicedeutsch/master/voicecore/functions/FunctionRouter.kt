@@ -31,6 +31,17 @@ import kotlinx.serialization.json.*
  *
  * Every handler is a suspend function so it can safely call suspend Use Cases
  * without blocking the caller coroutine.
+ *
+ * **Important (M4):** [handleSetCurrentStrategy] returns success immediately but
+ * does NOT apply the strategy change itself. The actual switch happens in
+ * `VoiceCoreEngineImpl.applyFunctionSideEffects()` after every routed call.
+ * If that method is missing or doesn't handle `set_current_strategy`, Gemini
+ * will believe the strategy changed while the app state remains unchanged.
+ *
+ * **Parameter naming convention:** handler argument keys MUST match the JSON
+ * property names in PromptTemplates function declarations exactly. Mismatches
+ * cause silent `null` fallbacks because Gemini sends the declared name but the
+ * handler reads a different key.
  */
 class FunctionRouter(
     private val updateWordKnowledge:   UpdateWordKnowledgeUseCase,
@@ -303,7 +314,10 @@ class FunctionRouter(
     private fun handleSetCurrentStrategy(args: JsonObject): FunctionCallResult {
         val strategyName = args.str("strategy") ?: "LINEAR_BOOK"
         val strategy = LearningStrategy.fromString(strategyName)
-        // Actual strategy switch is applied in VoiceCoreEngineImpl.applyFunctionSideEffects
+        // NOTE (M4): The actual strategy switch is applied in
+        // VoiceCoreEngineImpl.applyFunctionSideEffects() after this result is
+        // returned. This handler only acknowledges to Gemini — it does NOT
+        // mutate session state directly.
         return FunctionCallResult(
             functionName = "set_current_strategy",
             success      = true,
@@ -325,14 +339,23 @@ class FunctionRouter(
 
     // ── User handlers ─────────────────────────────────────────────────────────
 
+    /**
+     * M5 FIX: Changed `args.str("level")` → `args.str("cefr_level")`.
+     *
+     * The function declaration in PromptTemplates defines the parameter as
+     * `"cefr_level"` with enum values ["A1", "A2", "B1", "B2", "C1", "C2"].
+     * Previously this handler read `"level"` which always returned null,
+     * causing every Gemini level assessment to silently default to "A1".
+     */
     private suspend fun handleUpdateUserLevel(
         args:   JsonObject,
         userId: String,
     ): FunctionCallResult {
+        val cefrLevel = args.str("cefr_level") ?: "A1"
         updateUserLevel(
             UpdateUserLevelUseCase.Params(
                 userId      = userId,
-                cefrLevel   = args.str("level") ?: "A1",
+                cefrLevel   = cefrLevel,
                 subLevel    = args.int("sub_level", 1),
                 assessedBy  = "gemini_assessment",
             )
@@ -340,7 +363,7 @@ class FunctionRouter(
         return FunctionCallResult(
             functionName = "update_user_level",
             success      = true,
-            resultJson   = """{"status":"updated","level":"${args.str("level")}"}""",
+            resultJson   = """{"status":"updated","level":"$cefrLevel"}""",
         )
     }
 
@@ -363,6 +386,14 @@ class FunctionRouter(
 
     // ── Pronunciation handlers ────────────────────────────────────────────────
 
+    /**
+     * M6 FIX: Changed `args["phonetic_errors"]` → `args["problem_sounds"]`.
+     *
+     * The function declaration in PromptTemplates defines the array parameter
+     * as `"problem_sounds"`. Previously this handler read `"phonetic_errors"`
+     * which always returned null, causing pronunciation problem data from
+     * Gemini to be silently discarded.
+     */
     private suspend fun handleSavePronunciationResult(
         args:      JsonObject,
         userId:    String,
@@ -374,7 +405,7 @@ class FunctionRouter(
                 sessionId      = sessionId ?: "",
                 word           = args.str("word") ?: "",
                 score          = args.float("score") ?: 0.5f,
-                phoneticErrors = args["phonetic_errors"]?.jsonArray
+                phoneticErrors = args["problem_sounds"]?.jsonArray
                     ?.map { it.jsonPrimitive.content }
                     ?: emptyList(),
             )
