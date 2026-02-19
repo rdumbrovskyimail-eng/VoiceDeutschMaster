@@ -179,17 +179,17 @@ class FunctionRouter(
     // ── Book handlers ─────────────────────────────────────────────────────────
 
     private suspend fun handleGetCurrentLesson(userId: String): FunctionCallResult {
-        val lesson = getCurrentLesson(userId)
+        val data = getCurrentLesson(userId)
         return FunctionCallResult(
             functionName = "get_current_lesson",
             success      = true,
             resultJson   = buildJsonObject {
-                put("chapter",  lesson?.chapterNumber ?: 1)
-                put("lesson",   lesson?.number ?: 1)
-                put("title",    lesson?.titleDe ?: "")
-                put("title_ru", lesson?.titleRu ?: "")
-                put("focus",    lesson?.focus?.name ?: "MIXED")
-                lesson?.content?.let { c ->
+                put("chapter",  data?.chapterNumber ?: 1)
+                put("lesson",   data?.lessonNumber ?: 1)
+                put("title",    data?.lesson?.titleDe ?: "")
+                put("title_ru", data?.lesson?.titleRu ?: "")
+                put("focus",    data?.lesson?.focus?.name ?: "MIXED")
+                data?.content?.let { c ->
                     put("vocabulary_count", c.vocabulary.size)
                     put("has_exercises",    c.exerciseMarkers.isNotEmpty())
                 }
