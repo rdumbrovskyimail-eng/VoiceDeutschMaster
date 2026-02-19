@@ -81,7 +81,7 @@ fun AppNavigation() {
 
     LaunchedEffect(Unit) {
         val hasCompletedOnboarding = runCatching {
-            preferencesDataStore.isOnboardingCompleted().firstOrNull() ?: false
+            preferencesDataStore.isOnboardingComplete()
         }.getOrDefault(false)
 
         startDestination = if (hasCompletedOnboarding) NavRoute.Dashboard else NavRoute.Onboarding
