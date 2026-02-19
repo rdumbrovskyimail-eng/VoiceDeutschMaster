@@ -4,7 +4,6 @@ import com.voicedeutsch.master.domain.repository.SecurityRepository
 import com.voicedeutsch.master.voicecore.audio.AudioPipeline
 import com.voicedeutsch.master.voicecore.context.BookContextProvider
 import com.voicedeutsch.master.voicecore.context.ContextBuilder
-import com.voicedeutsch.master.voicecore.context.SystemPromptBuilder
 import com.voicedeutsch.master.voicecore.context.UserContextProvider
 import com.voicedeutsch.master.voicecore.engine.GeminiClient
 import com.voicedeutsch.master.voicecore.engine.GeminiConfig
@@ -21,11 +20,10 @@ import org.koin.dsl.module
  *
  * Dependency graph:
  *   AudioPipeline(context)
- *   SystemPromptBuilder()
  *   UserContextProvider(json)
  *   BookContextProvider(bookRepository)
  *   FunctionRouter(11 params)
- *   ContextBuilder(systemPromptBuilder, userContextProvider, bookContextProvider, functionRouter, json)
+ *   ContextBuilder(userContextProvider, bookContextProvider, functionRouter, json)
  *   StrategySelector()
  *   GeminiConfig(securityRepository)         ← factory: свежий ключ на каждой сессии
  *   GeminiClient(config, httpClient, json)   ← factory: пересоздаётся вместе с конфигом
@@ -40,7 +38,7 @@ val voiceCoreModule = module {
     single { AudioPipeline(androidContext()) }
 
     // ─── Context builders ─────────────────────────────────────────────────────
-    single { SystemPromptBuilder() }
+    // MasterPrompt — pure object, не инжектируется (нет зависимостей)
     // UserContextProvider(json)
     single { UserContextProvider(get()) }
     // BookContextProvider(bookRepository)
@@ -69,10 +67,9 @@ val voiceCoreModule = module {
     }
 
     // ─── Context builder ──────────────────────────────────────────────────────
-    // ContextBuilder(systemPromptBuilder, userContextProvider, bookContextProvider,
-    //                functionRouter, json)
-    // ⚠️ 5 параметров — добавлен functionRouter для getDeclarations()
-    single { ContextBuilder(get(), get(), get(), get(), get()) }
+    // ContextBuilder(userContextProvider, bookContextProvider, functionRouter, json)
+    // ⚠️ 4 параметра — SystemPromptBuilder удалён, MasterPrompt вызывается напрямую
+    single { ContextBuilder(get(), get(), get(), get()) }
 
     // ─── Strategy selection ───────────────────────────────────────────────────
     single { StrategySelector() }
