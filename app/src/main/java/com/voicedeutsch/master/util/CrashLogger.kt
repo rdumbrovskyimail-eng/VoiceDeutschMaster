@@ -33,7 +33,6 @@ class CrashLogger private constructor(
     }
 
     private val logDirectory: File by lazy {
-        // ✅ КЛЮЧЕВОЕ ОТЛИЧИЕ — getExternalStoragePublicDirectory работает БЕЗ разрешений
         val downloadsDir = Environment.getExternalStoragePublicDirectory(
             Environment.DIRECTORY_DOWNLOADS
         )
