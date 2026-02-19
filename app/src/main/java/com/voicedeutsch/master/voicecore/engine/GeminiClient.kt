@@ -1,5 +1,8 @@
 package com.voicedeutsch.master.voicecore.engine
 
+import android.util.Base64
+import android.util.Log
+import com.voicedeutsch.master.voicecore.context.ContextBuilder
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.websocket.Frame
@@ -11,7 +14,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
@@ -26,8 +28,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
-import android.util.Base64
-import android.util.Log
 
 /**
  * GeminiClient — низкоуровневый WebSocket-клиент для Gemini Live API.
@@ -392,4 +392,39 @@ class GeminiClient(
         clientScope.cancel()
         responseChannel.close()
     }
+}
+
+// ── Gemini response models ────────────────────────────────────────────────────
+// Перенесены из VoiceCoreEngineImpl.kt — логически принадлежат клиенту.
+// Убран modifier `internal` чтобы receiveNextResponse() мог быть public.
+
+data class GeminiFunctionCall(
+    val id: String,
+    val name: String,
+    val argsJson: String,
+)
+
+data class GeminiResponse(
+    val audioData: ByteArray?,
+    val transcript: String?,
+    val functionCall: GeminiFunctionCall?,
+    val isTurnComplete: Boolean = false,
+) {
+    fun hasAudio(): Boolean = audioData != null && audioData.isNotEmpty()
+    fun hasFunctionCall(): Boolean = functionCall != null
+    fun hasTranscript(): Boolean =
+        !transcript.isNullOrEmpty() && audioData == null && functionCall == null
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is GeminiResponse) return false
+        return transcript == other.transcript &&
+                functionCall == other.functionCall &&
+                isTurnComplete == other.isTurnComplete &&
+                (audioData == null && other.audioData == null ||
+                        audioData != null && other.audioData != null &&
+                        audioData.contentEquals(other.audioData))
+    }
+
+    override fun hashCode(): Int = transcript.hashCode() * 31 + isTurnComplete.hashCode()
 }
