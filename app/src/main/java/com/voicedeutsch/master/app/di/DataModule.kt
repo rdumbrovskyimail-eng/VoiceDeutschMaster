@@ -17,18 +17,27 @@ import com.voicedeutsch.master.domain.repository.UserRepository
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
 
+/**
+ * Data layer module: Room DB, DAOs, DataStore, BookFileReader, Repository implementations.
+ *
+ * Repository constructor parameter order is documented inline to keep it
+ * verifiable against each Impl class signature.
+ */
 val dataModule = module {
 
-    // ─── Database ───────────────────────────────────────────────
+    // ─── Database ────────────────────────────────────────────────────────────
     single {
         Room.databaseBuilder(
             androidContext(),
             AppDatabase::class.java,
-            AppDatabase.DATABASE_NAME
-        ).fallbackToDestructiveMigration().build()
+            AppDatabase.DATABASE_NAME,
+        )
+            // Production: replace with explicit migrations before release.
+            .fallbackToDestructiveMigration()
+            .build()
     }
 
-    // ─── DAOs ───────────────────────────────────────────────────
+    // ─── DAOs ────────────────────────────────────────────────────────────────
     single { get<AppDatabase>().userDao() }
     single { get<AppDatabase>().wordDao() }
     single { get<AppDatabase>().knowledgeDao() }
@@ -39,32 +48,36 @@ val dataModule = module {
     single { get<AppDatabase>().bookProgressDao() }
     single { get<AppDatabase>().mistakeDao() }
 
-    // ─── DataStore & File Reader ────────────────────────────────
+    // ─── DataStore & Assets ──────────────────────────────────────────────────
     single { UserPreferencesDataStore(androidContext()) }
+    // BookFileReader(context, json)
     single { BookFileReader(androidContext(), get()) }
 
-    // ─── Repositories (interface → implementation) ──────────────
-    // UserRepositoryImpl(userDao, knowledgeDao, preferencesDataStore, json) — 4 params
+    // ─── Repositories ────────────────────────────────────────────────────────
+    // UserRepositoryImpl(userDao, knowledgeDao, preferencesDataStore, json)
     single<UserRepository> {
         UserRepositoryImpl(get(), get(), get(), get())
     }
 
-    // KnowledgeRepositoryImpl(wordDao, knowledgeDao, grammarRuleDao, phraseDao, progressDao, mistakeDao, json) — 7 params
+    // KnowledgeRepositoryImpl(wordDao, knowledgeDao, grammarRuleDao, phraseDao,
+    //                          progressDao, mistakeDao, json)
     single<KnowledgeRepository> {
         KnowledgeRepositoryImpl(get(), get(), get(), get(), get(), get(), get())
     }
 
-    // BookRepositoryImpl(bookFileReader, bookProgressDao, wordDao, grammarRuleDao, preferencesDataStore, json) — 6 params
+    // BookRepositoryImpl(bookFileReader, bookProgressDao, wordDao,
+    //                    grammarRuleDao, preferencesDataStore, json)
     single<BookRepository> {
         BookRepositoryImpl(get(), get(), get(), get(), get(), get())
     }
 
-    // SessionRepositoryImpl(sessionDao, progressDao, json) — 3 params
+    // SessionRepositoryImpl(sessionDao, progressDao, json)
     single<SessionRepository> {
         SessionRepositoryImpl(get(), get(), get())
     }
 
-    // ProgressRepositoryImpl(knowledgeDao, wordDao, grammarRuleDao, sessionDao, bookProgressDao, progressDao, userDao, json) — 8 params
+    // ProgressRepositoryImpl(knowledgeDao, wordDao, grammarRuleDao, sessionDao,
+    //                         bookProgressDao, progressDao, userDao, json)
     single<ProgressRepository> {
         ProgressRepositoryImpl(get(), get(), get(), get(), get(), get(), get(), get())
     }
