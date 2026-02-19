@@ -289,6 +289,9 @@ class KnowledgeRepositoryImpl(
     override suspend fun getPhraseKnowledge(userId: String, phraseId: String): PhraseKnowledge? =
         knowledgeDao.getPhraseKnowledge(userId, phraseId)?.toDomain()
 
+    override suspend fun getAllPhraseKnowledge(userId: String): List<PhraseKnowledge> =
+        knowledgeDao.getAllPhraseKnowledge(userId).map { it.toDomain() }
+
     override suspend fun getPhrasesForReview(
         userId: String,
         limit: Int
@@ -300,6 +303,9 @@ class KnowledgeRepositoryImpl(
             Pair(phrase, pke.toDomain())
         }
     }
+
+    override suspend fun getPhrasesForReviewCount(userId: String): Int =
+        knowledgeDao.getPhrasesForReviewCount(userId, DateUtils.nowTimestamp())
 
     override suspend fun upsertPhraseKnowledge(knowledge: PhraseKnowledge) =
         knowledgeDao.upsertPhraseKnowledge(knowledge.toEntity())
