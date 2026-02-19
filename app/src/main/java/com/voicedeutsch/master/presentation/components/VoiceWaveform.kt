@@ -42,16 +42,6 @@ import kotlin.math.sin
  *  - PROCESSING    → pulsating concentric rings, [WaveProcessing] colour
  *  - SPEAKING      → animated sine wave, [WaveSpeaking] colour
  *  - ERROR         → red pulsating flat line, [WaveError] colour
- *
- * Architecture reference: lines 1225-1238 (Voice Waveform component).
- *
- * @param engineState   Current voice engine state — controls animation mode.
- * @param amplitudes    Float array of audio amplitude values in [0f..1f].
- *                      Used in LISTENING mode. Can be empty.
- * @param modifier      Compose modifier — typically [fillMaxWidth] + fixed height.
- * @param barCount      Number of bars in bar-chart mode (default 40).
- * @param barWidthDp    Width of each amplitude bar in dp (default 3.dp).
- * @param gapWidthDp    Gap between bars in dp (default 2.dp).
  */
 @Composable
 fun VoiceWaveform(
@@ -66,7 +56,6 @@ fun VoiceWaveform(
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "waveform")
 
-    // ── Global animation phase (used for sine / breathing) ────────────────────
     val phase by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 2f * Math.PI.toFloat(),
@@ -77,7 +66,6 @@ fun VoiceWaveform(
         label = "phase",
     )
 
-    // ── Pulse scale for PROCESSING / ERROR states ─────────────────────────────
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 0.85f,
         targetValue = 1.15f,
@@ -88,7 +76,6 @@ fun VoiceWaveform(
         label = "pulse",
     )
 
-    // ── Determine active colour ───────────────────────────────────────────────
     val waveColor = when (engineState) {
         VoiceEngineState.LISTENING   -> WaveListening
         VoiceEngineState.PROCESSING  -> WaveProcessing
@@ -137,7 +124,6 @@ fun VoiceWaveform(
 
 // ── Canvas draw helpers ───────────────────────────────────────────────────────
 
-/** Slow, gentle sine wave — engine is idle. */
 private fun DrawScope.drawBreathingWave(phase: Float, color: Color) {
     val midY = size.height / 2f
     val amplitude = size.height * 0.08f
@@ -154,7 +140,6 @@ private fun DrawScope.drawBreathingWave(phase: Float, color: Color) {
     }
 }
 
-/** Bar chart from real amplitude data. */
 private fun DrawScope.drawAmplitudeBars(
     amplitudes: FloatArray,
     barCount: Int,
@@ -185,7 +170,6 @@ private fun DrawScope.drawAmplitudeBars(
     }
 }
 
-/** Concentric pulsating rings for processing state. */
 private fun DrawScope.drawPulsingRings(pulseScale: Float, color: Color) {
     val cx = size.width / 2f
     val cy = size.height / 2f
@@ -197,12 +181,12 @@ private fun DrawScope.drawPulsingRings(pulseScale: Float, color: Color) {
             color  = color.copy(alpha = 0.6f - ring * 0.18f),
             radius = r,
             center = Offset(cx, cy),
-            style  = androidx.compose.ui.graphics.drawscope.Stroke(strokeWidth = 2f + ring.toFloat()),
+            // FIX: Stroke constructor uses 'width' parameter, not 'strokeWidth'
+            style  = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f + ring.toFloat()),
         )
     }
 }
 
-/** Active sine wave with higher amplitude — AI is speaking. */
 private fun DrawScope.drawActiveSineWave(phase: Float, color: Color) {
     val midY = size.height / 2f
     val amplitude = size.height * 0.32f
@@ -224,7 +208,6 @@ private fun DrawScope.drawActiveSineWave(phase: Float, color: Color) {
     }
 }
 
-/** Flat pulsating line for error state. */
 private fun DrawScope.drawFlatLine(pulseScale: Float, color: Color) {
     val midY = size.height / 2f
     val halfWidth = size.width * 0.4f * pulseScale
