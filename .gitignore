@@ -1,0 +1,38 @@
+# ── Build outputs ─────────────────────────────────────────────────────────────
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+app/build/
+app/schemas/
+
+# ── Firebase (NEVER commit real credentials) ──────────────────────────────────
+# The CI placeholder is safe to commit:
+# app/google-services.json.ci     ← OK to commit
+# The real one must NEVER be committed:
+app/google-services.json
+
+# ── Signing ───────────────────────────────────────────────────────────────────
+*.jks
+*.keystore
+signing.properties
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.idea/
+*.iml
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Kotlin ────────────────────────────────────────────────────────────────────
+*.kotlin_module
+
+# ── gitkeep (G1 — remove once packages have real files) ──────────────────────
+# .gitkeep
