@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
@@ -31,14 +30,6 @@ android {
         getByName("debug") {
             // Uses default debug keystore — no config needed
         }
-        // Release signing — configure via environment variables in CI:
-        //   KEYSTORE_FILE (base64), KEY_ALIAS, KEY_PASSWORD, STORE_PASSWORD
-        // create("release") {
-        //     storeFile = file(System.getenv("KEYSTORE_FILE") ?: "debug.keystore")
-        //     storePassword = System.getenv("STORE_PASSWORD") ?: ""
-        //     keyAlias = System.getenv("KEY_ALIAS") ?: ""
-        //     keyPassword = System.getenv("KEY_PASSWORD") ?: ""
-        // }
     }
 
     buildTypes {
@@ -54,7 +45,6 @@ android {
                 "proguard-rules.pro"
             )
             buildConfigField("Boolean", "DEBUG_MODE", "false")
-            // signingConfig = signingConfigs.getByName("release")
         }
     }
 
@@ -63,12 +53,14 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-        freeCompilerArgs += listOf(
-            "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
-            "-opt-in=kotlinx.serialization.ExperimentalSerializationApi",
-        )
+    kotlin {
+        compilerOptions {
+            jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+            freeCompilerArgs.addAll(
+                "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
+                "-opt-in=kotlinx.serialization.ExperimentalSerializationApi",
+            )
+        }
     }
 
     buildFeatures {
@@ -129,15 +121,10 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
 
-    // ── Firebase AI Logic (replaces deprecated google-ai generativeai SDK) ───
-    // ⚠️ MIGRATION REQUIRED: GeminiConfig.kt и VoiceCoreEngineImpl.kt
-    // используют com.google.ai.client.generativeai.* — замените импорты
-    // на com.google.firebase.ai.* после подключения этой зависимости.
-    // Документация: https://firebase.google.com/docs/ai-logic/migrate-to-firebase-ai-logic
+    // ── Firebase AI Logic ─────────────────────────────────────────────────────
     implementation(libs.firebase.ai)
 
     // ── Audio ─────────────────────────────────────────────────────────────────
-    // Oboe используется в AudioPipeline/AudioPlayer/AudioRecorder
     implementation(libs.oboe)
 
     // ── Security ─────────────────────────────────────────────────────────────
