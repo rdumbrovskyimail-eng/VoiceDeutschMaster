@@ -15,26 +15,6 @@ import androidx.compose.ui.unit.dp
 import com.voicedeutsch.master.presentation.theme.Primary
 import com.voicedeutsch.master.presentation.theme.Secondary
 
-/**
- * Reusable word card component.
- *
- * Displays a German word with its Russian translation, knowledge level indicator,
- * part of speech, and an optional audio playback button.
- *
- * Used on:
- *  - KnowledgeScreen (word list tab)
- *  - SessionScreen (vocabulary summary)
- *  - DashboardScreen (recently learned words)
- *
- * @param german          German word (e.g. "der Apfel").
- * @param russian         Russian translation (e.g. "яблоко").
- * @param knowledgeLevel  0-7 — rendered as filled dots.
- * @param partOfSpeech    Optional tag like "сущ.", "гл.", "прил."
- * @param exampleSentence Optional example sentence in German.
- * @param isNew           Highlight card as newly learned.
- * @param onPlayAudio     If non-null, show the speaker icon button.
- * @param onClick         Card click callback.
- */
 @Composable
 fun WordCard(
     german: String,
@@ -62,7 +42,6 @@ fun WordCard(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            // ── Top row: word + audio button ──────────────────────────────────
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -107,35 +86,27 @@ fun WordCard(
                     }
                 }
 
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment     = Alignment.CenterVertically,
-                ) {
-                    onPlayAudio?.let {
-                        IconButton(onClick = it, modifier = Modifier.size(32.dp)) {
-                            Icon(
-                                Icons.Outlined.VolumeUp,
-                                contentDescription = "Произношение",
-                                tint     = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
+                onPlayAudio?.let {
+                    IconButton(onClick = it, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            Icons.Outlined.VolumeUp,
+                            contentDescription = "Произношение",
+                            tint     = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp),
+                        )
                     }
                 }
             }
 
-            // ── Translation ───────────────────────────────────────────────────
-            // FIX: Completed the truncated Text() composable (was missing color and closing)
             Text(
                 text  = russian,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
             )
 
-            // ── Example sentence ──────────────────────────────────────────────
             exampleSentence?.let {
                 Text(
-                    text  = "„$it"",
+                    text  = "\u201e$it\u201c",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
                 )
@@ -143,24 +114,23 @@ fun WordCard(
 
             Spacer(Modifier.height(4.dp))
 
-            // ── Knowledge level dots ──────────────────────────────────────────
             KnowledgeLevelDots(level = knowledgeLevel)
         }
     }
 
     if (onClick != null) {
         Card(
-            onClick = onClick,
-            colors  = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            border  = if (borderColor != Color.Transparent)
+            onClick  = onClick,
+            colors   = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border   = if (borderColor != Color.Transparent)
                 androidx.compose.foundation.BorderStroke(1.5.dp, borderColor) else null,
             modifier = modifier.fillMaxWidth(),
             content  = cardContent,
         )
     } else {
         Card(
-            colors  = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            border  = if (borderColor != Color.Transparent)
+            colors   = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border   = if (borderColor != Color.Transparent)
                 androidx.compose.foundation.BorderStroke(1.5.dp, borderColor) else null,
             modifier = modifier.fillMaxWidth(),
             content  = cardContent,
@@ -168,12 +138,6 @@ fun WordCard(
     }
 }
 
-// ── Knowledge level dots ──────────────────────────────────────────────────────
-
-/**
- * Row of 7 dots representing knowledge level 0-7.
- * Filled dots use color scaled from red (low) to green (high).
- */
 @Composable
 fun KnowledgeLevelDots(
     level: Int,
@@ -187,7 +151,7 @@ fun KnowledgeLevelDots(
         for (i in 1..7) {
             val filled = i <= level
             val dotColor = when {
-                !filled -> MaterialTheme.colorScheme.outline
+                !filled    -> MaterialTheme.colorScheme.outline
                 level <= 2 -> MaterialTheme.colorScheme.error
                 level <= 4 -> Primary
                 else       -> Secondary
