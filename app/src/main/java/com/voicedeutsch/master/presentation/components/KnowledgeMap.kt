@@ -95,7 +95,8 @@ fun KnowledgeMap(
                         textAlign  = android.graphics.Paint.Align.CENTER
                     }
                     val cx = rect.topLeft.x + rect.size.width / 2
-                    val cy = rect.topLeft.y + rect.size.height / 2 + textSize / 3
+                    // FIX: use paint.textSize (not Canvas.textSize which doesn't exist)
+                    val cy = rect.topLeft.y + rect.size.height / 2 + paint.textSize / 3
                     drawText(
                         topic.key.take(12),
                         cx,
@@ -115,55 +116,44 @@ private data class Rect(val topLeft: Offset, val size: Size)
 /**
  * Very simple strip-based treemap layout (not perfectly squarified, but readable).
  */
-private fun buildTreemap(
-    items: List<Float>,
-    bounds: Size,
-): List<Rect> {
+private fun buildTreemap(items: List<Float>, bounds: Size): List<Rect> {
     if (items.isEmpty()) return emptyList()
-
-    val result   = mutableListOf<Rect>()
+    val rects = mutableListOf<Rect>()
     var remaining = items.toMutableList()
     var x = 0f
     var y = 0f
-    var availableWidth  = bounds.width
-    var availableHeight = bounds.height
+    var w = bounds.width
+    var h = bounds.height
 
     while (remaining.isNotEmpty()) {
-        val isHorizontal = availableWidth >= availableHeight
-        val stripSize    = if (isHorizontal) availableHeight else availableWidth
-        val totalFraction = remaining.sumOf { it.toDouble() }.toFloat().coerceAtLeast(0.001f)
+        val horizontal = w >= h
+        val stripCount = min(remaining.size, 4)
+        val strip = remaining.take(stripCount)
+        val stripSum = strip.sum()
+        val stripSize = if (horizontal) w * stripSum else h * stripSum
 
-        // Greedily fill one strip
-        val stripItems = remaining.toList()
-        remaining.clear()
-
-        var offset = 0f
-        val stripWidth = min(
-            if (isHorizontal) availableWidth else availableHeight,
-            (if (isHorizontal) availableWidth else availableHeight),
-        ) * totalFraction
-
-        stripItems.forEach { fraction ->
-            val itemLength = (fraction / totalFraction) * stripSize
-            if (isHorizontal) {
-                result.add(Rect(Offset(x, y + offset), Size(stripWidth, itemLength)))
-                offset += itemLength
-            } else {
-                result.add(Rect(Offset(x + offset, y), Size(itemLength, stripWidth)))
-                offset += itemLength
-            }
+        var offset = if (horizontal) y else x
+        strip.forEach { frac ->
+            val itemSize = if (stripSum > 0) frac / stripSum * (if (horizontal) h else w) else 0f
+            rects.add(
+                if (horizontal) {
+                    Rect(Offset(x, offset), Size(stripSize, itemSize))
+                } else {
+                    Rect(Offset(offset, y), Size(itemSize, stripSize))
+                }
+            )
+            offset += itemSize
         }
 
-        if (isHorizontal) {
-            x                += stripWidth
-            availableWidth   -= stripWidth
+        remaining = remaining.drop(stripCount).toMutableList()
+        if (horizontal) {
+            x += stripSize
+            w -= stripSize
         } else {
-            y                += stripWidth
-            availableHeight  -= stripWidth
+            y += stripSize
+            h -= stripSize
         }
-
-        break // single-pass simplified layout; good enough for up to 12 items
     }
 
-    return result
+    return rects
 }
