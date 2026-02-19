@@ -23,11 +23,11 @@ class BookContextProvider(private val bookRepository: BookRepository) {
             appendLine("ТЕКСТ УРОКА:")
             appendLine(lessonContent.text)
 
-            if (lessonContent.exercises.isNotEmpty()) {
+            if (lessonContent.exerciseMarkers.isNotEmpty()) {
                 appendLine()
                 appendLine("УПРАЖНЕНИЯ:")
-                lessonContent.exercises.forEach { exercise ->
-                    appendLine("- ${exercise.instruction}: ${exercise.content}")
+                lessonContent.exerciseMarkers.forEach { marker ->
+                    appendLine("- $marker")
                 }
             }
 
