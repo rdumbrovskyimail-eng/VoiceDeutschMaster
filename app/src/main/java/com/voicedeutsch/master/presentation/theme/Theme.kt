@@ -10,6 +10,8 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+// FIX: Added missing Color import — required for Color(0xFFEDE8F5) in LightColorScheme
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -76,7 +78,7 @@ private val LightColorScheme = lightColorScheme(
 
     surface            = SurfaceLight,
     onSurface          = OnBackgroundLight,
-    surfaceVariant     = Color(0xFFEDE8F5).let { it }, // use raw value
+    surfaceVariant     = Color(0xFFEDE8F5),
     onSurfaceVariant   = OnBackgroundMutedLight,
 )
 
@@ -103,7 +105,6 @@ fun VoiceDeutschMasterTheme(
         else      -> LightColorScheme
     }
 
-    // Make the status bar transparent and match the theme
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
@@ -121,7 +122,3 @@ fun VoiceDeutschMasterTheme(
         content     = content,
     )
 }
-
-// Convenience extension — needed in Color.kt reference above
-@Suppress("NOTHING_TO_INLINE")
-private inline fun androidx.compose.ui.graphics.Color.let(block: (androidx.compose.ui.graphics.Color) -> androidx.compose.ui.graphics.Color) = block(this)
