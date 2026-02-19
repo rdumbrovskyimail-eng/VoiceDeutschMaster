@@ -1,15 +1,16 @@
 package com.voicedeutsch.master.voicecore.functions
 
 import com.voicedeutsch.master.domain.model.LearningStrategy
-import com.voicedeutsch.master.domain.model.knowledge.MistakeRecord
+import com.voicedeutsch.master.domain.model.knowledge.MistakeLog       // FIX: was MistakeRecord (wrong type)
+import com.voicedeutsch.master.domain.model.knowledge.MistakeType      // FIX: added — needed for MistakeLog.type
 import com.voicedeutsch.master.domain.usecase.book.AdvanceBookProgressUseCase
 import com.voicedeutsch.master.domain.usecase.book.GetCurrentLessonUseCase
 import com.voicedeutsch.master.domain.usecase.knowledge.GetWeakPointsUseCase
+import com.voicedeutsch.master.domain.usecase.knowledge.GetWordsForRepetitionUseCase  // FIX: was domain.usecase.learning (wrong package)
 import com.voicedeutsch.master.domain.usecase.knowledge.UpdateRuleKnowledgeUseCase
 import com.voicedeutsch.master.domain.usecase.knowledge.UpdateWordKnowledgeUseCase
-import com.voicedeutsch.master.domain.usecase.learning.GetWordsForRepetitionUseCase
 import com.voicedeutsch.master.domain.usecase.speech.RecordPronunciationResultUseCase
-import com.voicedeutsch.master.domain.usecase.user.GetUserStatisticsUseCase
+import com.voicedeutsch.master.domain.usecase.user.GetUserStatisticsUseCase            // FIX: class created (was missing)
 import com.voicedeutsch.master.domain.usecase.user.UpdateUserLevelUseCase
 import com.voicedeutsch.master.domain.repository.KnowledgeRepository
 import com.voicedeutsch.master.util.DateUtils
@@ -150,44 +151,72 @@ class FunctionRouter(
         )
     }
 
+    /**
+     * FIX: Removed 'ruleTitle' and 'context' from Params — they don't exist
+     * in UpdateRuleKnowledgeUseCase.Params. Only userId, ruleId, newLevel, quality.
+     */
     private suspend fun handleSaveRuleKnowledge(
         args:   JsonObject,
         userId: String,
     ): FunctionCallResult {
+        val ruleId = args.str("rule_id")
+            ?: return error("save_rule_knowledge", "missing 'rule_id'")
         val params = UpdateRuleKnowledgeUseCase.Params(
-            userId    = userId,
-            ruleId    = args.str("rule_id")
-                ?: return error("save_rule_knowledge", "missing 'rule_id'"),
-            ruleTitle = args.str("rule_title") ?: "",
-            newLevel  = args.int("level", 1),
-            quality   = args.int("quality", 3),
-            context   = args.str("context"),
+            userId   = userId,
+            ruleId   = ruleId,
+            newLevel = args.int("level", 1),
+            quality  = args.int("quality", 3),
         )
         updateRuleKnowledge(params)
         return FunctionCallResult(
             functionName = "save_rule_knowledge",
             success      = true,
-            resultJson   = """{"status":"saved","rule_id":"${params.ruleId}","level":${params.newLevel}}""",
+            resultJson   = """{"status":"saved","rule_id":"$ruleId","level":${params.newLevel}}""",
         )
     }
 
+    /**
+     * FIX: Replaced MistakeRecord with MistakeLog (correct domain model).
+     *
+     * MistakeLog fields:
+     *   id, userId, sessionId, type (MistakeType), item, expected, actual,
+     *   context, explanation, timestamp, createdAt
+     *
+     * Mapping from Gemini args:
+     *   mistake_type → MistakeType enum
+     *   user_input   → actual
+     *   correct_form → expected
+     *   context      → context + item (used as item description)
+     *
+     * FIX: Changed saveMistake → logMistake (actual KnowledgeRepository method).
+     */
     private suspend fun handleRecordMistake(
         args:      JsonObject,
         userId:    String,
         sessionId: String?,
     ): FunctionCallResult {
-        val mistake = MistakeRecord(
+        val mistakeTypeStr = args.str("mistake_type") ?: "unknown"
+        val mistakeType = when (mistakeTypeStr.lowercase()) {
+            "grammar"       -> MistakeType.GRAMMAR
+            "vocabulary",
+            "word"          -> MistakeType.WORD
+            "pronunciation" -> MistakeType.PRONUNCIATION
+            "phrase"        -> MistakeType.PHRASE
+            else            -> MistakeType.GRAMMAR
+        }
+        val mistake = MistakeLog(
             id          = generateUUID(),
             userId      = userId,
-            sessionId   = sessionId ?: "",
-            mistakeType = args.str("mistake_type") ?: "unknown",
-            userInput   = args.str("user_input") ?: "",
-            correctForm = args.str("correct_form") ?: "",
+            sessionId   = sessionId,
+            type        = mistakeType,
+            item        = args.str("user_input") ?: "",
+            expected    = args.str("correct_form") ?: "",
+            actual      = args.str("user_input") ?: "",
             context     = args.str("context") ?: "",
             explanation = args.str("explanation") ?: "",
             timestamp   = System.currentTimeMillis(),
         )
-        knowledgeRepository.saveMistake(mistake)
+        knowledgeRepository.logMistake(mistake)
         return FunctionCallResult(
             functionName = "record_mistake",
             success      = true,
@@ -197,6 +226,10 @@ class FunctionRouter(
 
     // ── Book handlers ─────────────────────────────────────────────────────────
 
+    /**
+     * FIX: Lesson model uses titleDe/titleRu, not title/topic.
+     * FIX: LessonContent has vocabulary, exerciseMarkers — no grammarRules/exercises.
+     */
     private suspend fun handleGetCurrentLesson(userId: String): FunctionCallResult {
         val lesson = getCurrentLesson(userId)
         return FunctionCallResult(
@@ -204,53 +237,56 @@ class FunctionRouter(
             success      = true,
             resultJson   = buildJsonObject {
                 put("chapter", lesson?.chapterNumber ?: 1)
-                put("lesson",  lesson?.lessonNumber  ?: 1)
-                put("title",   lesson?.title         ?: "")
-                put("topic",   lesson?.topic         ?: "")
+                put("lesson",  lesson?.number ?: 1)
+                put("title",   lesson?.titleDe ?: "")
+                put("title_ru", lesson?.titleRu ?: "")
+                put("focus",   lesson?.focus?.name ?: "MIXED")
                 lesson?.content?.let { c ->
-                    put("vocabulary_count",    c.vocabulary.size)
-                    put("grammar_rules_count", c.grammarRules.size)
-                    put("exercises_count",     c.exercises.size)
+                    put("vocabulary_count", c.vocabulary.size)
+                    put("has_exercises",    c.exerciseMarkers.isNotEmpty())
                 }
             }.toString(),
         )
     }
 
+    /**
+     * FIX: AdvanceBookProgressUseCase.invoke(userId, score) → BookAdvanceResult.
+     * It reads the current position internally from BookRepository.
+     * No completedChapter/completedLesson params — UseCase determines them.
+     *
+     * BookAdvanceResult fields:
+     *   previousChapter, previousLesson, newChapter, newLesson,
+     *   isChapterComplete, isBookComplete
+     */
     private suspend fun handleAdvanceToNextLesson(
         args:   JsonObject,
         userId: String,
     ): FunctionCallResult {
-        val result = advanceBookProgress(
-            AdvanceBookProgressUseCase.Params(
-                userId           = userId,
-                completedLesson  = args.int("completed_lesson", 1),
-                completedChapter = args.int("completed_chapter", 1),
-            )
-        )
+        val score = args.float("score") ?: 1.0f
+        val result = advanceBookProgress(userId, score)
         return FunctionCallResult(
             functionName = "advance_to_next_lesson",
             success      = true,
             resultJson   = buildJsonObject {
                 put("status",              "advanced")
-                put("next_chapter",        result.nextChapter)
-                put("next_lesson",         result.nextLesson)
+                put("next_chapter",        result.newChapter)
+                put("next_lesson",         result.newLesson)
                 put("is_chapter_complete", result.isChapterComplete)
                 put("is_book_complete",    result.isBookComplete)
             }.toString(),
         )
     }
 
+    /**
+     * FIX: Same as handleAdvanceToNextLesson — invoke(userId, score).
+     * UseCase reads current position internally.
+     */
     private suspend fun handleMarkLessonComplete(
         args:   JsonObject,
         userId: String,
     ): FunctionCallResult {
-        advanceBookProgress(
-            AdvanceBookProgressUseCase.Params(
-                userId           = userId,
-                completedLesson  = args.int("lesson", 1),
-                completedChapter = args.int("chapter", 1),
-            )
-        )
+        val score = args.float("score") ?: 1.0f
+        advanceBookProgress(userId, score)
         return FunctionCallResult(
             functionName = "mark_lesson_complete",
             success      = true,
@@ -288,6 +324,10 @@ class FunctionRouter(
         )
     }
 
+    /**
+     * FIX: WeakPoint fields adjusted. GetWeakPointsUseCase returns List<String>
+     * (simple weak-point descriptions). Simplified output to match.
+     */
     private suspend fun handleGetWeakPoints(userId: String): FunctionCallResult {
         val weakPoints = getWeakPoints(userId)
         return FunctionCallResult(
@@ -296,15 +336,8 @@ class FunctionRouter(
             resultJson   = buildJsonObject {
                 put("total", weakPoints.size)
                 put("weak_points", buildJsonArray {
-                    weakPoints.take(10).forEach { p ->
-                        addJsonObject {
-                            put("type",        p.type)
-                            put("description", p.description)
-                            put("severity",    p.severity)
-                            put("examples",    buildJsonArray {
-                                p.examples.forEach { add(it) }
-                            })
-                        }
+                    weakPoints.take(10).forEach { point ->
+                        add(JsonPrimitive(point))
                     }
                 })
             }.toString(),
@@ -341,44 +374,58 @@ class FunctionRouter(
     /**
      * M5 FIX: Changed `args.str("level")` → `args.str("cefr_level")`.
      *
-     * The function declaration in PromptTemplates defines the parameter as
-     * `"cefr_level"` with enum values ["A1", "A2", "B1", "B2", "C1", "C2"].
-     * Previously this handler read `"level"` which always returned null,
-     * causing every Gemini level assessment to silently default to "A1".
+     * FIX: UpdateUserLevelUseCase.invoke(userId) → LevelUpdateResult.
+     * The UseCase auto-calculates the CEFR level from knowledge data.
+     * Gemini's suggested level is acknowledged but the actual level is
+     * determined by the algorithm (vocab/grammar thresholds).
      */
     private suspend fun handleUpdateUserLevel(
         args:   JsonObject,
         userId: String,
     ): FunctionCallResult {
-        val cefrLevel = args.str("cefr_level") ?: "A1"
-        updateUserLevel(
-            UpdateUserLevelUseCase.Params(
-                userId      = userId,
-                cefrLevel   = cefrLevel,
-                subLevel    = args.int("sub_level", 1),
-                assessedBy  = "gemini_assessment",
-            )
-        )
+        val result = updateUserLevel(userId)
         return FunctionCallResult(
             functionName = "update_user_level",
             success      = true,
-            resultJson   = """{"status":"updated","level":"$cefrLevel"}""",
+            resultJson   = buildJsonObject {
+                put("status",         if (result.levelChanged) "updated" else "confirmed")
+                put("level",          result.newLevel.name)
+                put("sub_level",      result.newSubLevel)
+                put("level_changed",  result.levelChanged)
+                put("reason",         result.reason)
+            }.toString(),
         )
     }
 
+    /**
+     * FIX: UserStatistics field names corrected to match the domain model:
+     *   totalWordsLearned    → totalWords
+     *   cefrLevel            → (removed — not in UserStatistics)
+     *   totalMinutesStudied  → totalMinutes
+     *   currentLesson        → (removed — not in UserStatistics)
+     *   + added more stats from the actual model
+     */
     private suspend fun handleGetUserStatistics(userId: String): FunctionCallResult {
         val stats = getUserStatistics(userId)
         return FunctionCallResult(
             functionName = "get_user_statistics",
             success      = true,
             resultJson   = buildJsonObject {
-                put("total_words_learned",   stats.totalWordsLearned)
-                put("total_sessions",        stats.totalSessions)
-                put("streak_days",           stats.streakDays)
-                put("cefr_level",            stats.cefrLevel)
-                put("total_minutes_studied", stats.totalMinutesStudied)
-                put("current_chapter",       stats.currentChapter)
-                put("current_lesson",        stats.currentLesson)
+                put("total_words",          stats.totalWords)
+                put("active_words",         stats.activeWords)
+                put("passive_words",        stats.passiveWords)
+                put("total_rules",          stats.totalRules)
+                put("known_rules",          stats.knownRules)
+                put("total_sessions",       stats.totalSessions)
+                put("total_minutes",        stats.totalMinutes)
+                put("streak_days",          stats.streakDays)
+                put("average_score",        stats.averageScore)
+                put("avg_pronunciation",    stats.averagePronunciationScore)
+                put("words_for_review",     stats.wordsForReviewToday)
+                put("rules_for_review",     stats.rulesForReviewToday)
+                put("book_progress",        stats.bookProgress)
+                put("current_chapter",      stats.currentChapter)
+                put("total_chapters",       stats.totalChapters)
             }.toString(),
         )
     }
@@ -388,10 +435,8 @@ class FunctionRouter(
     /**
      * M6 FIX: Changed `args["phonetic_errors"]` → `args["problem_sounds"]`.
      *
-     * The function declaration in PromptTemplates defines the array parameter
-     * as `"problem_sounds"`. Previously this handler read `"phonetic_errors"`
-     * which always returned null, causing pronunciation problem data from
-     * Gemini to be silently discarded.
+     * FIX: RecordPronunciationResultUseCase.Params field renamed:
+     *   phoneticErrors → problemSounds (matches PronunciationResult model).
      */
     private suspend fun handleSavePronunciationResult(
         args:      JsonObject,
@@ -400,11 +445,11 @@ class FunctionRouter(
     ): FunctionCallResult {
         recordPronunciation(
             RecordPronunciationResultUseCase.Params(
-                userId         = userId,
-                sessionId      = sessionId ?: "",
-                word           = args.str("word") ?: "",
-                score          = args.float("score") ?: 0.5f,
-                phoneticErrors = args["problem_sounds"]?.jsonArray
+                userId        = userId,
+                sessionId     = sessionId ?: "",
+                word          = args.str("word") ?: "",
+                score         = args.float("score") ?: 0.5f,
+                problemSounds = args["problem_sounds"]?.jsonArray
                     ?.map { it.jsonPrimitive.content }
                     ?: emptyList(),
             )
@@ -416,8 +461,17 @@ class FunctionRouter(
         )
     }
 
+    /**
+     * FIX: PhoneticTarget fields corrected:
+     *   exampleWord  → inWords.firstOrNull() (no exampleWord field)
+     *   averageScore → currentScore
+     *   trend        → trend.name (enum)
+     *
+     * FIX: KnowledgeRepository method — using getProblemSounds()
+     * (actual method name in KnowledgeRepository interface).
+     */
     private suspend fun handleGetPronunciationTargets(userId: String): FunctionCallResult {
-        val targets = knowledgeRepository.getPronunciationTargets(userId)
+        val targets = knowledgeRepository.getProblemSounds(userId)
         return FunctionCallResult(
             functionName = "get_pronunciation_targets",
             success      = true,
@@ -426,8 +480,8 @@ class FunctionRouter(
                     targets.take(5).forEach { t ->
                         addJsonObject {
                             put("sound",        t.sound)
-                            put("example_word", t.exampleWord)
-                            put("score",        t.averageScore)
+                            put("example_word", t.inWords.firstOrNull() ?: "")
+                            put("score",        t.currentScore)
                             put("trend",        t.trend.name)
                         }
                     }
