@@ -14,6 +14,8 @@ import java.util.*
  * 1. Автоматически перехватывает краши и сохраняет в файл
  * 2. Сохраняет LogCat (только ошибки) по кнопке
  * 3. Возвращает список всех логов для просмотра
+ *
+ * Логи сохраняются в: Download/LOG5/
  */
 class CrashLogger private constructor(private val context: Context) {
 
@@ -37,16 +39,12 @@ class CrashLogger private constructor(private val context: Context) {
     }
 
     private val logDirectory: File by lazy {
-        // Пробуем создать в Download для удобного доступа
-        val downloadDir = File(
-            Environment.getExternalStorageDirectory(),
-            "Download/VoiceDeutsch_Logs"
-        )
+        val downloadDir = File(Environment.getExternalStorageDirectory(), "Download/LOG5")
         if (downloadDir.exists() || downloadDir.mkdirs()) {
             downloadDir
         } else {
             // Fallback на internal storage
-            File(context.filesDir, "logs").apply { mkdirs() }
+            File(context.filesDir, "LOG5").apply { mkdirs() }
         }
     }
 
@@ -110,7 +108,6 @@ class CrashLogger private constructor(private val context: Context) {
                 appendLine("LOGCAT (Last 500 lines):")
                 appendLine("-" * 80)
 
-                // Добавляем логи из logcat
                 try {
                     val process = Runtime.getRuntime()
                         .exec(arrayOf("logcat", "-d", "-t", "500"))
@@ -271,9 +268,6 @@ class CrashLogger private constructor(private val context: Context) {
 // Data models
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * 📄 Модель файла лога
- */
 data class LogFile(
     val file: File,
     val type: LogType,
@@ -287,17 +281,11 @@ data class LogFile(
         ).format(Date(timestamp))
 }
 
-/**
- * 📋 Тип лога
- */
 enum class LogType {
     CRASH,
     LOGCAT,
 }
 
-/**
- * 📊 Статистика логов
- */
 data class LogStats(
     val totalCrashes: Int,
     val totalLogCats: Int,
