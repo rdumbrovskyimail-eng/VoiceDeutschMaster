@@ -29,88 +29,27 @@ jobs:
         java-version: '21'
         cache: 'gradle'
 
-    # ============================================================
-    # 🔥 ВРЕМЕННО: ПОЛНАЯ ОЧИСТКА КЕШЕЙ
-    # ============================================================
-    - name: 🔥 Clear ALL caches (TEMPORARY)
-      run: |
-        echo "🗑️ Removing all Gradle caches..."
-        rm -rf ~/.gradle/caches
-        rm -rf ~/.gradle/wrapper
-        rm -rf ~/.gradle/daemon
-        rm -rf ~/.konan
-        rm -rf .gradle
-        rm -rf build
-        rm -rf app/build
-        echo "✅ All caches cleared"
-    # ============================================================
-
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v4
       with:
         cache-read-only: false
-        gradle-home-cache-cleanup: true
+        cache-cleanup: on-success
 
-    # ЗАКОММЕНТИРОВАНО: Кеширование отключено временно
-    # - name: Cache Gradle & Kotlin
-    #   uses: actions/cache@v4
-    #   with:
-    #     path: |
-    #       ~/.gradle/caches
-    #       ~/.gradle/wrapper
-    #       ~/.gradle/daemon
-    #       ~/.konan
-    #       .gradle
-    #     key: ${{ runner.os }}-gradle-fast-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/libs.versions.toml') }}
-    #     restore-keys: |
-    #       ${{ runner.os }}-gradle-fast-
-    #       ${{ runner.os }}-gradle-
-
-    # ЗАКОММЕНТИРОВАНО: Кеширование отключено временно
-    # - name: Cache build outputs
-    #   uses: actions/cache@v4
-    #   with:
-    #     path: |
-    #       app/build/intermediates
-    #       app/build/tmp
-    #       build/kotlin
-    #     key: ${{ runner.os }}-build-fast-${{ github.sha }}
-    #     restore-keys: |
-    #       ${{ runner.os }}-build-fast-
-
-    # ── Gradle wrapper: ensure gradlew + wrapper JAR exist ─────────
     - name: Ensure Gradle wrapper exists
       run: |
-        # Ensure gradlew is executable
         if [ -f "./gradlew" ]; then
           chmod +x gradlew
         fi
-        
-        # Download gradle-wrapper.jar if missing (not committed to repo)
         WRAPPER_JAR="gradle/wrapper/gradle-wrapper.jar"
         if [ ! -f "$WRAPPER_JAR" ]; then
-          echo "gradle-wrapper.jar not found, downloading..."
           mkdir -p gradle/wrapper
           GRADLE_VERSION=$(grep -oP 'gradle-\K[0-9.]+' gradle/wrapper/gradle-wrapper.properties || echo "8.12")
           curl -sL "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -o /tmp/gradle.zip
           unzip -q -o /tmp/gradle.zip -d /tmp/gradle-extract
           cp /tmp/gradle-extract/gradle-${GRADLE_VERSION}/lib/gradle-wrapper-*.jar "$WRAPPER_JAR" 2>/dev/null || true
-          # Fallback: download wrapper JAR directly from Gradle GitHub
-          if [ ! -f "$WRAPPER_JAR" ]; then
-            curl -sL "https://raw.githubusercontent.com/gradle/gradle/v${GRADLE_VERSION}/gradle/wrapper/gradle-wrapper.jar" -o "$WRAPPER_JAR"
-          fi
-          # Final fallback: generate via installed gradle
-          if [ ! -f "$WRAPPER_JAR" ] || [ ! -s "$WRAPPER_JAR" ]; then
-            echo "Direct download failed, generating wrapper..."
-            gradle wrapper --gradle-version "$GRADLE_VERSION"
-          fi
           rm -rf /tmp/gradle.zip /tmp/gradle-extract
-          echo "✅ gradle-wrapper.jar ready"
         fi
-        
-        # Generate gradlew if missing
         if [ ! -f "./gradlew" ]; then
-          echo "gradlew not found, generating..."
           gradle wrapper --gradle-version 8.12
           chmod +x gradlew
         fi
@@ -118,7 +57,6 @@ jobs:
     - name: Grant execute permission
       run: chmod +x gradlew
 
-    # ── Firebase: google-services.json ─────────────────────────────
     - name: Set up google-services.json
       run: |
         if [ -n "${{ secrets.GOOGLE_SERVICES_JSON }}" ]; then
@@ -133,99 +71,44 @@ jobs:
         fi
 
     - name: Create local.properties
-      run: |
-        cat > local.properties << EOF
-        sdk.dir=$ANDROID_HOME
-        EOF
+      run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
-    # ── Build ──────────────────────────────────────────────────────
-    - name: Fast Build Debug APK
-      id: build
+    - name: Build Debug APK
       run: |
         ./gradlew assembleDebug \
           --parallel \
           --build-cache \
-          --configuration-cache \
-          --max-workers=4 \
           --no-daemon \
           -Dorg.gradle.jvmargs="-Xmx4g -XX:+UseParallelGC" \
-          -Dkotlin.incremental=true \
-          -Dkotlin.compiler.execution.strategy=in-process \
-          -Pkotlin.daemon.jvmargs="-Xmx2g"
-      continue-on-error: true
+          -Dkotlin.incremental=true
 
-    - name: Extract critical errors
-      if: failure()
-      run: |
-        echo "## ❌ Build Failed" > build_errors.txt
-        ./gradlew assembleDebug --stacktrace 2>&1 | grep -A 5 "FAILURE\|error:" | head -50 >> build_errors.txt
-        cat build_errors.txt
-
-    # ── Tests ──────────────────────────────────────────────────────
-    - name: Unit Tests (Optional)
-      if: success() && github.event_name == 'pull_request'
-      run: |
-        ./gradlew testDebugUnitTest \
-          --parallel \
-          --build-cache \
-          --configuration-cache \
-          --continue
-      continue-on-error: true
-
-    - name: Lint Check (Optional)
-      if: success() && github.event_name == 'pull_request'
-      run: ./gradlew lintDebug --continue
-      continue-on-error: true
-
-    # ── Artifacts ──────────────────────────────────────────────────
-    - name: Upload logs on failure
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-errors
-        path: build_errors.txt
-        retention-days: 1
-        if-no-files-found: ignore
-
-    - name: Upload Lint Results
-      if: always() && github.event_name == 'pull_request'
-      uses: actions/upload-artifact@v4
-      with:
-        name: lint-results
-        path: app/build/reports/lint-results-debug.html
-        retention-days: 3
-        if-no-files-found: ignore
-
-    - name: Upload Test Results
-      if: always() && github.event_name == 'pull_request'
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-results
-        path: |
-          app/build/reports/tests/
-          app/build/test-results/
-        retention-days: 3
-        if-no-files-found: ignore
-
-    # ── Release ────────────────────────────────────────────────────
-    - name: Create Release
+    - name: Create Release (success)
       if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
       uses: softprops/action-gh-release@v2
       with:
         tag_name: v1.0.${{ github.run_number }}
         name: VoiceDeutschMaster v1.0.${{ github.run_number }}
         body: |
-          ## 📱 VoiceDeutschMaster v1.0.${{ github.run_number }}
-          
-          **Debug Build** - Fast compilation for testing
-          
+          ## ✅ VoiceDeutschMaster v1.0.${{ github.run_number }}
           **Commit:** `${{ github.sha }}`
           **Build #:** ${{ github.run_number }}
-          
-          ### 📦 Download
-          Скачайте APK файл ниже ⬇️
-          
+          ### 📦 Скачайте APK ниже ⬇️
         files: app/build/outputs/apk/debug/*.apk
+        fail_on_unmatched_files: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Create Release (failure)
+      if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v1.0.${{ github.run_number }}-failed
+        name: "❌ FAILED — v1.0.${{ github.run_number }}"
+        body: |
+          ## ❌ Сборка упала
+          **Commit:** `${{ github.sha }}`
+          **Build #:** ${{ github.run_number }}
+          Посмотрите логи: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         fail_on_unmatched_files: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
