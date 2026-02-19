@@ -29,12 +29,30 @@ coroutines = "2.0.0"
 serialization = "2.0.0"
 
 # Google AI
+# ⚠️ AUDIT NOTE: This SDK (generativeai v1.0.0) provides the standard
+# Gemini text/image API, NOT the real-time streaming Gemini Live API
+# needed for voice sessions. GeminiClient (Session 6) will likely need
+# raw WebSocket via Ktor or a dedicated Gemini Live SDK when available.
 google-ai = "1.0.0"
 
 # Audio
+# ⚠️ AUDIT NOTE: Oboe 2.0.0 is declared but not visibly used — the audio
+# layer currently uses AudioTrack/AudioRecord directly. Either integrate
+# Oboe for lower-latency audio or remove this dependency to reduce APK size.
 oboe = "2.0.0"
 
 # Security
+# M8 NOTE: security-crypto has no stable release as of Feb 2026.
+# 1.1.0-alpha07 is the latest available version. Alpha APIs may change
+# without notice, potentially breaking EncryptedSharedPreferences and
+# locking users out of stored API keys after a library update.
+#
+# Mitigation options (choose one before production):
+#   1. Pin to this exact version and do NOT auto-update via Dependabot/Renovate
+#   2. Migrate to Jetpack DataStore + EncryptedFile (more stable API surface)
+#   3. Use Android Keystore API directly (no alpha dependency)
+#
+# Current choice: pinned at alpha07 with strict version lock.
 security-crypto = "1.1.0-alpha07"
 
 # Firebase
