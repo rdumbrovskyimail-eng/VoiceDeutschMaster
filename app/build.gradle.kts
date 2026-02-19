@@ -124,9 +124,6 @@ dependencies {
     // ── Firebase AI Logic ─────────────────────────────────────────────────────
     implementation(libs.firebase.ai)
 
-    // ── Audio ─────────────────────────────────────────────────────────────────
-    implementation(libs.oboe)
-
     // ── Security ─────────────────────────────────────────────────────────────
     implementation(libs.security.crypto)
 
