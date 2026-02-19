@@ -9,9 +9,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.unit.dp
 import com.voicedeutsch.master.presentation.theme.Primary
 import com.voicedeutsch.master.presentation.theme.Secondary
@@ -57,10 +57,10 @@ fun KnowledgeMap(
 
         rects.forEachIndexed { i, rect ->
             val topic = sorted.getOrNull(i) ?: return@forEachIndexed
-            val color = palette[i % palette.size]
+            val cellColor = palette[i % palette.size]
 
             drawRect(
-                color   = color.copy(alpha = 0.7f),
+                color   = cellColor.copy(alpha = 0.7f),
                 topLeft = rect.topLeft,
                 size    = rect.size,
             )
@@ -81,7 +81,7 @@ fun KnowledgeMap(
                 }
                 val cx = rect.topLeft.x + rect.size.width / 2
                 val cy = rect.topLeft.y + rect.size.height / 2 + paint.textSize / 3
-                drawIntoCanvas { canvas: Canvas ->
+                drawIntoCanvas { canvas ->
                     canvas.nativeCanvas.drawText(topic.key.take(12), cx, cy, paint)
                 }
             }
