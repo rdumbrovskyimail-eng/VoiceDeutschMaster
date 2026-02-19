@@ -1,16 +1,16 @@
 package com.voicedeutsch.master.voicecore.functions
 
 import com.voicedeutsch.master.domain.model.LearningStrategy
-import com.voicedeutsch.master.domain.model.knowledge.MistakeLog       // FIX: was MistakeRecord (wrong type)
-import com.voicedeutsch.master.domain.model.knowledge.MistakeType      // FIX: added — needed for MistakeLog.type
+import com.voicedeutsch.master.domain.model.knowledge.MistakeLog
+import com.voicedeutsch.master.domain.model.knowledge.MistakeType
 import com.voicedeutsch.master.domain.usecase.book.AdvanceBookProgressUseCase
 import com.voicedeutsch.master.domain.usecase.book.GetCurrentLessonUseCase
 import com.voicedeutsch.master.domain.usecase.knowledge.GetWeakPointsUseCase
-import com.voicedeutsch.master.domain.usecase.knowledge.GetWordsForRepetitionUseCase  // FIX: was domain.usecase.learning (wrong package)
+import com.voicedeutsch.master.domain.usecase.knowledge.GetWordsForRepetitionUseCase
 import com.voicedeutsch.master.domain.usecase.knowledge.UpdateRuleKnowledgeUseCase
 import com.voicedeutsch.master.domain.usecase.knowledge.UpdateWordKnowledgeUseCase
 import com.voicedeutsch.master.domain.usecase.speech.RecordPronunciationResultUseCase
-import com.voicedeutsch.master.domain.usecase.user.GetUserStatisticsUseCase            // FIX: class created (was missing)
+import com.voicedeutsch.master.domain.usecase.user.GetUserStatisticsUseCase
 import com.voicedeutsch.master.domain.usecase.user.UpdateUserLevelUseCase
 import com.voicedeutsch.master.domain.repository.KnowledgeRepository
 import com.voicedeutsch.master.util.DateUtils
@@ -29,20 +29,6 @@ import kotlinx.serialization.json.*
  *                     get_words_for_repetition, get_weak_points
  *   4. User         : update_user_level, get_user_statistics
  *   5. Pronunciation: save_pronunciation_result, get_pronunciation_targets
- *
- * Every handler is a suspend function so it can safely call suspend Use Cases
- * without blocking the caller coroutine.
- *
- * **Important (M4):** [handleSetCurrentStrategy] returns success immediately but
- * does NOT apply the strategy change itself. The actual switch happens in
- * `VoiceCoreEngineImpl.applyFunctionSideEffects()` after every routed call.
- * If that method is missing or doesn't handle `set_current_strategy`, Gemini
- * will believe the strategy changed while the app state remains unchanged.
- *
- * **Parameter naming convention:** handler argument keys MUST match the JSON
- * property names in PromptTemplates function declarations exactly. Mismatches
- * cause silent `null` fallbacks because Gemini sends the declared name but the
- * handler reads a different key.
  */
 class FunctionRouter(
     private val updateWordKnowledge:   UpdateWordKnowledgeUseCase,
@@ -60,13 +46,6 @@ class FunctionRouter(
 
     // ── Result type ───────────────────────────────────────────────────────────
 
-    /**
-     * Result returned to [VoiceCoreEngineImpl] after routing a single function call.
-     *
-     * @param functionName  Exact name received from Gemini (used for side-effect tracking).
-     * @param success       Whether the handler completed without an exception.
-     * @param resultJson    JSON payload forwarded back to Gemini as a tool result.
-     */
     data class FunctionCallResult(
         val functionName: String,
         val success:      Boolean,
@@ -75,14 +54,6 @@ class FunctionRouter(
 
     // ── Entry point ───────────────────────────────────────────────────────────
 
-    /**
-     * Dispatches a single Gemini function call to the correct handler.
-     *
-     * @param functionName  Exact name matching a declaration in getDeclarations().
-     * @param argsJson      Raw JSON object string produced by Gemini.
-     * @param userId        Active user identifier.
-     * @param sessionId     Current session id, or null before session is open.
-     */
     suspend fun route(
         functionName: String,
         argsJson:     String,
@@ -151,10 +122,6 @@ class FunctionRouter(
         )
     }
 
-    /**
-     * FIX: Removed 'ruleTitle' and 'context' from Params — they don't exist
-     * in UpdateRuleKnowledgeUseCase.Params. Only userId, ruleId, newLevel, quality.
-     */
     private suspend fun handleSaveRuleKnowledge(
         args:   JsonObject,
         userId: String,
@@ -175,21 +142,6 @@ class FunctionRouter(
         )
     }
 
-    /**
-     * FIX: Replaced MistakeRecord with MistakeLog (correct domain model).
-     *
-     * MistakeLog fields:
-     *   id, userId, sessionId, type (MistakeType), item, expected, actual,
-     *   context, explanation, timestamp, createdAt
-     *
-     * Mapping from Gemini args:
-     *   mistake_type → MistakeType enum
-     *   user_input   → actual
-     *   correct_form → expected
-     *   context      → context + item (used as item description)
-     *
-     * FIX: Changed saveMistake → logMistake (actual KnowledgeRepository method).
-     */
     private suspend fun handleRecordMistake(
         args:      JsonObject,
         userId:    String,
@@ -226,21 +178,17 @@ class FunctionRouter(
 
     // ── Book handlers ─────────────────────────────────────────────────────────
 
-    /**
-     * FIX: Lesson model uses titleDe/titleRu, not title/topic.
-     * FIX: LessonContent has vocabulary, exerciseMarkers — no grammarRules/exercises.
-     */
     private suspend fun handleGetCurrentLesson(userId: String): FunctionCallResult {
         val lesson = getCurrentLesson(userId)
         return FunctionCallResult(
             functionName = "get_current_lesson",
             success      = true,
             resultJson   = buildJsonObject {
-                put("chapter", lesson?.chapterNumber ?: 1)
-                put("lesson",  lesson?.number ?: 1)
-                put("title",   lesson?.titleDe ?: "")
+                put("chapter",  lesson?.chapterNumber ?: 1)
+                put("lesson",   lesson?.number ?: 1)
+                put("title",    lesson?.titleDe ?: "")
                 put("title_ru", lesson?.titleRu ?: "")
-                put("focus",   lesson?.focus?.name ?: "MIXED")
+                put("focus",    lesson?.focus?.name ?: "MIXED")
                 lesson?.content?.let { c ->
                     put("vocabulary_count", c.vocabulary.size)
                     put("has_exercises",    c.exerciseMarkers.isNotEmpty())
@@ -249,15 +197,6 @@ class FunctionRouter(
         )
     }
 
-    /**
-     * FIX: AdvanceBookProgressUseCase.invoke(userId, score) → BookAdvanceResult.
-     * It reads the current position internally from BookRepository.
-     * No completedChapter/completedLesson params — UseCase determines them.
-     *
-     * BookAdvanceResult fields:
-     *   previousChapter, previousLesson, newChapter, newLesson,
-     *   isChapterComplete, isBookComplete
-     */
     private suspend fun handleAdvanceToNextLesson(
         args:   JsonObject,
         userId: String,
@@ -277,10 +216,6 @@ class FunctionRouter(
         )
     }
 
-    /**
-     * FIX: Same as handleAdvanceToNextLesson — invoke(userId, score).
-     * UseCase reads current position internally.
-     */
     private suspend fun handleMarkLessonComplete(
         args:   JsonObject,
         userId: String,
@@ -324,10 +259,9 @@ class FunctionRouter(
         )
     }
 
-    /**
-     * FIX: WeakPoint fields adjusted. GetWeakPointsUseCase returns List<String>
-     * (simple weak-point descriptions). Simplified output to match.
-     */
+    // PATCH APPLIED: WeakPoint — data class с полями description, category, severity.
+    // Старый код: add(JsonPrimitive(point)) — не компилировался (WeakPoint не примитив).
+    // Новый код: addJsonObject { put("description", ...) put("category", ...) ... }
     private suspend fun handleGetWeakPoints(userId: String): FunctionCallResult {
         val weakPoints = getWeakPoints(userId)
         return FunctionCallResult(
@@ -337,7 +271,11 @@ class FunctionRouter(
                 put("total", weakPoints.size)
                 put("weak_points", buildJsonArray {
                     weakPoints.take(10).forEach { point ->
-                        add(JsonPrimitive(point))
+                        addJsonObject {
+                            put("description", point.description)
+                            put("category",    point.category)
+                            put("severity",    point.severity)
+                        }
                     }
                 })
             }.toString(),
@@ -347,10 +285,6 @@ class FunctionRouter(
     private fun handleSetCurrentStrategy(args: JsonObject): FunctionCallResult {
         val strategyName = args.str("strategy") ?: "LINEAR_BOOK"
         val strategy = LearningStrategy.fromString(strategyName)
-        // NOTE (M4): The actual strategy switch is applied in
-        // VoiceCoreEngineImpl.applyFunctionSideEffects() after this result is
-        // returned. This handler only acknowledges to Gemini — it does NOT
-        // mutate session state directly.
         return FunctionCallResult(
             functionName = "set_current_strategy",
             success      = true,
@@ -371,14 +305,6 @@ class FunctionRouter(
 
     // ── User handlers ─────────────────────────────────────────────────────────
 
-    /**
-     * M5 FIX: Changed `args.str("level")` → `args.str("cefr_level")`.
-     *
-     * FIX: UpdateUserLevelUseCase.invoke(userId) → LevelUpdateResult.
-     * The UseCase auto-calculates the CEFR level from knowledge data.
-     * Gemini's suggested level is acknowledged but the actual level is
-     * determined by the algorithm (vocab/grammar thresholds).
-     */
     private suspend fun handleUpdateUserLevel(
         args:   JsonObject,
         userId: String,
@@ -388,56 +314,42 @@ class FunctionRouter(
             functionName = "update_user_level",
             success      = true,
             resultJson   = buildJsonObject {
-                put("status",         if (result.levelChanged) "updated" else "confirmed")
-                put("level",          result.newLevel.name)
-                put("sub_level",      result.newSubLevel)
-                put("level_changed",  result.levelChanged)
-                put("reason",         result.reason)
+                put("status",        if (result.levelChanged) "updated" else "confirmed")
+                put("level",         result.newLevel.name)
+                put("sub_level",     result.newSubLevel)
+                put("level_changed", result.levelChanged)
+                put("reason",        result.reason)
             }.toString(),
         )
     }
 
-    /**
-     * FIX: UserStatistics field names corrected to match the domain model:
-     *   totalWordsLearned    → totalWords
-     *   cefrLevel            → (removed — not in UserStatistics)
-     *   totalMinutesStudied  → totalMinutes
-     *   currentLesson        → (removed — not in UserStatistics)
-     *   + added more stats from the actual model
-     */
     private suspend fun handleGetUserStatistics(userId: String): FunctionCallResult {
         val stats = getUserStatistics(userId)
         return FunctionCallResult(
             functionName = "get_user_statistics",
             success      = true,
             resultJson   = buildJsonObject {
-                put("total_words",          stats.totalWords)
-                put("active_words",         stats.activeWords)
-                put("passive_words",        stats.passiveWords)
-                put("total_rules",          stats.totalRules)
-                put("known_rules",          stats.knownRules)
-                put("total_sessions",       stats.totalSessions)
-                put("total_minutes",        stats.totalMinutes)
-                put("streak_days",          stats.streakDays)
-                put("average_score",        stats.averageScore)
-                put("avg_pronunciation",    stats.averagePronunciationScore)
-                put("words_for_review",     stats.wordsForReviewToday)
-                put("rules_for_review",     stats.rulesForReviewToday)
-                put("book_progress",        stats.bookProgress)
-                put("current_chapter",      stats.currentChapter)
-                put("total_chapters",       stats.totalChapters)
+                put("total_words",       stats.totalWords)
+                put("active_words",      stats.activeWords)
+                put("passive_words",     stats.passiveWords)
+                put("total_rules",       stats.totalRules)
+                put("known_rules",       stats.knownRules)
+                put("total_sessions",    stats.totalSessions)
+                put("total_minutes",     stats.totalMinutes)
+                put("streak_days",       stats.streakDays)
+                put("average_score",     stats.averageScore)
+                put("avg_pronunciation", stats.averagePronunciationScore)
+                put("words_for_review",  stats.wordsForReviewToday)
+                put("rules_for_review",  stats.rulesForReviewToday)
+                put("book_progress",     stats.bookProgress)
+                put("current_chapter",   stats.currentChapter)
+                put("total_chapters",    stats.totalChapters)
             }.toString(),
         )
     }
 
     // ── Pronunciation handlers ────────────────────────────────────────────────
 
-    /**
-     * M6 FIX: Changed `args["phonetic_errors"]` → `args["problem_sounds"]`.
-     *
-     * FIX: RecordPronunciationResultUseCase.Params field renamed:
-     *   phoneticErrors → problemSounds (matches PronunciationResult model).
-     */
     private suspend fun handleSavePronunciationResult(
         args:      JsonObject,
         userId:    String,
@@ -461,15 +373,6 @@ class FunctionRouter(
         )
     }
 
-    /**
-     * FIX: PhoneticTarget fields corrected:
-     *   exampleWord  → inWords.firstOrNull() (no exampleWord field)
-     *   averageScore → currentScore
-     *   trend        → trend.name (enum)
-     *
-     * FIX: KnowledgeRepository method — using getProblemSounds()
-     * (actual method name in KnowledgeRepository interface).
-     */
     private suspend fun handleGetPronunciationTargets(userId: String): FunctionCallResult {
         val targets = knowledgeRepository.getProblemSounds(userId)
         return FunctionCallResult(
@@ -491,12 +394,8 @@ class FunctionRouter(
     }
 
     // ── Function declarations для Gemini Setup ────────────────────────────────
-    // Вызывается из ContextBuilder при формировании SessionContext.
-    // Каждая строка — валидный JSON объект functionDeclaration по спецификации
-    // ai.google.dev/api/live (BidiGenerateContentSetup.tools).
 
     fun getDeclarations(): List<String> = listOf(
-        // ── Knowledge ─────────────────────────────────────────────────────────
         """
         {
           "name": "save_word_knowledge",
@@ -549,8 +448,6 @@ class FunctionRouter(
           }
         }
         """,
-
-        // ── Book ──────────────────────────────────────────────────────────────
         """
         {
           "name": "get_current_lesson",
@@ -590,8 +487,6 @@ class FunctionRouter(
           }
         }
         """,
-
-        // ── Session ───────────────────────────────────────────────────────────
         """
         {
           "name": "get_words_for_repetition",
@@ -647,8 +542,6 @@ class FunctionRouter(
           }
         }
         """,
-
-        // ── User ──────────────────────────────────────────────────────────────
         """
         {
           "name": "update_user_level",
@@ -678,8 +571,6 @@ class FunctionRouter(
           }
         }
         """,
-
-        // ── Pronunciation ─────────────────────────────────────────────────────
         """
         {
           "name": "save_pronunciation_result",
