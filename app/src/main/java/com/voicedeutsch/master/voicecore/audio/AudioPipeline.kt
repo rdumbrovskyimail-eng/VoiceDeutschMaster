@@ -30,9 +30,9 @@ import kotlinx.coroutines.sync.withLock
  *   Incoming PCM bytes → internal queue → [AudioPlayer]
  *
  * The pipeline exposes:
- *   - [incomingAudioFlow] — raw PCM frames from the microphone (for Gemini)
- *   - [vadStateFlow]      — whether speech is currently detected
- *   - [enqueueAudio]      — feed PCM bytes received from Gemini to the speaker
+ *   - [incomingAudioFlow] / [audioChunks] — raw PCM frames from the microphone (for Gemini)
+ *   - [vadStateFlow]                      — whether speech is currently detected
+ *   - [enqueueAudio]                      — feed PCM bytes received from Gemini to the speaker
  *   - [startRecording] / [stopRecording] / [stopAll] — lifecycle control
  *
  * Lifecycle (C2 contract for VoiceCoreEngineImpl):
@@ -75,10 +75,21 @@ class AudioPipeline(
     private val outgoingChannel = Channel<ByteArray>(capacity = Channel.BUFFERED)
 
     /**
-     * Flow of raw PCM frames captured from the microphone.
-     * The engine collects this flow and streams bytes to Gemini.
+     * Flow of raw PCM frames captured from the microphone after VAD filtering.
+     * Collect this flow to stream audio bytes to Gemini Live API.
+     *
+     * Алиас: [audioChunks] — используется в VoiceCoreEngineImpl.startListening()
+     * для форвардинга через GeminiClient.sendAudioChunk().
      */
     val incomingAudioFlow: Flow<ByteArray> = outgoingChannel.receiveAsFlow()
+
+    // ── ADD: алиас для VoiceCoreEngineImpl ────────────────────────────────────
+    /**
+     * Алиас для [incomingAudioFlow].
+     * VoiceCoreEngineImpl вызывает audioPipeline.audioChunks().collect { ... }
+     * в audioForwardJob для стриминга PCM-чанков в GeminiClient.sendAudioChunk().
+     */
+    fun audioChunks(): Flow<ByteArray> = incomingAudioFlow
 
     // ── Incoming audio queue (Gemini → speaker) ───────────────────────────────
 
@@ -115,6 +126,8 @@ class AudioPipeline(
      * or [enqueueAudio].
      *
      * Safe to call multiple times — subsequent calls are no-ops if already initialized.
+     *
+     * Suspend-совместим: VoiceCoreEngineImpl вызывает его внутри runCatching { }.
      */
     fun initialize() {
         if (_isInitialized) return
@@ -127,6 +140,8 @@ class AudioPipeline(
      * must not be used until [initialize] is called again.
      *
      * Calls [stopAll] internally, then tears down the coroutine scope.
+     *
+     * Suspend-совместим: VoiceCoreEngineImpl вызывает его внутри lifecycleMutex.withLock { }.
      */
     fun release() {
         if (!_isInitialized) return
@@ -143,9 +158,6 @@ class AudioPipeline(
      * H2 FIX: The entire check-then-act sequence is inside [stateMutex].
      */
     fun startRecording() {
-        // Use tryLock + launch to keep this synchronous for callers while
-        // still being safe. If the mutex is held, another transition is in
-        // progress and we skip (the caller will retry via state observation).
         pipelineScope.launch {
             stateMutex.withLock {
                 if (_isRecording) return@withLock
@@ -156,14 +168,12 @@ class AudioPipeline(
 
                 recordingJob = pipelineScope.launch {
                     recorder.audioFrameFlow.collect { pcmShorts ->
-                        // Run VAD on every frame
                         val vadState = vad.process(pcmShorts)
                         _vadStateFlow.value = vadState
 
                         if (vadState == VADProcessor.VadState.SPEECH ||
                             vadState == VADProcessor.VadState.SPEECH_END
                         ) {
-                            // Convert to bytes and enqueue for Gemini
                             val bytes = AudioUtils.shortArrayToByteArray(pcmShorts)
                             outgoingChannel.trySend(bytes)
                         }
@@ -217,7 +227,6 @@ class AudioPipeline(
                 if (!_isPlaying) return@withLock
                 playbackJob?.cancel()
                 playbackJob = null
-                // Drain the queue
                 while (playbackQueue.tryReceive().isSuccess) { /* discard */ }
                 player.stop()
                 _isPlaying = false
@@ -230,34 +239,19 @@ class AudioPipeline(
      *
      * H1 FIX: Cancels the scope's [Job] and recreates it, so the pipeline
      * can be reused for a new session without restarting the app.
-     * Sub-component hardware resources (AudioRecord/AudioTrack) are released
-     * and will be re-acquired on the next [startRecording] / [ensurePlaybackRunning].
      */
     fun stopAll() {
-        // Cancel all child coroutines (recording, playback, VAD)
         scopeJob.cancel()
-
-        // Release hardware
         recorder.release()
         player.release()
-
-        // Drain the playback queue
         while (playbackQueue.tryReceive().isSuccess) { /* discard */ }
-
-        // Reset state
         _isRecording = false
         _isPlaying = false
         recordingJob = null
         playbackJob = null
-
-        // H1 FIX: Recreate scope + job so the pipeline is reusable
         ensureScopeAlive()
-
-        // Recreate sub-components (they were released above)
         recorder = AudioRecorder()
         player = AudioPlayer()
-
-        // Re-create playback queue (old channel may be in a closed state)
         playbackQueue = Channel(
             capacity = PLAYBACK_QUEUE_CAPACITY,
             onBufferOverflow = BufferOverflow.DROP_OLDEST,
