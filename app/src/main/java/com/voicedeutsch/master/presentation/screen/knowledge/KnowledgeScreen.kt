@@ -35,7 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.voicedeutsch.master.domain.usecase.GetWeakPointsUseCase
+import com.voicedeutsch.master.domain.usecase.knowledge.GetWeakPointsUseCase
 import com.voicedeutsch.master.presentation.components.KnowledgeMap
 import com.voicedeutsch.master.presentation.theme.Background
 import org.koin.androidx.compose.koinViewModel
