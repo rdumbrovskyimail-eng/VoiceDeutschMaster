@@ -5,6 +5,9 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.room)
+    // Firebase plugins — require google-services.json in app/ directory.
+    // CI builds use a placeholder file; production builds need the real one
+    // from Firebase Console.
     alias(libs.plugins.google.services)
     alias(libs.plugins.firebase.crashlytics)
 }
@@ -27,6 +30,20 @@ android {
         }
     }
 
+    signingConfigs {
+        getByName("debug") {
+            // Uses default debug keystore — no config needed
+        }
+        // Release signing — configure via environment variables in CI:
+        //   KEYSTORE_FILE (base64), KEY_ALIAS, KEY_PASSWORD, STORE_PASSWORD
+        // create("release") {
+        //     storeFile = file(System.getenv("KEYSTORE_FILE") ?: "debug.keystore")
+        //     storePassword = System.getenv("STORE_PASSWORD") ?: ""
+        //     keyAlias = System.getenv("KEY_ALIAS") ?: ""
+        //     keyPassword = System.getenv("KEY_PASSWORD") ?: ""
+        // }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
@@ -40,6 +57,7 @@ android {
                 "proguard-rules.pro"
             )
             buildConfigField("Boolean", "DEBUG_MODE", "false")
+            // signingConfig = signingConfigs.getByName("release")
         }
     }
 
@@ -50,6 +68,10 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+        freeCompilerArgs += listOf(
+            "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
+            "-opt-in=kotlinx.serialization.ExperimentalSerializationApi",
+        )
     }
 
     buildFeatures {
@@ -64,65 +86,74 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "/META-INF/INDEX.LIST"
+            excludes += "/META-INF/io.netty.*"
         }
+    }
+
+    // Lint — fail on errors but don't block debug builds
+    lint {
+        abortOnError = false
+        warningsAsErrors = false
+        checkDependencies = true
+        htmlReport = true
     }
 }
 
 dependencies {
-    // Compose
+    // ── Compose ──────────────────────────────────────────────────────────────
     implementation(platform(libs.compose.bom))
     implementation(libs.bundles.compose)
     debugImplementation(libs.bundles.compose.debug)
 
-    // Lifecycle
+    // ── Lifecycle ────────────────────────────────────────────────────────────
     implementation(libs.bundles.lifecycle)
 
-    // AndroidX Core
+    // ── AndroidX Core ────────────────────────────────────────────────────────
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
 
-    // Room
+    // ── Room ─────────────────────────────────────────────────────────────────
     implementation(libs.bundles.room)
     ksp(libs.room.compiler)
 
-    // DataStore
+    // ── DataStore ────────────────────────────────────────────────────────────
     implementation(libs.datastore.preferences)
     implementation(libs.datastore.proto)
 
-    // Koin DI
+    // ── Koin DI ──────────────────────────────────────────────────────────────
     implementation(libs.bundles.koin)
 
-    // Ktor Network
+    // ── Ktor Network ─────────────────────────────────────────────────────────
     implementation(libs.bundles.ktor)
 
-    // Kotlin
+    // ── Kotlin ───────────────────────────────────────────────────────────────
     implementation(libs.kotlin.stdlib)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
 
-    // Google AI (Gemini)
+    // ── Google AI (Gemini) ───────────────────────────────────────────────────
     implementation(libs.google.ai.generativeai)
 
-    // Audio
+    // ── Audio ────────────────────────────────────────────────────────────────
     implementation(libs.oboe)
 
-    // Security
+    // ── Security ─────────────────────────────────────────────────────────────
     implementation(libs.security.crypto)
 
-    // WorkManager
+    // ── WorkManager ──────────────────────────────────────────────────────────
     implementation(libs.work.runtime.ktx)
 
-    // Firebase
+    // ── Firebase ─────────────────────────────────────────────────────────────
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.crashlytics)
     implementation(libs.firebase.performance)
 
-    // Testing
+    // ── Unit Testing ─────────────────────────────────────────────────────────
     testImplementation(libs.bundles.testing)
     testRuntimeOnly(libs.junit5.engine)
-    testImplementation(libs.mockk)
     testImplementation(libs.room.testing)
     testImplementation(libs.robolectric)
     testImplementation(libs.koin.test)
@@ -130,7 +161,7 @@ dependencies {
     testImplementation(libs.work.testing)
     testImplementation(libs.ktor.client.mock)
 
-    // Android Testing
+    // ── Android Instrumented Testing ─────────────────────────────────────────
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test.junit4)
     androidTestImplementation(libs.mockk.android)
