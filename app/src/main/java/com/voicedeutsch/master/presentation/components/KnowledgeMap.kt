@@ -87,17 +87,17 @@ fun KnowledgeMap(
 
             // Label — only if rect is big enough
             if (rect.size.width > 40.dp.toPx() && rect.size.height > 24.dp.toPx()) {
-                drawContext.canvas.nativeCanvas.apply {
-                    val paint = android.graphics.Paint().apply {
-                        this.color = android.graphics.Color.WHITE
-                        textSize   = 10.dp.toPx()
-                        isAntiAlias = true
-                        textAlign  = android.graphics.Paint.Align.CENTER
-                    }
-                    val cx = rect.topLeft.x + rect.size.width / 2
-                    // FIX: use paint.textSize (not Canvas.textSize which doesn't exist)
-                    val cy = rect.topLeft.y + rect.size.height / 2 + paint.textSize / 3
-                    drawText(
+                val paint = android.graphics.Paint().apply {
+                    this.color  = android.graphics.Color.WHITE
+                    textSize    = 10.dp.toPx()
+                    isAntiAlias = true
+                    textAlign   = android.graphics.Paint.Align.CENTER
+                }
+                val cx = rect.topLeft.x + rect.size.width / 2
+                val cy = rect.topLeft.y + rect.size.height / 2 + paint.textSize / 3
+                // FIX: use drawIntoCanvas {} — correct Compose API for native canvas access
+                drawIntoCanvas { canvas ->
+                    canvas.nativeCanvas.drawText(
                         topic.key.take(12),
                         cx,
                         cy,
