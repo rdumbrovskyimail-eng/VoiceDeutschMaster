@@ -132,4 +132,4 @@ jobs:
           Посмотрите логи: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         fail_on_unmatched_files: false
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
