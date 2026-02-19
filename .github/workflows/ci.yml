@@ -60,9 +60,7 @@ jobs:
           --parallel \
           --build-cache \
           --no-daemon \
-          --no-configuration-cache \
-          -Dorg.gradle.jvmargs="-Xmx4g -XX:+UseParallelGC" \
-          -Dkotlin.incremental=true
+          --no-configuration-cache
 
     - name: Create Release (success)
       if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
