@@ -44,6 +44,7 @@ import kotlinx.coroutines.withContext
  *   - [lifecycleMutex] serialises all lifecycle transitions
  *   - [_sessionState] is written exclusively via [updateState]
  *   - The main audio loop runs in [sessionJob] and is cancelled by [endSession] / [destroy]
+ *   - [audioForwardJob] forwards AudioPipeline chunks to GeminiClient in parallel
  */
 class VoiceCoreEngineImpl(
     private val contextBuilder: ContextBuilder,
@@ -53,20 +54,23 @@ class VoiceCoreEngineImpl(
     private val buildKnowledgeSummary: BuildKnowledgeSummaryUseCase,
     private val startLearningSession: StartLearningSessionUseCase,
     private val endLearningSession: EndLearningSessionUseCase,
-    // TODO [C3]: Inject GeminiClient here once Session 6 is implemented
-    // private val geminiClient: GeminiClient,
+    private val geminiClient: GeminiClient,
 ) : VoiceCoreEngine {
 
-    // ── Coroutine infrastructure ─────────────────────────────────────────────
+    // ── Coroutine infrastructure ──────────────────────────────────────────────
 
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var sessionJob: Job? = null
+
+    // Forwards raw PCM chunks from AudioPipeline to GeminiClient in real time.
+    // Runs in parallel with sessionJob. Cancelled when recording stops or session ends.
+    private var audioForwardJob: Job? = null
 
     // Serialises lifecycle transitions; never held across suspension points
     // that call external code (to avoid deadlock).
     private val lifecycleMutex = Mutex()
 
-    // ── State ────────────────────────────────────────────────────────────────
+    // ── State ─────────────────────────────────────────────────────────────────
 
     private val _sessionState = MutableStateFlow(VoiceSessionState())
     override val sessionState: StateFlow<VoiceSessionState> = _sessionState.asStateFlow()
@@ -112,12 +116,6 @@ class VoiceCoreEngineImpl(
 
     // ── VoiceCoreEngine: lifecycle ────────────────────────────────────────────
 
-    /**
-     * Prepares the engine for use.
-     *
-     * **C2 contract:** expects [AudioPipeline.initialize] to exist.
-     * If AudioPipeline doesn't have it yet, add it — see AudioPipeline audit fix.
-     */
     override suspend fun initialize(config: GeminiConfig) {
         lifecycleMutex.withLock {
             val current = _sessionState.value.engineState
@@ -143,7 +141,7 @@ class VoiceCoreEngineImpl(
         check(current == VoiceEngineState.IDLE || current == VoiceEngineState.CONNECTED) {
             "startSession() called in invalid state: $current"
         }
-        checkNotNull(config) { "Call initialize() before startSession()" }
+        val cfg = checkNotNull(config) { "Call initialize() before startSession()" }
 
         transitionEngine(VoiceEngineState.CONTEXT_LOADING)
         reconnectAttempts = 0
@@ -164,7 +162,8 @@ class VoiceCoreEngineImpl(
         // 3. Choose strategy
         val strategy = strategySelector.selectStrategy(snapshot)
 
-        // 4. Build full Gemini context
+        // 4. Build full Gemini context (systemPrompt + userContext + bookContext +
+        //    strategyPrompt + functionDeclarations from FunctionRouter)
         val sessionContext = withContext(Dispatchers.IO) {
             contextBuilder.buildSessionContext(
                 userId = userId,
@@ -175,10 +174,13 @@ class VoiceCoreEngineImpl(
             )
         }
 
-        // 5. Connect and transmit context to Gemini
+        // 5. Открыть WebSocket и отправить BidiGenerateContentSetup.
+        //    GeminiClient блокирует до получения setupComplete от сервера.
         transitionEngine(VoiceEngineState.CONNECTING)
         transitionConnection(ConnectionState.CONNECTING)
-        connectToGemini(sessionContext)
+        withContext(Dispatchers.IO) {
+            geminiClient.connect(cfg, sessionContext)
+        }
 
         // 6. Activate session state
         transitionEngine(VoiceEngineState.SESSION_ACTIVE)
@@ -194,7 +196,7 @@ class VoiceCoreEngineImpl(
             )
         }
 
-        // 7. Launch the main audio/response loop in the background
+        // 7. Запустить основной цикл обработки ответов Gemini
         sessionJob = engineScope.launch {
             runSessionLoop()
         }
@@ -202,13 +204,6 @@ class VoiceCoreEngineImpl(
         _sessionState.value
     }
 
-    /**
-     * Ends the current voice session, saves progress, and returns the result.
-     *
-     * **C1 FIX:** Replaced broken `result -> sessionResult` with correct
-     * `runCatching` that returns [SessionResult] as its last expression.
-     * The `.getOrNull()` propagates `null` on failure (error is logged via `onFailure`).
-     */
     override suspend fun endSession(): SessionResult? {
         val sessionId = activeSessionId ?: return null
 
@@ -218,7 +213,9 @@ class VoiceCoreEngineImpl(
             transitionEngine(VoiceEngineState.SESSION_ENDING)
         }
 
-        // Cancel the audio loop (outside the mutex — avoids deadlock with the loop itself)
+        // Отменяем оба job-а вне mutex — избегаем дедлока с их suspend-точками
+        audioForwardJob?.cancel()
+        audioForwardJob = null
         sessionJob?.cancel()
         sessionJob = null
 
@@ -230,14 +227,13 @@ class VoiceCoreEngineImpl(
                     audioPipeline.stopAll()
                     transitionAudio(AudioState.IDLE)
                     transitionConnection(ConnectionState.DISCONNECTED)
-                    disconnectFromGemini()
+                    geminiClient.disconnect()
                     endLearningSession(sessionId)
                 }.onFailure { error ->
                     updateState { copy(errorMessage = "Session save failed: ${error.message}") }
                 }.getOrNull()
             }
 
-            // Clean up regardless of save success
             activeSessionId = null
             activeUserId = null
             transitionEngine(VoiceEngineState.IDLE)
@@ -256,33 +252,45 @@ class VoiceCoreEngineImpl(
         }
     }
 
-    /**
-     * Releases all resources. Call once when the engine is no longer needed.
-     *
-     * **C2 contract:** expects [AudioPipeline.release] to exist.
-     * If AudioPipeline doesn't have it yet, add it — see AudioPipeline audit fix.
-     */
     override suspend fun destroy() {
-        // Best-effort: end session if active, then release everything
         runCatching { endSession() }
         lifecycleMutex.withLock {
+            geminiClient.release()
             audioPipeline.release()
             config = null
         }
         engineScope.cancel()
     }
 
-    // ── VoiceCoreEngine: audio control ───────────────────────────────────────
+    // ── VoiceCoreEngine: audio control ────────────────────────────────────────
 
+    /**
+     * Начинает запись микрофона и запускает [audioForwardJob] —
+     * корутину которая читает PCM-чанки из AudioPipeline и стримит
+     * их в GeminiClient.sendAudioChunk() в реальном времени.
+     */
     override fun startListening() {
         if (_sessionState.value.isSessionActive && !_sessionState.value.isListening) {
             audioPipeline.startRecording()
             transitionAudio(AudioState.RECORDING)
+
+            // Запускаем форвардинг аудио → Gemini
+            audioForwardJob = engineScope.launch(Dispatchers.IO) {
+                audioPipeline.audioChunks().collect { pcmChunk ->
+                    runCatching {
+                        geminiClient.sendAudioChunk(pcmChunk)
+                    }.onFailure { e ->
+                        android.util.Log.w("VoiceCoreEngine", "sendAudioChunk failed: ${e.message}")
+                    }
+                }
+            }
         }
     }
 
     override fun stopListening() {
         if (_sessionState.value.isListening) {
+            audioForwardJob?.cancel()
+            audioForwardJob = null
             audioPipeline.stopRecording()
             transitionAudio(AudioState.IDLE)
         }
@@ -306,38 +314,46 @@ class VoiceCoreEngineImpl(
 
     override suspend fun sendTextMessage(text: String) {
         check(_sessionState.value.isSessionActive) { "No active session" }
-        sendTextToGemini(text)
+        geminiClient.sendText(text)
     }
 
     override suspend fun requestStrategyChange(strategy: LearningStrategy) {
         updateState { copy(currentStrategy = strategy) }
-        val message = buildStrategyChangeMessage(strategy)
-        sendTextToGemini(message)
+        geminiClient.sendText(buildStrategyChangeMessage(strategy))
     }
 
     override suspend fun requestBookNavigation(chapter: Int, lesson: Int) {
         check(chapter > 0 && lesson > 0) { "Chapter and lesson must be positive" }
-        val message = "Перейди к главе $chapter, уроку $lesson."
-        sendTextToGemini(message)
+        geminiClient.sendText("Перейди к главе $chapter, уроку $lesson.")
     }
 
     override suspend fun submitFunctionResult(callId: String, resultJson: String) {
-        sendFunctionResultToGemini(callId, resultJson)
+        geminiClient.sendFunctionResult(callId, resultJson)
     }
 
     // ── Main session loop ─────────────────────────────────────────────────────
 
     /**
-     * Continuously reads audio from [AudioPipeline], forwards it to Gemini,
-     * and dispatches responses (audio + function calls) back to the appropriate handlers.
+     * Непрерывно читает ответы из GeminiClient и диспатчит их:
+     *   - аудио      → AudioPipeline.enqueueAudio()
+     *   - функция    → FunctionRouter.route() → geminiClient.sendFunctionResult()
+     *   - транскрипт → обновляет UI state
      *
-     * The loop runs until the coroutine is cancelled (by [endSession] / [destroy]).
+     * null из receiveNextResponse() означает закрытие канала (disconnect/goAway)
+     * → выходим из цикла → handleSessionError инициирует переподключение.
      */
     private suspend fun runSessionLoop() {
         try {
             while (currentCoroutineContext().isActive) {
-                // Receive the next chunk from Gemini (audio bytes | function call | transcript)
-                val response = receiveGeminiResponse() ?: continue
+                val response = geminiClient.receiveNextResponse()
+
+                // null = канал закрыт (goAway или disconnect)
+                if (response == null) {
+                    if (currentCoroutineContext().isActive) {
+                        handleSessionError(IllegalStateException("Gemini connection closed unexpectedly"))
+                    }
+                    return
+                }
 
                 when {
                     response.hasAudio() -> {
@@ -371,11 +387,8 @@ class VoiceCoreEngineImpl(
                             )
                         }
 
-                        // Propagate session counters from function router results
                         applyFunctionSideEffects(call.name, result)
-
-                        // Return result to Gemini so it can continue generating
-                        sendFunctionResultToGemini(call.id, result.resultJson)
+                        geminiClient.sendFunctionResult(call.id, result.resultJson)
                         updateState { copy(isProcessing = false) }
                     }
 
@@ -390,18 +403,21 @@ class VoiceCoreEngineImpl(
         }
     }
 
-    /** Updates session counters in state when Gemini calls knowledge/book functions. */
-    private fun applyFunctionSideEffects(functionName: String, result: FunctionRouter.FunctionCallResult) {
+    private fun applyFunctionSideEffects(
+        functionName: String,
+        result: FunctionRouter.FunctionCallResult,
+    ) {
         if (!result.success) return
         when (functionName) {
-            "save_word_knowledge" -> updateState { copy(wordsLearnedInSession = wordsLearnedInSession + 1) }
-            "get_words_for_repetition" -> updateState { copy(wordsReviewedInSession = wordsReviewedInSession + 1) }
+            "save_word_knowledge" ->
+                updateState { copy(wordsLearnedInSession = wordsLearnedInSession + 1) }
+            "get_words_for_repetition" ->
+                updateState { copy(wordsReviewedInSession = wordsReviewedInSession + 1) }
             "mark_lesson_complete", "advance_to_next_lesson" ->
                 updateState { copy(exercisesCompleted = exercisesCompleted + 1) }
         }
     }
 
-    /** Handles transient errors with exponential-back-off reconnection. */
     private fun handleSessionError(error: Throwable) {
         val maxAttempts = config?.reconnectMaxAttempts ?: GeminiConfig.DEFAULT_RECONNECT_ATTEMPTS
         engineScope.launch {
@@ -410,14 +426,15 @@ class VoiceCoreEngineImpl(
 
             if (reconnectAttempts < maxAttempts) {
                 reconnectAttempts++
-                val delayMs = (config?.reconnectDelayMs ?: GeminiConfig.DEFAULT_RECONNECT_DELAY_MS) * reconnectAttempts
+                val delayMs =
+                    (config?.reconnectDelayMs ?: GeminiConfig.DEFAULT_RECONNECT_DELAY_MS) *
+                            reconnectAttempts
                 transitionEngine(VoiceEngineState.RECONNECTING)
                 transitionConnection(ConnectionState.RECONNECTING)
                 delay(delayMs)
 
                 runCatching {
                     val uid = activeUserId ?: return@launch
-                    // Re-enter start session without holding the mutex (it was released)
                     startSession(uid)
                 }.onFailure { handleSessionError(it) }
             } else {
@@ -427,47 +444,8 @@ class VoiceCoreEngineImpl(
         }
     }
 
-    // ── Gemini API stubs ─────────────────────────────────────────────────────
-    // TODO [C3]: Replace these stubs with real GeminiClient delegation.
-    //
-    // These are thin delegation points. The actual WebSocket/gRPC connection
-    // will be managed by GeminiClient (Session 6). In production these must be
-    // replaced by injected GeminiClient calls. Without GeminiClient, the app
-    // compiles but voice sessions are non-functional (connect → immediate idle).
-    //
-    // Target implementation:
-    //   private suspend fun connectToGemini(ctx) = geminiClient.connect(config!!, ctx)
-    //   private suspend fun disconnectFromGemini() = geminiClient.disconnect()
-    //   private suspend fun sendTextToGemini(text) = geminiClient.sendText(text)
-    //   private suspend fun sendFunctionResultToGemini(id, json) = geminiClient.sendFunctionResult(id, json)
-    //   private suspend fun receiveGeminiResponse() = geminiClient.receiveNextResponse()
-
-    private suspend fun connectToGemini(context: ContextBuilder.SessionContext) {
-        // TODO: geminiClient.connect(config!!, context)
-    }
-
-    private suspend fun disconnectFromGemini() {
-        // TODO: geminiClient.disconnect()
-    }
-
-    private suspend fun sendTextToGemini(text: String) {
-        // TODO: geminiClient.sendText(text)
-    }
-
-    private suspend fun sendFunctionResultToGemini(callId: String, resultJson: String) {
-        // TODO: geminiClient.sendFunctionResult(callId, resultJson)
-    }
-
-    /** Returns the next response chunk from Gemini, or null if the stream is momentarily empty. */
-    private suspend fun receiveGeminiResponse(): GeminiResponse? {
-        // TODO: return geminiClient.receiveNextResponse()
-        return null
-    }
-
     private fun buildStrategyChangeMessage(strategy: LearningStrategy): String =
         "Пожалуйста, переключись на стратегию ${strategy.displayNameRu} (${strategy.name})."
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun VoiceEngineState.isActiveSession(): Boolean = when (this) {
         VoiceEngineState.SESSION_ACTIVE,
@@ -479,8 +457,7 @@ class VoiceCoreEngineImpl(
     }
 }
 
-// ── Internal Gemini response model ────────────────────────────────────────────
-// Placeholder until GeminiClient (Session 6) provides the real type.
+// ── Gemini response model ─────────────────────────────────────────────────────
 
 internal data class GeminiFunctionCall(
     val id: String,
@@ -496,7 +473,8 @@ internal data class GeminiResponse(
 ) {
     fun hasAudio(): Boolean = audioData != null && audioData.isNotEmpty()
     fun hasFunctionCall(): Boolean = functionCall != null
-    fun hasTranscript(): Boolean = !transcript.isNullOrEmpty() && audioData == null && functionCall == null
+    fun hasTranscript(): Boolean =
+        !transcript.isNullOrEmpty() && audioData == null && functionCall == null
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -505,7 +483,8 @@ internal data class GeminiResponse(
                 functionCall == other.functionCall &&
                 isTurnComplete == other.isTurnComplete &&
                 (audioData == null && other.audioData == null ||
-                        audioData != null && other.audioData != null && audioData.contentEquals(other.audioData))
+                        audioData != null && other.audioData != null &&
+                        audioData.contentEquals(other.audioData))
     }
 
     override fun hashCode(): Int = transcript.hashCode() * 31 + isTurnComplete.hashCode()
