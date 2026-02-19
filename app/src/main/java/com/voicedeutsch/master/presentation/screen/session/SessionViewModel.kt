@@ -10,19 +10,13 @@ import com.voicedeutsch.master.voicecore.session.VoiceSessionState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * ViewModel for [SessionScreen] — implements MVI pattern.
+ * ViewModel for [SessionScreen].
  *
- * Responsibilities:
- *  1. Expose [voiceState] from [VoiceCoreEngine] (raw engine state).
- *  2. Expose [uiState] with UI-only concerns (loading, errors, result).
- *  3. Receive [SessionEvent] from the UI and delegate to the engine.
- *
- * Architecture reference: lines 505-530 (MVI Pattern), 545-560 (SessionState).
+ * Manages voice session lifecycle via [VoiceCoreEngine].
  *
  * @param voiceCoreEngine  The voice engine (injected as singleton by Koin).
  * @param userRepository   Provides the active user ID.
@@ -34,19 +28,11 @@ class SessionViewModel(
     private val preferencesDataStore: UserPreferencesDataStore,
 ) : ViewModel() {
 
-    // ── Engine state (pass-through from VoiceCore) ────────────────────────────
-    /** Raw voice engine state — directly observed from VoiceCoreEngine. */
     val voiceState: StateFlow<VoiceSessionState> = voiceCoreEngine.sessionState
 
-    // ── UI state ──────────────────────────────────────────────────────────────
     private val _uiState = MutableStateFlow(SessionUiState())
     val uiState: StateFlow<SessionUiState> = _uiState.asStateFlow()
 
-    // ── Event handler (MVI entry point) ───────────────────────────────────────
-
-    /**
-     * Dispatch a user intent. Called exclusively from [SessionScreen].
-     */
     fun onEvent(event: SessionEvent) {
         when (event) {
             is SessionEvent.StartSession    -> startSession()
@@ -62,8 +48,6 @@ class SessionViewModel(
         }
     }
 
-    // ── Private handlers ──────────────────────────────────────────────────────
-
     private fun startSession() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
@@ -74,7 +58,9 @@ class SessionViewModel(
                     ?: error("No active user found. Please complete onboarding.")
 
                 // 2. Resolve Gemini API key
-                val apiKey = preferencesDataStore.getGeminiApiKey().firstOrNull()
+                // FIX: getGeminiApiKey() is a suspend fun returning String? directly,
+                // NOT a Flow<String?> — remove the invalid .firstOrNull() call
+                val apiKey = preferencesDataStore.getGeminiApiKey()
                     ?: error("Gemini API key not configured. Go to Settings.")
 
                 // 3. Initialise and start
@@ -153,14 +139,10 @@ class SessionViewModel(
         }
     }
 
-    // ── Cleanup ───────────────────────────────────────────────────────────────
-
     override fun onCleared() {
         super.onCleared()
-        // Destroy the engine when the ViewModel is cleared (user left the screen).
-        // This releases WebSocket connections, audio hardware and coroutine scope.
         viewModelScope.launch {
-            runCatching { voiceCoreEngine.destroy() }
+            runCatching { voiceCoreEngine.endSession() }
         }
     }
 }
