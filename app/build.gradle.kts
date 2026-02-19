@@ -5,9 +5,6 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.room)
-    // Firebase plugins — require google-services.json in app/ directory.
-    // CI builds use a placeholder file; production builds need the real one
-    // from Firebase Console.
     alias(libs.plugins.google.services)
     alias(libs.plugins.firebase.crashlytics)
 }
@@ -91,7 +88,6 @@ android {
         }
     }
 
-    // Lint — fail on errors but don't block debug builds
     lint {
         abortOnError = false
         warningsAsErrors = false
@@ -133,10 +129,15 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
 
-    // ── Google AI (Gemini) ───────────────────────────────────────────────────
-    implementation(libs.google.ai.generativeai)
+    // ── Firebase AI Logic (replaces deprecated google-ai generativeai SDK) ───
+    // ⚠️ MIGRATION REQUIRED: GeminiConfig.kt и VoiceCoreEngineImpl.kt
+    // используют com.google.ai.client.generativeai.* — замените импорты
+    // на com.google.firebase.ai.* после подключения этой зависимости.
+    // Документация: https://firebase.google.com/docs/ai-logic/migrate-to-firebase-ai-logic
+    implementation(libs.firebase.ai)
 
-    // ── Audio ────────────────────────────────────────────────────────────────
+    // ── Audio ─────────────────────────────────────────────────────────────────
+    // Oboe используется в AudioPipeline/AudioPlayer/AudioRecorder
     implementation(libs.oboe)
 
     // ── Security ─────────────────────────────────────────────────────────────
