@@ -1,3 +1,5 @@
+package com.voicedeutsch.master.voicecore.engine
+
 /**
  * Complete configuration for Gemini Live API connection.
  * Architecture lines 562-580 (GeminiConfig).
@@ -41,46 +43,4 @@ data class GeminiConfig(
         const val DEFAULT_RECONNECT_ATTEMPTS = 3
         const val DEFAULT_RECONNECT_DELAY_MS = 2_000L
     }
-}
-FILE 2: voicecore/session/VoiceSessionState.kt
-package com.voicedeutsch.master.voicecore.session
-
-import com.voicedeutsch.master.domain.model.LearningStrategy
-
-/**
- * Internal engine states — mirrors the lifecycle diagram from Architecture lines 533-538.
- * The UI observes [VoiceSessionState] (the data class), not this enum directly.
- */
-enum class VoiceEngineState {
-    IDLE,
-    INITIALIZING,
-    CONTEXT_LOADING,
-    CONNECTING,
-    CONNECTED,
-    SESSION_ACTIVE,
-    LISTENING,
-    PROCESSING,
-    SPEAKING,
-    WAITING,
-    SESSION_ENDING,
-    SAVING,
-    ERROR,
-    RECONNECTING,
-}
-
-/** WebSocket / gRPC connection states. */
-enum class ConnectionState {
-    DISCONNECTED,
-    CONNECTING,
-    CONNECTED,
-    RECONNECTING,
-    FAILED,
-}
-
-/** Current state of the audio subsystem. */
-enum class AudioState {
-    IDLE,
-    RECORDING,
-    PLAYING,
-    PAUSED,
 }
