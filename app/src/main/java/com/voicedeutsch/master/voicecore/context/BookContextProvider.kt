@@ -21,7 +21,8 @@ class BookContextProvider(private val bookRepository: BookRepository) {
             appendLine("Глава $chapter, Урок $lesson")
             appendLine()
             appendLine("ТЕКСТ УРОКА:")
-            appendLine(lessonContent.text)
+            // FIX: LessonContent has no .text field — use .mainContent instead
+            appendLine(lessonContent.mainContent)
 
             if (lessonContent.exerciseMarkers.isNotEmpty()) {
                 appendLine()
