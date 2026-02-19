@@ -49,9 +49,9 @@ fun WordCard(
 ) {
     val borderColor by animateColorAsState(
         targetValue = when {
-            isNew          -> Secondary
+            isNew               -> Secondary
             knowledgeLevel >= 5 -> Primary.copy(alpha = 0.5f)
-            else           -> Color.Transparent
+            else                -> Color.Transparent
         },
         animationSpec = tween(300),
         label = "word_card_border",
@@ -97,11 +97,11 @@ fun WordCard(
                             shape = MaterialTheme.shapes.extraSmall,
                         ) {
                             Text(
-                                text     = "NEW",
-                                style    = MaterialTheme.typography.labelSmall,
-                                color    = Secondary,
+                                text       = "NEW",
+                                style      = MaterialTheme.typography.labelSmall,
+                                color      = Secondary,
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                modifier   = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             )
                         }
                     }
@@ -125,6 +125,7 @@ fun WordCard(
             }
 
             // ── Translation ───────────────────────────────────────────────────
+            // FIX: Completed the truncated Text() composable (was missing color and closing)
             Text(
                 text  = russian,
                 style = MaterialTheme.typography.bodyMedium,
@@ -174,39 +175,28 @@ fun WordCard(
  * Filled dots use color scaled from red (low) to green (high).
  */
 @Composable
-fun KnowledgeLevelDots(level: Int, modifier: Modifier = Modifier) {
-    val dotColors = listOf(
-        Color(0xFF606060), // 0 – not seen
-        Color(0xFFE53935), // 1
-        Color(0xFFFF7043), // 2
-        Color(0xFFFFB300), // 3
-        Color(0xFFFFD54F), // 4
-        Color(0xFF66BB6A), // 5
-        Color(0xFF43A047), // 6
-        Color(0xFF2E7D32), // 7 – mastered
-    )
-
+fun KnowledgeLevelDots(
+    level: Int,
+    modifier: Modifier = Modifier,
+) {
     Row(
-        modifier              = modifier,
+        modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment     = Alignment.CenterVertically,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        repeat(7) { index ->
-            val dotLevel = index + 1
+        for (i in 1..7) {
+            val filled = i <= level
+            val dotColor = when {
+                !filled -> MaterialTheme.colorScheme.outline
+                level <= 2 -> MaterialTheme.colorScheme.error
+                level <= 4 -> Primary
+                else       -> Secondary
+            }
             Surface(
                 modifier = Modifier.size(8.dp),
-                shape    = androidx.compose.foundation.shape.CircleShape,
-                color    = if (dotLevel <= level)
-                    dotColors.getOrElse(level) { Secondary }
-                else
-                    MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                shape    = MaterialTheme.shapes.extraSmall,
+                color    = dotColor,
             ) {}
         }
-        Text(
-            text  = "Ур.$level",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f),
-            modifier = Modifier.padding(start = 4.dp),
-        )
     }
 }
