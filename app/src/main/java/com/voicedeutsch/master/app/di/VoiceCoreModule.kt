@@ -1,5 +1,6 @@
 package com.voicedeutsch.master.app.di
 
+import com.voicedeutsch.master.domain.repository.SecurityRepository
 import com.voicedeutsch.master.voicecore.audio.AudioPipeline
 import com.voicedeutsch.master.voicecore.context.BookContextProvider
 import com.voicedeutsch.master.voicecore.context.ContextBuilder
@@ -26,8 +27,8 @@ import org.koin.dsl.module
  *   FunctionRouter(11 params)
  *   ContextBuilder(systemPromptBuilder, userContextProvider, bookContextProvider, functionRouter, json)
  *   StrategySelector()
- *   GeminiConfig(securityRepository)
- *   GeminiClient(config, httpClient, json)
+ *   GeminiConfig(securityRepository)         ← factory: свежий ключ на каждой сессии
+ *   GeminiClient(config, httpClient, json)   ← factory: пересоздаётся вместе с конфигом
  *   VoiceCoreEngineImpl(contextBuilder, functionRouter, audioPipeline,
  *                        strategySelector, buildKnowledgeSummary,
  *                        startLearningSession, endLearningSession,
@@ -46,7 +47,7 @@ val voiceCoreModule = module {
     single { BookContextProvider(get()) }
 
     // ─── Function routing ─────────────────────────────────────────────────────
-    // Объявляем ДО ContextBuilder — он зависит от FunctionRouter.getDeclarations()
+    // Объявляем ДО ContextBuilder — он зависит от FunctionRouter.getDeclarations().
     // FunctionRouter(updateWordKnowledge, updateRuleKnowledge, getWordsForRepetition,
     //                getWeakPoints, getCurrentLesson, advanceBookProgress,
     //                updateUserLevel, getUserStatistics, recordPronunciation,
@@ -77,23 +78,23 @@ val voiceCoreModule = module {
     single { StrategySelector() }
 
     // ─── Gemini configuration ─────────────────────────────────────────────────
-    // API-ключ читается из SecurityRepository (EncryptedSharedPreferences).
-    // При смене ключа пользователем нужно пересоздать через destroy() + initialize().
-    single {
-        val securityRepository =
-            get<com.voicedeutsch.master.domain.repository.SecurityRepository>()
+    // factory вместо single — ключ читается при каждом обращении,
+    // поэтому смена ключа в SettingsScreen подхватится на следующей сессии
+    // без перезапуска приложения.
+    factory {
         GeminiConfig(
-            apiKey = securityRepository.getGeminiApiKey(),
+            apiKey = get<SecurityRepository>().getGeminiApiKey(),
         )
     }
 
     // ─── Gemini Live WebSocket client ─────────────────────────────────────────
-    // HttpClient и Json объявлены в DataModule и разделяются как single.
-    single {
+    // factory — пересоздаётся вместе с GeminiConfig при каждой новой сессии.
+    // HttpClient и Json — single из DataModule, переиспользуются.
+    factory {
         GeminiClient(
-            config     = get(), // GeminiConfig
-            httpClient = get(), // io.ktor.client.HttpClient из DataModule
-            json       = get(), // kotlinx.serialization.json.Json из DataModule
+            config     = get(), // GeminiConfig (factory)
+            httpClient = get(), // io.ktor.client.HttpClient (single, DataModule)
+            json       = get(), // kotlinx.serialization.json.Json (single, DataModule)
         )
     }
 
@@ -104,14 +105,14 @@ val voiceCoreModule = module {
     //                      geminiClient)
     single<VoiceCoreEngine> {
         VoiceCoreEngineImpl(
-            contextBuilder      = get(),
-            functionRouter      = get(),
-            audioPipeline       = get(),
-            strategySelector    = get(),
-            buildKnowledgeSummary  = get(),
-            startLearningSession   = get(),
-            endLearningSession     = get(),
-            geminiClient        = get(),
+            contextBuilder        = get(),
+            functionRouter        = get(),
+            audioPipeline         = get(),
+            strategySelector      = get(),
+            buildKnowledgeSummary = get(),
+            startLearningSession  = get(),
+            endLearningSession    = get(),
+            geminiClient          = get(), // factory — свежий экземпляр
         )
     }
 }
