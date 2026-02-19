@@ -1,8 +1,10 @@
 package com.voicedeutsch.master.util
 
+import android.content.ContentValues
 import android.content.Context
 import android.os.Build
 import android.os.Environment
+import android.provider.MediaStore
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -30,24 +32,20 @@ class CrashLogger private constructor(
 
         private const val CRASH_PREFIX = "crash_"
         private const val LOGCAT_PREFIX = "logcat_errors_"
+        private const val LOG_FOLDER = "LOG5"
     }
 
-    private val logDirectory: File by lazy {
-        val downloadsDir = Environment.getExternalStoragePublicDirectory(
-            Environment.DIRECTORY_DOWNLOADS
-        )
-        val logsDir = File(downloadsDir, "LOG5")
-        if (!logsDir.exists()) {
-            logsDir.mkdirs()
-        }
-        logsDir
+    // Internal storage — всегда работает, для getAllLogs/getLatestCrashLog
+    private val internalLogDir: File by lazy {
+        File(context.filesDir, LOG_FOLDER).apply { mkdirs() }
     }
 
     private fun install() {
         try {
             Thread.setDefaultUncaughtExceptionHandler(this)
             android.util.Log.i("CrashLogger", "✅ CrashLogger installed")
-            android.util.Log.i("CrashLogger", "📁 Logs directory: ${logDirectory.absolutePath}")
+            android.util.Log.i("CrashLogger", "📁 Download path: Download/$LOG_FOLDER/")
+            android.util.Log.i("CrashLogger", "📁 Internal path: ${internalLogDir.absolutePath}")
         } catch (e: Exception) {
             android.util.Log.e("CrashLogger", "❌ Failed to install", e)
         }
@@ -65,57 +63,92 @@ class CrashLogger private constructor(
 
     private fun saveCrashLog(throwable: Throwable, thread: Thread) {
         val timestamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault()).format(Date())
-        val crashFile = File(logDirectory, "${CRASH_PREFIX}${timestamp}.txt")
+        val fileName = "${CRASH_PREFIX}${timestamp}.txt"
+        val logcatOutput = captureLogcat()
 
-        try {
-            val logcatOutput = captureLogcat()
+        val content = buildString {
+            append("=".repeat(70)).append("\n")
+            append("🔥 CRASH REPORT - VoiceDeutschMaster\n")
+            append("=".repeat(70)).append("\n")
+            append("Timestamp: $timestamp\n")
+            append("Thread: ${thread.name} (ID: ${thread.id})\n")
+            append("Device: ${Build.MANUFACTURER} ${Build.MODEL}\n")
+            append("Android: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})\n")
+            try {
+                append("App Version: ${context.packageManager.getPackageInfo(context.packageName, 0).versionName}\n")
+            } catch (_: Exception) {
+                append("App Version: unknown\n")
+            }
+            append("\n")
 
-            crashFile.writeText(buildString {
-                append("=".repeat(70)).append("\n")
-                append("🔥 CRASH REPORT - VoiceDeutschMaster\n")
-                append("=".repeat(70)).append("\n")
-                append("Timestamp: $timestamp\n")
-                append("Thread: ${thread.name} (ID: ${thread.id})\n")
-                append("Device: ${Build.MANUFACTURER} ${Build.MODEL}\n")
-                append("Android: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})\n")
-                try {
-                    append("App Version: ${context.packageManager.getPackageInfo(context.packageName, 0).versionName}\n")
-                } catch (_: Exception) {
-                    append("App Version: unknown\n")
-                }
-                append("\n")
+            append("=".repeat(70)).append("\n")
+            append("EXCEPTION DETAILS\n")
+            append("=".repeat(70)).append("\n")
+            append("Type: ${throwable.javaClass.simpleName}\n")
+            append("Message: ${throwable.message}\n")
+            append("\nStack Trace:\n")
+            append(throwable.stackTraceToString())
+            append("\n\n")
 
+            throwable.cause?.let { cause ->
                 append("=".repeat(70)).append("\n")
-                append("EXCEPTION DETAILS\n")
+                append("CAUSED BY\n")
                 append("=".repeat(70)).append("\n")
-                append("Type: ${throwable.javaClass.simpleName}\n")
-                append("Message: ${throwable.message}\n")
+                append("Type: ${cause.javaClass.simpleName}\n")
+                append("Message: ${cause.message}\n")
                 append("\nStack Trace:\n")
-                append(throwable.stackTraceToString())
+                append(cause.stackTraceToString())
                 append("\n\n")
+            }
 
-                throwable.cause?.let { cause ->
-                    append("=".repeat(70)).append("\n")
-                    append("CAUSED BY\n")
-                    append("=".repeat(70)).append("\n")
-                    append("Type: ${cause.javaClass.simpleName}\n")
-                    append("Message: ${cause.message}\n")
-                    append("\nStack Trace:\n")
-                    append(cause.stackTraceToString())
-                    append("\n\n")
-                }
-
-                append("=".repeat(70)).append("\n")
-                append("LOGCAT DUMP (Last 1000 lines)\n")
-                append("=".repeat(70)).append("\n")
-                append(logcatOutput)
-            })
-
-            android.util.Log.e("CrashLogger", "✅ Crash log saved: ${crashFile.absolutePath} (${crashFile.length() / 1024} KB)")
-
-        } catch (e: Exception) {
-            android.util.Log.e("CrashLogger", "❌ Failed to write crash log", e)
+            append("=".repeat(70)).append("\n")
+            append("LOGCAT DUMP (Last 1000 lines)\n")
+            append("=".repeat(70)).append("\n")
+            append(logcatOutput)
         }
+
+        // 1. INTERNAL — всегда работает
+        try {
+            File(internalLogDir, fileName).writeText(content)
+            android.util.Log.e("CrashLogger", "✅ Internal: ${internalLogDir.absolutePath}/$fileName")
+        } catch (e: Exception) {
+            android.util.Log.e("CrashLogger", "❌ Internal failed", e)
+        }
+
+        // 2. MEDIASTORE — пишет в Download/LOG5 БЕЗ разрешений
+        try {
+            writeViaMediaStore(fileName, content)
+            android.util.Log.e("CrashLogger", "✅ Download/$LOG_FOLDER/$fileName")
+        } catch (e: Exception) {
+            android.util.Log.e("CrashLogger", "❌ MediaStore failed", e)
+        }
+    }
+
+    /**
+     * Пишет файл в Download/LOG5 через MediaStore.
+     * НЕ требует НИКАКИХ разрешений на Android 10+ (API 29+).
+     */
+    private fun writeViaMediaStore(fileName: String, content: String) {
+        val resolver = context.contentResolver
+
+        val contentValues = ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+            put(MediaStore.Downloads.MIME_TYPE, "text/plain")
+            put(
+                MediaStore.Downloads.RELATIVE_PATH,
+                "${Environment.DIRECTORY_DOWNLOADS}/$LOG_FOLDER"
+            )
+        }
+
+        val uri = resolver.insert(
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+            contentValues
+        ) ?: throw Exception("MediaStore insert returned null URI")
+
+        resolver.openOutputStream(uri)?.use { stream ->
+            stream.write(content.toByteArray(Charsets.UTF_8))
+            stream.flush()
+        } ?: throw Exception("Failed to open OutputStream for URI: $uri")
     }
 
     private fun captureLogcat(): String {
@@ -123,8 +156,7 @@ class CrashLogger private constructor(
             val pid = android.os.Process.myPid()
             val process = Runtime.getRuntime().exec(
                 arrayOf(
-                    "logcat",
-                    "-d",
+                    "logcat", "-d",
                     "-t", "1000",
                     "-v", "threadtime",
                     "--pid=$pid",
@@ -141,34 +173,37 @@ class CrashLogger private constructor(
 
     fun saveLogCatErrors(): File? {
         val timestamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault()).format(Date())
-        val logcatFile = File(logDirectory, "${LOGCAT_PREFIX}${timestamp}.txt")
+        val fileName = "${LOGCAT_PREFIX}${timestamp}.txt"
 
-        return try {
-            logcatFile.writeText(buildString {
-                append("=".repeat(70)).append("\n")
-                append("📋 LOGCAT ERRORS - VoiceDeutschMaster\n")
-                append("=".repeat(70)).append("\n\n")
+        val content = buildString {
+            append("=".repeat(70)).append("\n")
+            append("📋 LOGCAT ERRORS - VoiceDeutschMaster\n")
+            append("=".repeat(70)).append("\n\n")
 
-                val process = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-s", "E:*", "W:*"))
-                process.inputStream.bufferedReader().use { reader ->
-                    var lineCount = 0
-                    reader.forEachLine { line ->
-                        append(line).append("\n")
-                        lineCount++
-                    }
-                    if (lineCount == 0) {
-                        append("\n✅ No errors or warnings found in logcat!\n")
-                    }
+            val process = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-s", "E:*", "W:*"))
+            process.inputStream.bufferedReader().use { reader ->
+                var lineCount = 0
+                reader.forEachLine { line ->
+                    append(line).append("\n")
+                    lineCount++
                 }
-            })
-            logcatFile
+                if (lineCount == 0) append("\n✅ No errors or warnings found!\n")
+            }
+        }
+
+        // Internal
+        val file = File(internalLogDir, fileName)
+        return try {
+            file.writeText(content)
+            try { writeViaMediaStore(fileName, content) } catch (_: Exception) {}
+            file
         } catch (e: Exception) {
             null
         }
     }
 
     fun getAllLogs(): List<LogFile> {
-        return logDirectory.listFiles()?.mapNotNull { file ->
+        return internalLogDir.listFiles()?.mapNotNull { file ->
             when {
                 file.name.startsWith(CRASH_PREFIX) -> LogFile(file, LogType.CRASH, file.lastModified())
                 file.name.startsWith(LOGCAT_PREFIX) -> LogFile(file, LogType.LOGCAT, file.lastModified())
@@ -192,24 +227,30 @@ class CrashLogger private constructor(
             totalCrashes = logs.count { it.type == LogType.CRASH },
             totalLogCats = logs.count { it.type == LogType.LOGCAT },
             totalSizeBytes = logs.sumOf { it.file.length() },
-            location = logDirectory.absolutePath
+            location = "Download/$LOG_FOLDER/"
         )
     }
 
-    fun getCrashLogDirectory(): String = logDirectory.absolutePath
+    fun getCrashLogDirectory(): String = "Download/$LOG_FOLDER/"
     fun startLogging() {
-        android.util.Log.i("CrashLogger", "📁 Logs: ${logDirectory.absolutePath}")
+        android.util.Log.i("CrashLogger", "📁 Logs: Download/$LOG_FOLDER/")
     }
 }
 
 data class LogFile(val file: File, val type: LogType, val timestamp: Long) {
     val name: String get() = file.name
     val sizeKB: Long get() = file.length() / 1024
-    val formattedDate: String get() = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(timestamp))
+    val formattedDate: String get() =
+        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(timestamp))
 }
 
 enum class LogType { CRASH, LOGCAT }
 
-data class LogStats(val totalCrashes: Int, val totalLogCats: Int, val totalSizeBytes: Long, val location: String) {
+data class LogStats(
+    val totalCrashes: Int,
+    val totalLogCats: Int,
+    val totalSizeBytes: Long,
+    val location: String
+) {
     val totalSizeKB: Long get() = totalSizeBytes / 1024
 }
