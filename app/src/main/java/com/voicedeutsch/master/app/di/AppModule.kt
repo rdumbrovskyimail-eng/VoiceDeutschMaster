@@ -4,22 +4,14 @@ import kotlinx.serialization.json.Json
 import org.koin.dsl.module
 
 /**
- * Root list of all Koin modules — passed to [startKoin] in [VoiceDeutschApp].
- * Order matters: appModule must be first (Json is a shared dependency).
+ * Shared [Json] instance used across all layers:
+ * DataStore serialisation, Room converters, Gemini payloads.
+ *
+ * FIX: appModule declared BEFORE appModules to avoid forward-reference error.
+ *      Previously `appModules` referenced `appModule` before it was defined,
+ *      causing "Variable 'appModule' must be initialized" at compile time.
  */
-val appModules = listOf(
-    appModule,
-    dataModule,
-    domainModule,
-    voiceCoreModule,
-    presentationModule,
-)
-
 val appModule = module {
-    /**
-     * Shared [Json] instance used across all layers:
-     * DataStore serialisation, Room converters, Gemini payloads.
-     */
     single {
         Json {
             ignoreUnknownKeys = true
@@ -30,3 +22,15 @@ val appModule = module {
         }
     }
 }
+
+/**
+ * Root list of all Koin modules — passed to [startKoin] in [VoiceDeutschApp].
+ * Order matters: appModule must be first (Json is a shared dependency).
+ */
+val appModules = listOf(
+    appModule,
+    dataModule,
+    domainModule,
+    voiceCoreModule,
+    presentationModule,
+)
