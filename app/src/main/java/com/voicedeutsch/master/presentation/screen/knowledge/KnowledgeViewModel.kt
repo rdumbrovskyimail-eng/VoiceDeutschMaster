@@ -19,7 +19,9 @@ import kotlinx.coroutines.launch
 data class KnowledgeUiState(
     val isLoading: Boolean = true,
     val overview: GetUserKnowledgeUseCase.UserKnowledgeOverview? = null,
-    val weakPoints: GetWeakPointsUseCase.WeakPoints? = null,
+    // FIX: GetWeakPointsUseCase returns List<WeakPoint>, not a WeakPoints wrapper type.
+    //      Changed from GetWeakPointsUseCase.WeakPoints? to List<GetWeakPointsUseCase.WeakPoint>?
+    val weakPoints: List<GetWeakPointsUseCase.WeakPoint>? = null,
     val errorMessage: String? = null,
     val selectedTab: KnowledgeTab = KnowledgeTab.OVERVIEW,
 )
@@ -69,12 +71,13 @@ class KnowledgeViewModel(
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             runCatching {
                 val userId = userRepository.getActiveUserId() ?: error("No active user")
-                val overviewDef   = async { getUserKnowledge(userId) }
-                val weakDef       = async { getWeakPoints(userId) }
+                val overviewDef = async { getUserKnowledge(userId) }
+                val weakDef     = async { getWeakPoints(userId) }
                 _uiState.update {
                     it.copy(
                         isLoading  = false,
                         overview   = overviewDef.await(),
+                        // FIX: weakDef.await() returns List<WeakPoint>, assign directly
                         weakPoints = weakDef.await(),
                     )
                 }
