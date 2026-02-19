@@ -35,25 +35,6 @@ jobs:
         cache-read-only: false
         cache-cleanup: on-success
 
-    - name: Ensure Gradle wrapper exists
-      run: |
-        if [ -f "./gradlew" ]; then
-          chmod +x gradlew
-        fi
-        WRAPPER_JAR="gradle/wrapper/gradle-wrapper.jar"
-        if [ ! -f "$WRAPPER_JAR" ]; then
-          mkdir -p gradle/wrapper
-          GRADLE_VERSION=$(grep -oP 'gradle-\K[0-9.]+' gradle/wrapper/gradle-wrapper.properties || echo "8.12")
-          curl -sL "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -o /tmp/gradle.zip
-          unzip -q -o /tmp/gradle.zip -d /tmp/gradle-extract
-          cp /tmp/gradle-extract/gradle-${GRADLE_VERSION}/lib/gradle-wrapper-*.jar "$WRAPPER_JAR" 2>/dev/null || true
-          rm -rf /tmp/gradle.zip /tmp/gradle-extract
-        fi
-        if [ ! -f "./gradlew" ]; then
-          gradle wrapper --gradle-version 8.12
-          chmod +x gradlew
-        fi
-
     - name: Grant execute permission
       run: chmod +x gradlew
 
