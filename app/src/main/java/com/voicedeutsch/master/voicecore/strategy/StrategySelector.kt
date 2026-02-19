@@ -162,6 +162,11 @@ class StrategySelector {
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
+    /**
+     * G5 FIX: Every strategy now has its own specific reason message instead
+     * of a generic "Продолжение" for the else branch. This gives Gemini and
+     * the UI meaningful context for why each strategy was selected.
+     */
     private fun buildReason(strategy: LearningStrategy, snapshot: KnowledgeSnapshot): String =
         when (strategy) {
             LearningStrategy.REPETITION ->
@@ -171,11 +176,17 @@ class StrategySelector {
             LearningStrategy.GRAMMAR_DRILL ->
                 "Словарный запас (${snapshot.vocabulary.totalWords} слов) опережает грамматику (${snapshot.grammar.totalRules} правил)"
             LearningStrategy.VOCABULARY_BOOST ->
-                "Грамматика (${snapshot.grammar.totalRules} правил) опережает словарный запас"
+                "Грамматика (${snapshot.grammar.totalRules} правил) опережает словарный запас (${snapshot.vocabulary.totalWords} слов)"
             LearningStrategy.PRONUNCIATION ->
                 "Проблемы с произношением: ${snapshot.pronunciation.problemSounds.take(3).joinToString(", ")}"
-            else ->
-                "Продолжение последовательного прохождения книги"
+            LearningStrategy.LINEAR_BOOK ->
+                "Последовательное прохождение книги — глава ${snapshot.bookProgress.currentChapter}, урок ${snapshot.bookProgress.currentLesson}"
+            LearningStrategy.FREE_PRACTICE ->
+                "Свободная разговорная практика для закрепления пройденного материала"
+            LearningStrategy.LISTENING ->
+                "Тренировка восприятия на слух — развитие навыка аудирования"
+            LearningStrategy.ASSESSMENT ->
+                "Оценка текущего уровня знаний для корректировки программы"
         }
 
     companion object {
