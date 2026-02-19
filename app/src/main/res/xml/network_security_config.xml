@@ -1,64 +1,7 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!--
-    H7 FIX: Network security configuration with certificate pinning.
-
-    Previously the <pin-set> was empty (placeholder comment only), meaning
-    no pinning was enforced and the Gemini API key was vulnerable to MITM
-    attacks via compromised Certificate Authorities.
-
-    IMPORTANT: Pin rotation procedure
-      1. Before expiration, fetch new pins:
-         openssl s_client -connect generativelanguage.googleapis.com:443 \
-           -servername generativelanguage.googleapis.com < /dev/null 2>/dev/null \
-           | openssl x509 -pubkey -noout \
-           | openssl pkey -pubin -outform DER \
-           | openssl dgst -sha256 -binary \
-           | openssl enc -base64
-      2. Add the new pin as a second <pin> entry (keep the old one)
-      3. Release the update so all users have both pins
-      4. After rollout, the old pin can be removed in the next release
--->
-<network-security-config>
-
-    <!-- Default: trust system CAs only (no cleartext) -->
-    <base-config cleartextTrafficPermitted="false">
-        <trust-anchors>
-            <certificates src="system" />
-        </trust-anchors>
-    </base-config>
-
-    <!-- Gemini API: pinned certificates -->
-    <domain-config cleartextTrafficPermitted="false">
-        <domain includeSubdomains="true">generativelanguage.googleapis.com</domain>
-        <domain includeSubdomains="true">googleapis.com</domain>
-
-        <!--
-            Pin-set with expiration.
-            When the expiration date passes, pinning is disabled (falls back to
-            system trust) rather than bricking the app.
-
-            TODO: Before production release, generate actual pins using the
-            openssl commands above and replace the placeholders below.
-        -->
-        <pin-set expiration="2027-03-01">
-            <!-- Primary: leaf/intermediate certificate pin -->
-            <pin digest="SHA-256">REPLACE_WITH_ACTUAL_PRIMARY_PIN_BASE64</pin>
-
-            <!-- Backup: Google Trust Services root CA (GTS Root R1) -->
-            <pin digest="SHA-256">REPLACE_WITH_ACTUAL_BACKUP_PIN_BASE64</pin>
-        </pin-set>
-
-        <trust-anchors>
-            <certificates src="system" />
-        </trust-anchors>
-    </domain-config>
-
-    <!-- Debug overrides: allow user-installed CAs for proxy tools -->
-    <debug-overrides>
-        <trust-anchors>
-            <certificates src="system" />
-            <certificates src="user" />
-        </trust-anchors>
-    </debug-overrides>
-
-</network-security-config>
+<domain-config cleartextTrafficPermitted="false">
+    <domain includeSubdomains="true">generativelanguage.googleapis.com</domain>
+    <domain includeSubdomains="true">googleapis.com</domain>
+    <trust-anchors>
+        <certificates src="system" />
+    </trust-anchors>
+</domain-config>
