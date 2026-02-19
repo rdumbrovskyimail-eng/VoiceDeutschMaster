@@ -34,12 +34,6 @@ serialization = "1.10.0"
 # Gemini Live API for real-time voice/streaming sessions.
 # See: https://firebase.google.com/docs/ai-logic
 
-# Audio
-# ⚠️ AUDIT NOTE: Oboe is declared but not visibly used — the audio
-# layer currently uses AudioTrack/AudioRecord directly. Either integrate
-# Oboe for lower-latency audio or remove this dependency to reduce APK size.
-oboe = "2.0.0"
-
 # Security
 # M8 NOTE: security-crypto has no stable release as of Feb 2026.
 # 1.1.0-alpha07 is the latest available version. Alpha APIs may change
@@ -152,9 +146,6 @@ ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
 # Firebase AI Logic (replaces deprecated google-ai generativeai)
 # ⚠️ Add firebase-ai to your firebase-bom import block in build.gradle
 firebase-ai = { module = "com.google.firebase:firebase-ai" }
-
-# Audio
-oboe = { module = "com.google.oboe:oboe", version.ref = "oboe" }
 
 # Security
 security-crypto = { module = "androidx.security:security-crypto", version.ref = "security-crypto" }
