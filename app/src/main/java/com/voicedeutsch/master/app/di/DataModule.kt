@@ -9,13 +9,23 @@ import com.voicedeutsch.master.data.local.file.BookFileReader
 import com.voicedeutsch.master.data.repository.BookRepositoryImpl
 import com.voicedeutsch.master.data.repository.KnowledgeRepositoryImpl
 import com.voicedeutsch.master.data.repository.ProgressRepositoryImpl
+import com.voicedeutsch.master.data.repository.SecurityRepositoryImpl
 import com.voicedeutsch.master.data.repository.SessionRepositoryImpl
 import com.voicedeutsch.master.data.repository.UserRepositoryImpl
 import com.voicedeutsch.master.domain.repository.BookRepository
 import com.voicedeutsch.master.domain.repository.KnowledgeRepository
 import com.voicedeutsch.master.domain.repository.ProgressRepository
+import com.voicedeutsch.master.domain.repository.SecurityRepository
 import com.voicedeutsch.master.domain.repository.SessionRepository
 import com.voicedeutsch.master.domain.repository.UserRepository
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.plugins.logging.LogLevel
+import io.ktor.client.plugins.logging.Logging
+import io.ktor.client.plugins.websocket.WebSockets
+import io.ktor.serialization.kotlinx.json.json
+import kotlinx.serialization.json.Json
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
 
@@ -27,15 +37,42 @@ import org.koin.dsl.module
  */
 val dataModule = module {
 
+    // ─── Kotlinx Json ────────────────────────────────────────────────────────
+    // Shared single — используется в репозиториях, BookFileReader и GeminiClient.
+    single {
+        Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+            encodeDefaults = true
+        }
+    }
+
+    // ─── Ktor HttpClient ─────────────────────────────────────────────────────
+    // Shared single — используется в GeminiClient для WebSocket-соединения.
+    // WebSockets plugin обязателен для Gemini Live API.
+    single {
+        HttpClient(OkHttp) {
+            install(WebSockets)
+            install(ContentNegotiation) {
+                json(get())
+            }
+            install(Logging) {
+                level = LogLevel.HEADERS // В release сменить на LogLevel.NONE
+            }
+        }
+    }
+
+    // ─── Security ────────────────────────────────────────────────────────────
+    // SecurityRepository хранит API-ключ в EncryptedSharedPreferences.
+    // Передаётся в VoiceCoreModule для создания GeminiConfig.
+    single<SecurityRepository> {
+        SecurityRepositoryImpl(androidContext())
+    }
+
     // ─── Database ────────────────────────────────────────────────────────────
 
     /**
      * H5 FIX: Replaced [fallbackToDestructiveMigration] with explicit migrations.
-     *
-     * Destructive migration wipes the entire database on any schema change —
-     * for a language-learning app this means losing all user progress, SRS
-     * intervals, word knowledge, session history, and book progress. This is
-     * catastrophic for the core value proposition.
      *
      * Current approach:
      *   - Explicit [Migration] objects are registered for every schema bump.
@@ -44,12 +81,6 @@ val dataModule = module {
      *     real user data exists. Set [LAST_DESTRUCTIVE_VERSION] to the last
      *     pre-release schema version.
      *   - For all subsequent versions, a proper migration MUST be written.
-     *
-     * To add a new migration:
-     *   1. Bump the version in [AppDatabase] @Database annotation
-     *   2. Add a MIGRATION_X_Y val below with the required ALTER/CREATE statements
-     *   3. Register it in .addMigrations(...)
-     *   4. Write a test in DatabaseMigrationTest to verify the migration
      */
     single {
         Room.databaseBuilder(
@@ -59,13 +90,9 @@ val dataModule = module {
         )
             .addMigrations(
                 // Register all migrations here as they are created.
-                // Example:
                 // MIGRATION_1_2,
                 // MIGRATION_2_3,
             )
-            // Only allow destructive migration from pre-release versions.
-            // Once the app ships to real users, increase this threshold ONLY
-            // if you are absolutely sure no production user has that version.
             .fallbackToDestructiveMigrationFrom(
                 *(1..LAST_DESTRUCTIVE_VERSION).toList().toIntArray()
             )
@@ -91,7 +118,6 @@ val dataModule = module {
     // ─── Repositories ────────────────────────────────────────────────────────
 
     // UserRepositoryImpl(userDao, knowledgeDao, wordDao, preferencesDataStore, json)
-    // NOTE: wordDao added for H4 fix (totalWords now reads from dictionary, not knowledge)
     single<UserRepository> {
         UserRepositoryImpl(get(), get(), get(), get(), get())
     }
@@ -120,7 +146,7 @@ val dataModule = module {
     }
 }
 
-// ── Migration constants ──────────────────────────────────────────────────────
+// ── Migration constants ───────────────────────────────────────────────────────
 
 /**
  * The last schema version for which destructive migration is acceptable.
@@ -129,19 +155,17 @@ val dataModule = module {
  */
 private const val LAST_DESTRUCTIVE_VERSION = 1
 
-// ── Migration examples ───────────────────────────────────────────────────────
+// ── Migration examples ────────────────────────────────────────────────────────
 // Uncomment and adapt when the schema evolves.
 
 // private val MIGRATION_1_2 = object : Migration(1, 2) {
 //     override fun migrate(db: SupportSQLiteDatabase) {
-//         // Example: add a column to the users table
 //         db.execSQL("ALTER TABLE users ADD COLUMN avatar_url TEXT DEFAULT NULL")
 //     }
 // }
 
 // private val MIGRATION_2_3 = object : Migration(2, 3) {
 //     override fun migrate(db: SupportSQLiteDatabase) {
-//         // Example: create a new table
 //         db.execSQL("""
 //             CREATE TABLE IF NOT EXISTS pronunciation_records (
 //                 id TEXT PRIMARY KEY NOT NULL,
