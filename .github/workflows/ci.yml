@@ -60,6 +60,7 @@ jobs:
           --parallel \
           --build-cache \
           --no-daemon \
+          --no-configuration-cache \
           -Dorg.gradle.jvmargs="-Xmx4g -XX:+UseParallelGC" \
           -Dkotlin.incremental=true
 
