@@ -36,6 +36,22 @@ interface WordDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertWords(words: List<WordEntity>)
 
+    /** Total words in dictionary (for statistics). */
     @Query("SELECT COUNT(*) FROM words")
     suspend fun getWordCount(): Int
+
+    /**
+     * FIX H4: UserRepositoryImpl calls getTotalWordCount() (not getWordCount()).
+     * Added as an alias to keep the DAO backward-compatible.
+     */
+    @Query("SELECT COUNT(*) FROM words")
+    suspend fun getTotalWordCount(): Int
+
+    /**
+     * FIX H4: UserRepositoryImpl calls wordDao.getTotalRuleCount() to get
+     * the total grammar rules count. Queries grammar_rules table directly
+     * so we avoid injecting GrammarRuleDao into UserRepositoryImpl.
+     */
+    @Query("SELECT COUNT(*) FROM grammar_rules")
+    suspend fun getTotalRuleCount(): Int
 }
