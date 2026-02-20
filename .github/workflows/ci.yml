@@ -55,6 +55,7 @@ jobs:
 
     - name: Build Debug APK
       run: |
+        set -o pipefail
         ./gradlew assembleDebug \
           --parallel \
           --build-cache \
@@ -65,6 +66,18 @@ jobs:
       if: always()
       run: |
         grep -E "error:|ERROR|FAILED|Exception" build_log.txt > build_errors.txt || echo "No errors found" > build_errors.txt
+
+    - name: Verify APK exists
+      if: success()
+      run: |
+        APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -1)
+        if [ -z "$APK" ]; then
+          echo "❌ APK not found after successful build!"
+          cat build_errors.txt
+          exit 1
+        fi
+        echo "✅ APK found: $APK"
+        ls -lh app/build/outputs/apk/debug/
 
     - name: Create Release (success)
       if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -78,7 +91,7 @@ jobs:
           **Build #:** ${{ github.run_number }}
           ### 📦 Скачайте APK ниже ⬇️
         files: app/build/outputs/apk/debug/*.apk
-        fail_on_unmatched_files: false
+        fail_on_unmatched_files: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
