@@ -1,5 +1,8 @@
 package com.voicedeutsch.master.presentation.screen.settings
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
@@ -7,6 +10,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
@@ -14,6 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -21,10 +28,16 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.voicedeutsch.master.presentation.theme.Background
+import com.voicedeutsch.master.util.AppLogger
+import com.voicedeutsch.master.util.CrashLogger
 import org.koin.androidx.compose.koinViewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Settings screen — API key, theme, session duration, daily goal, reminders.
+ * + секция "Диагностика" с кнопкой сохранения лога.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,11 +45,33 @@ fun SettingsScreen(
     onBack: () -> Unit,
     viewModel: SettingsViewModel = koinViewModel(),
 ) {
+    val context = LocalContext.current
     val state by viewModel.uiState.collectAsState()
     val focusManager = LocalFocusManager.current
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Show snackbar for success/error
+    // ── Состояние диагностики ─────────────────────────────────────────────────
+    var isSavingLog by remember { mutableStateOf(false) }
+    var logStats by remember { mutableStateOf(CrashLogger.getInstance()?.getStats()) }
+
+    // ── SAF-пикер: выбор места для сохранения лога ───────────────────────────
+    val saveLogLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/plain"),
+    ) { uri ->
+        isSavingLog = false
+        if (uri == null) return@rememberLauncherForActivityResult
+
+        val appLogger = AppLogger.getInstance()
+        val success = appLogger?.saveToUri(uri) ?: false
+
+        val message = if (success) "✅ Лог сохранён успешно" else "❌ Не удалось сохранить лог"
+        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+
+        // Обновляем статистику после сохранения
+        logStats = CrashLogger.getInstance()?.getStats()
+    }
+
+    // ── Snackbar для сообщений настроек ──────────────────────────────────────
     LaunchedEffect(state.successMessage, state.errorMessage) {
         val msg = state.successMessage ?: state.errorMessage
         if (msg != null) {
@@ -173,8 +208,118 @@ fun SettingsScreen(
                 }
             }
 
+            // ── 🐛 Диагностика ────────────────────────────────────────────────
+            DiagnosticsSection(
+                logStats   = logStats,
+                isSaving   = isSavingLog,
+                onSaveLog  = {
+                    isSavingLog = true
+                    val ts = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault()).format(Date())
+                    saveLogLauncher.launch("voicedeutsch_log_$ts.txt")
+                },
+            )
+
             Spacer(Modifier.height(16.dp))
         }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Секция диагностики
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun DiagnosticsSection(
+    logStats: com.voicedeutsch.master.util.LogStats?,
+    isSaving: Boolean,
+    onSaveLog: () -> Unit,
+) {
+    SettingsSection(title = "Диагностика") {
+
+        // Статус AppLogger
+        val appLogger = AppLogger.getInstance()
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(
+                Icons.Default.Info,
+                contentDescription = null,
+                tint = if (appLogger?.isRunning == true)
+                    Color(0xFF22C55E) else Color(0xFFF59E0B),
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = if (appLogger?.isRunning == true)
+                    "Логирование активно · ${appLogger.lineCount()} строк в буфере"
+                else
+                    "Логирование не запущено",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        // Статистика сохранённых логов
+        if (logStats != null) {
+            Spacer(Modifier.height(4.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(
+                    Icons.Default.BugReport,
+                    contentDescription = null,
+                    tint = if (logStats.totalCrashes > 0) Color(0xFFEF4444)
+                           else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = buildString {
+                        append("Крэшей: ${logStats.totalCrashes}")
+                        append(" · Сессий: ${logStats.totalSessions}")
+                        append(" · ${logStats.totalSizeKB} КБ на диске")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // ── Кнопка «Сохранить лог» ────────────────────────────────────────
+        Button(
+            onClick  = onSaveLog,
+            enabled  = !isSaving && appLogger?.isRunning == true,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            if (isSaving) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    strokeWidth = 2.dp,
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("Открываю проводник...")
+            } else {
+                Icon(
+                    Icons.Default.Download,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("Сохранить лог")
+            }
+        }
+
+        Text(
+            text = "Откроет проводник для выбора места сохранения.\n" +
+                   "При крэше лог сохраняется автоматически.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+        )
     }
 }
 
