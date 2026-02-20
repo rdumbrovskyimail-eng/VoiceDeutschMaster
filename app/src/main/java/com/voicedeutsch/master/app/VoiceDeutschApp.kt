@@ -5,6 +5,7 @@ import android.util.Log
 import com.google.firebase.FirebaseApp
 import com.voicedeutsch.master.BuildConfig
 import com.voicedeutsch.master.app.di.appModules
+import com.voicedeutsch.master.util.AppLogger
 import com.voicedeutsch.master.util.CrashLogger
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
@@ -14,35 +15,37 @@ import org.koin.core.logger.Level
 /**
  * Application entry point.
  *
- * Responsibilities:
- *  1. Initialise CrashLogger BEFORE anything else (catches startup crashes).
- *  2. Initialise Koin DI with all module graphs.
- *  3. Initialise Firebase for crash reporting and analytics.
- *
- * Registered in AndroidManifest.xml as `android:name=".app.VoiceDeutschApp"`.
+ * Порядок инициализации (критически важен):
+ *  1. [CrashLogger] — ПЕРВЫМ, до super(). Перехватывает крэши с самого старта.
+ *  2. [AppLogger]   — ВТОРЫМ, сразу после. Начинает запись logcat в кольцевой буфер.
+ *  3. super.onCreate()
+ *  4. Koin DI
+ *  5. Firebase
  */
 class VoiceDeutschApp : Application() {
 
     override fun onCreate() {
-        // 🔥 КРИТИЧЕСКИ ВАЖНО: Инициализируем CrashLogger ПЕРВЫМ делом
-        // ДО вызова super.onCreate() и любой другой инициализации
+        // 🔥 1. CrashLogger — перехватываем крэши ДО всего остального
         initCrashLogger()
+
+        // 📡 2. AppLogger — фоновый перехват logcat сразу после CrashLogger
+        initAppLogger()
 
         super.onCreate()
 
-        // ── Koin DI ──────────────────────────────────────────────────────────
+        // ── 3. Koin DI ───────────────────────────────────────────────────────
         startKoin {
             androidLogger(if (BuildConfig.DEBUG) Level.DEBUG else Level.NONE)
             androidContext(this@VoiceDeutschApp)
             modules(appModules)
         }
 
-        // ── Firebase ─────────────────────────────────────────────────────────
+        // ── 4. Firebase ──────────────────────────────────────────────────────
         initFirebase()
     }
 
     /**
-     * 🔥 Инициализация системы перехвата крашей.
+     * 🔥 Инициализация перехватчика крэшей.
      * Вызывается ДО всего остального — если упадёт Koin, Firebase или что угодно,
      * краш будет сохранён в файл.
      */
@@ -52,11 +55,8 @@ class VoiceDeutschApp : Application() {
                 startLogging()
                 cleanOldLogs(keepCount = 20)
             }
-            Log.d(TAG, "✅ CrashLogger initialized successfully")
-            Log.d(
-                TAG,
-                "📁 Crash logs location: ${CrashLogger.getInstance()?.getCrashLogDirectory()}",
-            )
+            Log.d(TAG, "✅ CrashLogger initialized")
+            Log.d(TAG, "📁 Crash logs: ${CrashLogger.getInstance()?.getCrashLogDirectory()}")
         } catch (e: Exception) {
             // Даже если инициализация крашлоггера упала — не роняем приложение
             Log.e(TAG, "❌ Failed to init CrashLogger", e)
@@ -64,9 +64,22 @@ class VoiceDeutschApp : Application() {
     }
 
     /**
-     * Initializes Firebase services (Crashlytics, Analytics, Performance).
-     *
-     * Wrapped in try/catch so builds without google-services.json don't crash.
+     * 📡 Инициализация и запуск фонового логгера.
+     * AppLogger читает logcat этого процесса в реальном времени и хранит
+     * последние BUFFER_CAPACITY строк в памяти. При крэше буфер сбрасывается на диск.
+     */
+    private fun initAppLogger() {
+        try {
+            AppLogger.init(this).start()
+            Log.d(TAG, "✅ AppLogger started (background logcat capture active)")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to init AppLogger", e)
+        }
+    }
+
+    /**
+     * Инициализирует Firebase (Crashlytics, Analytics).
+     * Обёрнуто в try/catch — билды без google-services.json не падают.
      */
     private fun initFirebase() {
         try {
