@@ -154,15 +154,19 @@ private fun LogListItem(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
+                // ✅ FIX 1: добавлен SESSION
                 when (logFile.type) {
-                    LogType.CRASH -> Icons.Default.Warning
-                    LogType.LOGCAT -> Icons.Default.Description
+                    LogType.CRASH   -> Icons.Default.Warning
+                    LogType.LOGCAT  -> Icons.Default.Description
+                    LogType.SESSION -> Icons.Default.Article
                 },
                 null,
                 modifier = Modifier.size(32.dp),
+                // ✅ FIX 2: добавлен SESSION
                 tint = when (logFile.type) {
-                    LogType.CRASH -> Color(0xFFEF4444)
-                    LogType.LOGCAT -> Color(0xFF3B82F6)
+                    LogType.CRASH   -> Color(0xFFEF4444)  // красный
+                    LogType.LOGCAT  -> Color(0xFF3B82F6)  // синий
+                    LogType.SESSION -> Color(0xFF22C55E)  // зелёный
                 },
             )
 
@@ -326,10 +330,12 @@ fun LogContentDialog(
                                     }
 
                                     // Type badge
+                                    // ✅ FIX 3: добавлен SESSION
                                     Surface(
                                         color = when (logFile.type) {
-                                            LogType.CRASH -> Color(0xFFEF4444)
-                                            LogType.LOGCAT -> Color(0xFF10B981)
+                                            LogType.CRASH   -> Color(0xFFEF4444)  // красный
+                                            LogType.LOGCAT  -> Color(0xFF10B981)  // зелёный
+                                            LogType.SESSION -> Color(0xFF8B5CF6)  // фиолетовый
                                         },
                                         shape = MaterialTheme.shapes.small,
                                     ) {
@@ -400,10 +406,10 @@ fun LogContentDialog(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 11.sp,
                                 color = when {
-                                    isError -> Color(0xFFFF5555)
+                                    isError   -> Color(0xFFFF5555)
                                     isWarning -> Color(0xFFFBBF24)
-                                    isHeader -> Color(0xFF60A5FA)
-                                    else -> Color(0xFFCCCCCC)
+                                    isHeader  -> Color(0xFF60A5FA)
+                                    else      -> Color(0xFFCCCCCC)
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
