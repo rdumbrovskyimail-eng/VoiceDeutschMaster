@@ -390,6 +390,14 @@ class KnowledgeRepositoryImpl(
     override suspend fun getPerfectPronunciationCount(userId: String): Int =
         knowledgeDao.getPerfectPronunciationCount(userId)
 
+    override suspend fun recalculateOverdueItems(userId: String) {
+        val now = DateUtils.nowTimestamp()
+        // Words overdue — already handled by getWordsForReview query
+        // This method exists as a hook for future SRS interval recalculation
+        // Currently a no-op: SRS intervals are recalculated on-demand when
+        // items are reviewed via upsertWordKnowledge / upsertRuleKnowledge
+    }
+
     // ==========================================
     // KNOWLEDGE SNAPSHOT
     // ==========================================
