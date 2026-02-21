@@ -56,4 +56,7 @@ interface BookRepository {
 
     data class SearchHit(val chapter: Int, val lesson: Int, val snippet: String)
     suspend fun searchContent(query: String): List<SearchHit>
+
+    data class SearchHit(val chapter: Int, val lesson: Int, val snippet: String)
+    suspend fun searchContent(query: String): List<SearchHit>
 }
