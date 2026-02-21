@@ -48,13 +48,8 @@ fun OnboardingScreen(
     // Navigate away when completed
     LaunchedEffect(state.step) {
         if (state.step == OnboardingStep.DONE) {
-            viewModel.onEvent(OnboardingEvent.Complete)
+            onOnboardingComplete()
         }
-    }
-
-    // Observe completion flag
-    LaunchedEffect(Unit) {
-        // Re-check after Complete event fires
     }
 
     val focusManager = LocalFocusManager.current
