@@ -75,6 +75,7 @@ class GeminiClient(
 
     private var wsSession: WebSocketSession? = null
     private val clientScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var connectionJob: Job? = null
 
     // Канал входящих ответов от сервера (заполняется в receiveLoop)
     private val responseChannel = Channel<GeminiResponse>(RESPONSE_CHANNEL_CAPACITY)
@@ -96,24 +97,19 @@ class GeminiClient(
         context: ContextBuilder.SessionContext,
     ) {
         setupComplete = false
-
-        httpClient.webSocket(
-            host = WS_HOST,
-            path = "$WS_PATH?key=${config.apiKey}",
-        ) {
-            wsSession = this
-
-            // 1. Отправить Setup — первое сообщение, единственное в жизни сессии
-            sendSetup(context, config)
-
-            // 2. Запустить фоновый цикл получения сообщений от сервера
-            clientScope.launch {
+        connectionJob = clientScope.launch {
+            httpClient.webSocket(
+                host = WS_HOST,
+                path = "$WS_PATH?key=${config.apiKey}",
+            ) {
+                wsSession = this
+                sendSetup(context, config)
                 receiveLoop()
             }
-
-            // 3. Ждать подтверждения setupComplete (сервер ответит быстро)
-            waitForSetupComplete()
+            wsSession = null
+            responseChannel.close()
         }
+        waitForSetupComplete()
     }
 
     /** Закрывает WebSocket-соединение. */
@@ -121,7 +117,8 @@ class GeminiClient(
         wsSession?.close()
         wsSession = null
         setupComplete = false
-        responseChannel.tryReceive() // дренировать остатки
+        connectionJob?.cancel()
+        connectionJob = null
     }
 
     /**
