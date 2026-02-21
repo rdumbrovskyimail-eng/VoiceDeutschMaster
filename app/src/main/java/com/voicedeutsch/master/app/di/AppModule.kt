@@ -1,6 +1,6 @@
 package com.voicedeutsch.master.app.di
 
-import kotlinx.serialization.json.Json
+import com.voicedeutsch.master.data.local.JsonFactory
 import org.koin.dsl.module
 
 /**
@@ -12,15 +12,7 @@ import org.koin.dsl.module
  *      causing "Variable 'appModule' must be initialized" at compile time.
  */
 val appModule = module {
-    single {
-        Json {
-            ignoreUnknownKeys = true
-            prettyPrint = false
-            encodeDefaults = true
-            isLenient = true
-            coerceInputValues = true
-        }
-    }
+    single { JsonFactory.instance }
 }
 
 /**
