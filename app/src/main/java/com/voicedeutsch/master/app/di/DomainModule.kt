@@ -62,8 +62,8 @@ val domainModule = module {
     factory { UpdateRuleKnowledgeUseCase(get()) }
     // UpdatePhraseKnowledgeUseCase(knowledgeRepository)
     factory { UpdatePhraseKnowledgeUseCase(get()) }
-    // BuildKnowledgeSummaryUseCase(knowledgeRepository, sessionRepository, bookRepository, progressRepository)
-    factory { BuildKnowledgeSummaryUseCase(get(), get(), get(), get()) }
+    // BuildKnowledgeSummaryUseCase(knowledgeRepository, sessionRepository, bookRepository, progressRepository, getWeakPointsUseCase)
+    factory { BuildKnowledgeSummaryUseCase(get(), get(), get(), get(), get()) }
     // GetUserKnowledgeUseCase(knowledgeRepository)
     factory { GetUserKnowledgeUseCase(get()) }
     // GetWordsForRepetitionUseCase(knowledgeRepository)
@@ -92,8 +92,8 @@ val domainModule = module {
     factory { StartLearningSessionUseCase(get(), get(), get()) }
     // EndLearningSessionUseCase(sessionRepository, userRepository, bookRepository)
     factory { EndLearningSessionUseCase(get(), get(), get()) }
-    // SelectStrategyUseCase(knowledgeRepository, bookRepository, sessionRepository, userRepository)
-    factory { SelectStrategyUseCase(get(), get(), get(), get()) }
+    // SelectStrategyUseCase(knowledgeRepository, bookRepository, sessionRepository, userRepository, getWeakPointsUseCase)
+    factory { SelectStrategyUseCase(get(), get(), get(), get(), get()) }
     // GetNextExerciseUseCase(bookRepository, knowledgeRepository)
     factory { GetNextExerciseUseCase(get(), get()) }
     // EvaluateAnswerUseCase()
