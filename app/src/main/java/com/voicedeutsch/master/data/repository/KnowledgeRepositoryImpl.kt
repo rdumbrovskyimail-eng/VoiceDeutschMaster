@@ -390,6 +390,9 @@ class KnowledgeRepositoryImpl(
     override suspend fun getPerfectPronunciationCount(userId: String): Int =
         knowledgeDao.getPerfectPronunciationCount(userId)
 
+    override suspend fun getRecentPronunciationRecords(userId: String, limit: Int): List<PronunciationResult> =
+        knowledgeDao.getRecentPronunciationRecords(userId, limit).map { it.toDomain(json) }
+
     override suspend fun recalculateOverdueItems(userId: String) {
         val now = DateUtils.nowTimestamp()
         // Words overdue — already handled by getWordsForReview query
