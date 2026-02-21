@@ -59,7 +59,7 @@ class AnalyzeSessionResultsUseCase(
         // Most used strategy
         val strategyCounts = sessions
             .flatMap { it.strategiesUsed }
-            .groupingBy { it.name }
+            .groupingBy { it }
             .eachCount()
         val mostUsed = strategyCounts.maxByOrNull { it.value }?.key ?: "LINEAR_BOOK"
 
@@ -84,8 +84,9 @@ class AnalyzeSessionResultsUseCase(
     }
 
     private fun errorRate(session: LearningSession): Float {
-        val total = session.wordsLearned + session.wordsReviewed
-        return if (total == 0) 0f else session.mistakeCount.toFloat() / total
+        val mistakes = session.exercisesCompleted - session.exercisesCorrect
+        return if (session.exercisesCompleted == 0) 0f
+        else mistakes.toFloat() / session.exercisesCompleted
     }
 
     private fun calculateStreak(sessions: List<LearningSession>): Int {
