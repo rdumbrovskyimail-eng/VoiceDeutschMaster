@@ -151,6 +151,8 @@ interface KnowledgeRepository {
 
     suspend fun getPerfectPronunciationCount(userId: String): Int
 
+    suspend fun getRecentPronunciationRecords(userId: String, limit: Int): List<com.voicedeutsch.master.domain.model.speech.PronunciationResult>
+
     // ==========================================
     // KNOWLEDGE SNAPSHOT
     // ==========================================
