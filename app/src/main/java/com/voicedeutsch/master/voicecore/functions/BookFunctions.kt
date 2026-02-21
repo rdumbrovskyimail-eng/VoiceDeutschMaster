@@ -16,10 +16,8 @@ object BookFunctions {
         FunctionRegistry.declare(
             name = "advance_to_next_lesson",
             description = "Перейти к следующему уроку. Вызывай после завершения текущего.",
-            params = mapOf(
-                "chapter" to ("integer" to "Номер главы"),
-                "lesson" to ("integer" to "Номер урока"),
-            ),
+            params = mapOf("score" to ("number" to "Оценка за урок 0.0-1.0")),
+            required = listOf("score"),
         ),
         FunctionRegistry.declare(
             name = "mark_lesson_complete",
