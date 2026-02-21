@@ -243,4 +243,13 @@ class ProgressRepositoryImpl(
         val startDate = LocalDate.now().minusDays(29).format(formatter)
         return progressDao.getDailyStatsRange(userId, startDate, endDate).map { it.toDomain() }
     }
+
+    override suspend fun getCompletedChapterCount(userId: String): Int {
+        val allProgress = bookProgressDao.getAllProgress(userId)
+        return allProgress
+            .filter { it.status == "COMPLETED" }
+            .map { it.chapter }
+            .distinct()
+            .size
+    }
 }
