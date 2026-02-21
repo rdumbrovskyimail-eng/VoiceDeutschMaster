@@ -1,13 +1,5 @@
 package com.voicedeutsch.master.presentation.navigation
 
-import androidx.compose.animation.AnimatedContentTransitionScope
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -15,7 +7,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-import androidx.navigation.NavBackStackEntry
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -29,38 +20,6 @@ import com.voicedeutsch.master.presentation.screen.settings.SettingsScreen
 import com.voicedeutsch.master.presentation.screen.statistics.StatisticsScreen
 import kotlinx.coroutines.flow.firstOrNull
 import org.koin.compose.koinInject
-
-private const val NAV_ANIM_DURATION = 300 // ms
-
-// ── Transition helpers ────────────────────────────────────────────────────────
-
-private fun enterSlide(): AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
-    slideInHorizontally(
-        animationSpec = tween(NAV_ANIM_DURATION),
-        initialOffsetX = { it },
-    ) + fadeIn(tween(NAV_ANIM_DURATION))
-}
-
-private fun exitSlide(): AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
-    slideOutHorizontally(
-        animationSpec = tween(NAV_ANIM_DURATION),
-        targetOffsetX = { -it / 2 },
-    ) + fadeOut(tween(NAV_ANIM_DURATION))
-}
-
-private fun popEnterSlide(): AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
-    slideInHorizontally(
-        animationSpec = tween(NAV_ANIM_DURATION),
-        initialOffsetX = { -it / 2 },
-    ) + fadeIn(tween(NAV_ANIM_DURATION))
-}
-
-private fun popExitSlide(): AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
-    slideOutHorizontally(
-        animationSpec = tween(NAV_ANIM_DURATION),
-        targetOffsetX = { it },
-    ) + fadeOut(tween(NAV_ANIM_DURATION))
-}
 
 /**
  * Root navigation graph for the entire application.
@@ -94,10 +53,10 @@ fun AppNavigation() {
     NavHost(
         navController = navController,
         startDestination = startDestination,
-        enterTransition = enterSlide(),
-        exitTransition = exitSlide(),
-        popEnterTransition = popEnterSlide(),
-        popExitTransition = popExitSlide(),
+        enterTransition = NavAnimations.enterTransition,
+        exitTransition = NavAnimations.exitTransition,
+        popEnterTransition = NavAnimations.popEnterTransition,
+        popExitTransition = NavAnimations.popExitTransition,
     ) {
 
         // ── Onboarding ────────────────────────────────────────────────────────
