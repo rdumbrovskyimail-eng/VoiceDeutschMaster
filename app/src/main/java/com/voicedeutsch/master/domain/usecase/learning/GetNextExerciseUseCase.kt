@@ -30,27 +30,21 @@ class GetNextExerciseUseCase(
     suspend operator fun invoke(params: Params): Exercise? {
         return when (params.strategy) {
             LearningStrategy.REPETITION -> {
-                val dueWords = knowledgeRepository.getWordsForRepetition(
-                    params.userId, limit = 1
+                val dueWords = knowledgeRepository.getWordsForReview(
+                    userId = params.userId, limit = 1
                 )
-                dueWords.firstOrNull()?.let { wk ->
-                    val word = knowledgeRepository.getWord(wk.wordId)
+                dueWords.firstOrNull()?.let { (word, wk) ->
                     Exercise(
                         id = generateUUID(),
                         type = ExerciseType.TRANSLATE_TO_DE,
-                        prompt = word?.russian ?: "",
-                        expectedAnswer = word?.german ?: "",
-                        relatedWordIds = listOf(wk.wordId),
+                        prompt = word.russian,
+                        expectedAnswer = word.german,
+                        relatedWordIds = listOf(word.id),
                     )
                 }
             }
-            LearningStrategy.LINEAR_BOOK -> {
-                val progress = bookRepository.getBookProgress(params.userId)
-                    ?: return null
-                // Delegate to Gemini for exercise generation from lesson content
-                null
-            }
-            else -> null // Most strategies use Gemini-generated exercises
+            LearningStrategy.LINEAR_BOOK -> null
+            else -> null
         }
     }
 }
