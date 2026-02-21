@@ -128,16 +128,13 @@ private fun DrawScope.drawBreathingWave(phase: Float, color: Color) {
     val midY = size.height / 2f
     val amplitude = size.height * 0.08f
     val steps = 200
-
-    for (i in 0 until steps) {
+    val path = androidx.compose.ui.graphics.Path()
+    for (i in 0..steps) {
         val x = size.width * i / steps
         val y = midY + amplitude * sin(phase + 2f * Math.PI.toFloat() * i / steps)
-        drawCircle(
-            color  = color,
-            radius = 1.5f,
-            center = Offset(x, y),
-        )
+        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
     }
+    drawPath(path = path, color = color, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5f, cap = StrokeCap.Round))
 }
 
 private fun DrawScope.drawAmplitudeBars(
@@ -191,21 +188,13 @@ private fun DrawScope.drawActiveSineWave(phase: Float, color: Color) {
     val midY = size.height / 2f
     val amplitude = size.height * 0.32f
     val steps = 300
-
-    for (i in 1 until steps) {
-        val x1 = size.width * (i - 1) / steps
-        val y1 = midY + amplitude * sin(phase + 2f * Math.PI.toFloat() * (i - 1) / steps)
-        val x2 = size.width * i / steps
-        val y2 = midY + amplitude * sin(phase + 2f * Math.PI.toFloat() * i / steps)
-
-        drawLine(
-            color       = color.copy(alpha = 0.85f),
-            start       = Offset(x1, y1),
-            end         = Offset(x2, y2),
-            strokeWidth = 2.5f,
-            cap         = StrokeCap.Round,
-        )
+    val path = androidx.compose.ui.graphics.Path()
+    for (i in 0..steps) {
+        val x = size.width * i / steps
+        val y = midY + amplitude * sin(phase + 2f * Math.PI.toFloat() * i / steps)
+        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
     }
+    drawPath(path = path, color = color.copy(alpha = 0.85f), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5f, cap = StrokeCap.Round))
 }
 
 private fun DrawScope.drawFlatLine(pulseScale: Float, color: Color) {
