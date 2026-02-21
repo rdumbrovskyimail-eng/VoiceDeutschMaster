@@ -227,4 +227,29 @@ class BookRepositoryImpl(
 
         preferencesDataStore.setBookLoaded(true)
     }
+
+    override suspend fun searchContent(query: String): List<BookRepository.SearchHit> {
+        val results = mutableListOf<BookRepository.SearchHit>()
+        val metadata = getBookMetadata()
+        for (chapterNum in 1..metadata.totalChapters) {
+            val chapterInfo = bookFileReader.readChapterInfo(chapterNum) ?: continue
+            for (lessonNum in 1..chapterInfo.lessonsCount) {
+                val content = bookFileReader.readLessonContent(chapterNum, lessonNum) ?: continue
+                val vocab = content.vocabulary ?: emptyList()
+                for (entry in vocab) {
+                    if (entry.german.contains(query, ignoreCase = true) ||
+                        entry.russian.contains(query, ignoreCase = true)) {
+                        results.add(
+                            BookRepository.SearchHit(
+                                chapter = chapterNum,
+                                lesson = lessonNum,
+                                snippet = "${entry.german} — ${entry.russian}"
+                            )
+                        )
+                    }
+                }
+            }
+        }
+        return results
+    }
 }
