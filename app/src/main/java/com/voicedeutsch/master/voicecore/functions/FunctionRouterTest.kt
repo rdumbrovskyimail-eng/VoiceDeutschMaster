@@ -11,7 +11,7 @@ class FunctionRouterTest {
 
     @Test
     fun `all function declarations have valid names`() {
-        val declarations = FunctionRouter.getFunctionDeclarations()
+        val declarations = FunctionRegistry.getAllDeclarations()
         assertTrue(declarations.isNotEmpty())
         declarations.forEach { decl ->
             assertTrue(decl.name.isNotBlank(), "Function name should not be blank")
@@ -21,7 +21,7 @@ class FunctionRouterTest {
 
     @Test
     fun `critical functions are declared`() {
-        val names = FunctionRouter.getFunctionDeclarations().map { it.name }.toSet()
+        val names = FunctionRegistry.getAllDeclarations().map { it.name }.toSet()
         val required = listOf(
             "save_word_knowledge",
             "save_rule_knowledge",
