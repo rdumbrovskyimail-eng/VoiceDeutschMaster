@@ -48,7 +48,7 @@ class UpdateUserLevelUseCase(
         var vocabScoreForNext = 0f
         var grammarScoreForNext = 0f
 
-        val cefrLevels = CefrLevel.values()
+        val cefrLevels = CefrLevel.entries
 
         for (level in cefrLevels) {
             val vocabScore = calculateVocabScore(userId, level)
@@ -99,13 +99,9 @@ class UpdateUserLevelUseCase(
         val wordsForLevel = knowledgeRepository.getWordsByLevel(level)
         if (wordsForLevel.isEmpty()) return 0f
 
-        var activeCount = 0
-        for (word in wordsForLevel) {
-            val knowledge = knowledgeRepository.getWordKnowledge(userId, word.id)
-            if (knowledge != null && knowledge.knowledgeLevel >= 5) {
-                activeCount++
-            }
-        }
+        val allWK = knowledgeRepository.getAllWordKnowledge(userId)
+        val wordIds = wordsForLevel.map { it.id }.toSet()
+        val activeCount = allWK.count { it.wordId in wordIds && it.knowledgeLevel >= 5 }
 
         return activeCount.toFloat() / wordsForLevel.size
     }
@@ -114,13 +110,9 @@ class UpdateUserLevelUseCase(
         val rulesForLevel = knowledgeRepository.getGrammarRulesByLevel(level)
         if (rulesForLevel.isEmpty()) return 0f
 
-        var knownCount = 0
-        for (rule in rulesForLevel) {
-            val knowledge = knowledgeRepository.getRuleKnowledge(userId, rule.id)
-            if (knowledge != null && knowledge.knowledgeLevel >= 4) {
-                knownCount++
-            }
-        }
+        val allRK = knowledgeRepository.getAllRuleKnowledge(userId)
+        val ruleIds = rulesForLevel.map { it.id }.toSet()
+        val knownCount = allRK.count { it.ruleId in ruleIds && it.knowledgeLevel >= 4 }
 
         return knownCount.toFloat() / rulesForLevel.size
     }
