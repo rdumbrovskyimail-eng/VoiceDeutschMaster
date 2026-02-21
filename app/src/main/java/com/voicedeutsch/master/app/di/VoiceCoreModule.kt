@@ -10,6 +10,10 @@ import com.voicedeutsch.master.voicecore.engine.GeminiConfig
 import com.voicedeutsch.master.voicecore.engine.VoiceCoreEngine
 import com.voicedeutsch.master.voicecore.engine.VoiceCoreEngineImpl
 import com.voicedeutsch.master.voicecore.functions.FunctionRouter
+import com.voicedeutsch.master.voicecore.functions.FunctionRegistry
+import com.voicedeutsch.master.voicecore.context.SystemPromptBuilder
+import com.voicedeutsch.master.voicecore.session.SessionHistory
+import com.voicedeutsch.master.voicecore.session.VoiceSessionManager
 import com.voicedeutsch.master.voicecore.strategy.StrategySelector
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
@@ -43,6 +47,8 @@ val voiceCoreModule = module {
     single { UserContextProvider(get()) }
     // BookContextProvider(bookRepository)
     single { BookContextProvider(get()) }
+    // SystemPromptBuilder(userContextProvider, bookContextProvider)
+    factory { SystemPromptBuilder(get(), get()) }
 
     // ─── Function routing ─────────────────────────────────────────────────────
     // Объявляем ДО ContextBuilder — он зависит от FunctionRouter.getDeclarations().
@@ -65,6 +71,8 @@ val voiceCoreModule = module {
             get(), // json
         )
     }
+    // FunctionRegistry — центральный реестр всех функций (object)
+    single { FunctionRegistry }
 
     // ─── Context builder ──────────────────────────────────────────────────────
     // ContextBuilder(userContextProvider, bookContextProvider, functionRouter, json)
@@ -73,6 +81,12 @@ val voiceCoreModule = module {
 
     // ─── Strategy selection ───────────────────────────────────────────────────
     single { StrategySelector() }
+
+    // ─── Session management ───────────────────────────────────────────────────
+    // VoiceSessionManager — управляет жизненным циклом сессии
+    single { VoiceSessionManager() }
+    // SessionHistory — in-memory история диалога (новый экземпляр на каждую сессию)
+    factory { SessionHistory() }
 
     // ─── Gemini configuration ─────────────────────────────────────────────────
     // factory вместо single — ключ читается при каждом обращении,
