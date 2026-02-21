@@ -91,8 +91,9 @@ class UpdatePhraseKnowledgeUseCase(
         )
 
         val newPronScore = if (params.pronunciationScore != null) {
-            val totalAttempts = existing.timesPracticed + 1
-            val prevTotal = existing.pronunciationScore * existing.timesPracticed
+            val prevAttempts = existing.timesPracticed
+            val totalAttempts = prevAttempts + 1
+            val prevTotal = existing.pronunciationScore * prevAttempts
             if (totalAttempts > 0) (prevTotal + params.pronunciationScore) / totalAttempts else params.pronunciationScore
         } else {
             existing.pronunciationScore
