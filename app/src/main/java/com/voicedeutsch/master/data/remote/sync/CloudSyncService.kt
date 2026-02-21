@@ -9,17 +9,17 @@ package com.voicedeutsch.master.data.remote.sync
  */
 class CloudSyncService {
 
-    enum class SyncStatus { IDLE, SYNCING, SUCCESS, ERROR }
+    enum class SyncStatus { IDLE, SYNCING, SUCCESS, ERROR, NOT_IMPLEMENTED }
 
     /** Upload local changes to cloud. */
     suspend fun pushChanges(userId: String): SyncStatus {
-        // TODO: Implement for v2.0
-        return SyncStatus.IDLE
+        android.util.Log.d("CloudSyncService", "pushChanges: not implemented in v1.0")
+        return SyncStatus.NOT_IMPLEMENTED
     }
 
     /** Download cloud changes to local DB. */
     suspend fun pullChanges(userId: String): SyncStatus {
-        // TODO: Implement for v2.0
-        return SyncStatus.IDLE
+        android.util.Log.d("CloudSyncService", "pullChanges: not implemented in v1.0")
+        return SyncStatus.NOT_IMPLEMENTED
     }
 }
