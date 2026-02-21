@@ -25,7 +25,8 @@ class SelectStrategyUseCase(
     private val knowledgeRepository: KnowledgeRepository,
     private val bookRepository: BookRepository,
     private val sessionRepository: SessionRepository,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val getWeakPointsUseCase: GetWeakPointsUseCase
 ) {
 
     data class StrategyRecommendation(
@@ -54,8 +55,7 @@ class SelectStrategyUseCase(
             )
         }
 
-        val weakPointsUseCase = GetWeakPointsUseCase(knowledgeRepository)
-        val weakPoints = weakPointsUseCase(userId)
+        val weakPoints = getWeakPointsUseCase(userId)
 
         if (weakPoints.size > WEAK_POINTS_THRESHOLD) {
             return StrategyRecommendation(
