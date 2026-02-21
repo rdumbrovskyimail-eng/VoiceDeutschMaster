@@ -28,16 +28,19 @@ class MasterPromptTest {
 
     private fun createTestSnapshot() = KnowledgeSnapshot(
         vocabulary = VocabularySnapshot(
-            totalWords = 50, wordsByLevel = emptyMap(), wordsForReviewToday = 5,
-            recentNewWords = emptyList(), problemWords = emptyList()
+            totalWords = 50, byLevel = emptyMap(), wordsForReviewToday = 5,
+            problemWords = emptyList()
         ),
         grammar = GrammarSnapshot(
-            totalRules = 10, rulesByLevel = emptyMap(), rulesForReviewToday = 2,
+            totalRules = 10, byLevel = emptyMap(), rulesForReviewToday = 2,
             problemRules = emptyList()
         ),
         pronunciation = PronunciationSnapshot(
             overallScore = 0.6f, problemSounds = emptyList(),
             goodSounds = emptyList(), trend = "stable"
-        )
+        ),
+        weakPoints = emptyList(),
+        bookProgress = emptyMap(),
+        recommendations = emptyList()
     )
 }
