@@ -22,6 +22,7 @@ import com.voicedeutsch.master.voicecore.strategy.GapFillingStrategy
 import com.voicedeutsch.master.voicecore.strategy.PronunciationStrategy
 import com.voicedeutsch.master.voicecore.strategy.GrammarStrategy
 import com.voicedeutsch.master.voicecore.strategy.VocabularyStrategy
+import com.voicedeutsch.master.voicecore.strategy.AssessmentStrategy
 import com.voicedeutsch.master.voicecore.strategy.ListeningStrategy
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
@@ -122,6 +123,7 @@ val voiceCoreModule = module {
     factory { GrammarStrategy() }
     factory { VocabularyStrategy() }
     factory { ListeningStrategy() }
+    factory { AssessmentStrategy() }
 
     // ─── Engine (the heart of the system) ────────────────────────────────────
     // VoiceCoreEngineImpl(contextBuilder, functionRouter, audioPipeline,
