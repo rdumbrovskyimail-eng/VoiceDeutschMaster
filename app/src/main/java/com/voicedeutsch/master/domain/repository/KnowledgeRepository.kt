@@ -149,6 +149,8 @@ interface KnowledgeRepository {
 
     suspend fun getProblemSounds(userId: String): List<PhoneticTarget>
 
+    suspend fun getPerfectPronunciationCount(userId: String): Int
+
     // ==========================================
     // KNOWLEDGE SNAPSHOT
     // ==========================================
