@@ -309,7 +309,10 @@ private fun TranscriptArea(
     // Auto-scroll to bottom when new transcript arrives
     LaunchedEffect(voiceTranscript, userTranscript) {
         if (voiceTranscript.isNotEmpty() || userTranscript.isNotEmpty()) {
-            runCatching { listState.animateScrollToItem(Int.MAX_VALUE) }
+            runCatching {
+                val itemCount = listState.layoutInfo.totalItemsCount
+                if (itemCount > 0) listState.animateScrollToItem(itemCount - 1)
+            }
         }
     }
 
@@ -461,7 +464,7 @@ private fun SessionBottomBar(
             PulsingMicButton(
                 engineState = voiceEngineState,
                 onClick     = { onEvent(SessionEvent.ToggleMic) },
-                enabled     = uiState.isSessionActive || !uiState.isLoading,
+                enabled     = uiState.isSessionActive && !uiState.isLoading,
                 size        = 64.dp,
             )
         }
