@@ -23,6 +23,18 @@ import com.voicedeutsch.master.domain.usecase.user.ConfigureUserPreferencesUseCa
 import com.voicedeutsch.master.domain.usecase.user.GetUserProfileUseCase
 import com.voicedeutsch.master.domain.usecase.user.GetUserStatisticsUseCase
 import com.voicedeutsch.master.domain.usecase.user.UpdateUserLevelUseCase
+import com.voicedeutsch.master.domain.usecase.achievement.CheckAchievementsUseCase
+import com.voicedeutsch.master.domain.usecase.achievement.GetUnannouncedAchievementsUseCase
+import com.voicedeutsch.master.domain.usecase.achievement.GetUserAchievementsUseCase
+import com.voicedeutsch.master.domain.usecase.book.GetChapterContentUseCase
+import com.voicedeutsch.master.domain.usecase.book.SearchBookContentUseCase
+import com.voicedeutsch.master.domain.usecase.learning.EvaluateAnswerUseCase
+import com.voicedeutsch.master.domain.usecase.learning.GetNextExerciseUseCase
+import com.voicedeutsch.master.domain.usecase.session.AnalyzeSessionResultsUseCase
+import com.voicedeutsch.master.domain.usecase.session.GetSessionHistoryUseCase
+import com.voicedeutsch.master.domain.usecase.session.SaveSessionUseCase
+import com.voicedeutsch.master.domain.usecase.speech.AnalyzePronunciationUseCase
+import com.voicedeutsch.master.domain.usecase.speech.GetPronunciationTargetsUseCase
 import org.koin.dsl.module
 
 /**
@@ -68,6 +80,12 @@ val domainModule = module {
     // ─── Session ──────────────────────────────────────────────────────────────
     // SaveSessionEventUseCase(sessionRepository)
     factory { SaveSessionEventUseCase(get()) }
+    // SaveSessionUseCase(sessionRepository, userRepository)
+    factory { SaveSessionUseCase(get(), get()) }
+    // GetSessionHistoryUseCase(sessionRepository)
+    factory { GetSessionHistoryUseCase(get()) }
+    // AnalyzeSessionResultsUseCase(sessionRepository)
+    factory { AnalyzeSessionResultsUseCase(get()) }
 
     // ─── Learning ─────────────────────────────────────────────────────────────
     // StartLearningSessionUseCase(sessionRepository, userRepository, bookRepository)
@@ -76,10 +94,18 @@ val domainModule = module {
     factory { EndLearningSessionUseCase(get(), get(), get()) }
     // SelectStrategyUseCase(knowledgeRepository, bookRepository, sessionRepository, userRepository)
     factory { SelectStrategyUseCase(get(), get(), get(), get()) }
+    // GetNextExerciseUseCase(bookRepository, knowledgeRepository)
+    factory { GetNextExerciseUseCase(get(), get()) }
+    // EvaluateAnswerUseCase()
+    factory { EvaluateAnswerUseCase() }
 
     // ─── Speech ───────────────────────────────────────────────────────────────
     // RecordPronunciationResultUseCase(knowledgeRepository)
     factory { RecordPronunciationResultUseCase(get()) }
+    // AnalyzePronunciationUseCase(speechRepository)
+    factory { AnalyzePronunciationUseCase(get()) }
+    // GetPronunciationTargetsUseCase(speechRepository, knowledgeRepository)
+    factory { GetPronunciationTargetsUseCase(get(), get()) }
 
     // ─── Progress ─────────────────────────────────────────────────────────────
     // CalculateOverallProgressUseCase(progressRepository, userRepository)
@@ -92,4 +118,16 @@ val domainModule = module {
     factory { GetCurrentLessonUseCase(get()) }
     // AdvanceBookProgressUseCase(bookRepository)
     factory { AdvanceBookProgressUseCase(get()) }
+    // GetChapterContentUseCase(bookRepository)
+    factory { GetChapterContentUseCase(get()) }
+    // SearchBookContentUseCase(bookRepository, knowledgeRepository)
+    factory { SearchBookContentUseCase(get(), get()) }
+
+    // ─── Achievement ──────────────────────────────────────────────────────────
+    // CheckAchievementsUseCase(achievementRepository, userRepository, knowledgeRepository, progressRepository)
+    factory { CheckAchievementsUseCase(get(), get(), get(), get()) }
+    // GetUserAchievementsUseCase(achievementRepository)
+    factory { GetUserAchievementsUseCase(get()) }
+    // GetUnannouncedAchievementsUseCase(achievementRepository)
+    factory { GetUnannouncedAchievementsUseCase(get()) }
 }
