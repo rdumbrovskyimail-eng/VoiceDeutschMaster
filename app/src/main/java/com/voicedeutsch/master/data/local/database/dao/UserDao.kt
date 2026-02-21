@@ -69,4 +69,7 @@ interface UserDao {
 
     @Query("UPDATE users SET voice_settings_json = :settingsJson, updated_at = :updatedAt WHERE id = :userId")
     suspend fun updateVoiceSettings(userId: String, settingsJson: String, updatedAt: Long)
+
+    @Query("SELECT id FROM users")
+    suspend fun getAllUserIds(): List<String>
 }
