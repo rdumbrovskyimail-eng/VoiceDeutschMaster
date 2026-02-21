@@ -21,6 +21,8 @@ interface SessionRepository {
 
     suspend fun getTotalMinutes(userId: String): Int
 
+    suspend fun getSessionsSince(userId: String, fromTimestamp: Long): List<LearningSession>
+
     // ==========================================
     // SESSION EVENTS
     // ==========================================
