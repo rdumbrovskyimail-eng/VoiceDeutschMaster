@@ -387,6 +387,9 @@ class KnowledgeRepositoryImpl(
         }.sortedBy { it.currentScore }
     }
 
+    override suspend fun getPerfectPronunciationCount(userId: String): Int =
+        knowledgeDao.getPerfectPronunciationCount(userId)
+
     // ==========================================
     // KNOWLEDGE SNAPSHOT
     // ==========================================
