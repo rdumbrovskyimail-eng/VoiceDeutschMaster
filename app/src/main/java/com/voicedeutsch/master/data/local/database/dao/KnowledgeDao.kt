@@ -8,6 +8,7 @@ import com.voicedeutsch.master.data.local.database.entity.PhraseKnowledgeEntity
 import com.voicedeutsch.master.data.local.database.entity.RuleKnowledgeEntity
 import com.voicedeutsch.master.data.local.database.entity.WordKnowledgeEntity
 import kotlinx.coroutines.flow.Flow
+import com.voicedeutsch.master.data.local.database.entity.PronunciationRecordEntity
 
 @Dao
 interface KnowledgeDao {
@@ -144,4 +145,26 @@ interface KnowledgeDao {
         """
     )
     suspend fun getPhrasesForReviewCount(userId: String, now: Long): Int
+
+    // ==========================================
+    // PRONUNCIATION RECORDS
+    // ==========================================
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPronunciationRecord(record: PronunciationRecordEntity)
+
+    @Query("SELECT * FROM pronunciation_records WHERE user_id = :userId AND word = :word ORDER BY created_at DESC")
+    suspend fun getPronunciationRecords(userId: String, word: String): List<PronunciationRecordEntity>
+
+    @Query("SELECT * FROM pronunciation_records WHERE user_id = :userId ORDER BY created_at DESC LIMIT :limit")
+    suspend fun getRecentPronunciationRecords(userId: String, limit: Int): List<PronunciationRecordEntity>
+
+    @Query("SELECT AVG(score) FROM pronunciation_records WHERE user_id = :userId")
+    suspend fun getAveragePronunciationScore(userId: String): Float?
+
+    @Query("SELECT AVG(score) FROM pronunciation_records WHERE user_id = :userId")
+    fun observeAveragePronunciationScore(userId: String): Flow<Float?>
+
+    @Query("SELECT COUNT(*) FROM pronunciation_records WHERE user_id = :userId AND score >= 0.9")
+    suspend fun getPerfectPronunciationCount(userId: String): Int
 }
