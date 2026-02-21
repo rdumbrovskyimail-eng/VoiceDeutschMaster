@@ -31,4 +31,6 @@ interface ProgressRepository {
     suspend fun getWeeklyProgress(userId: String): List<DailyProgress>
 
     suspend fun getMonthlyProgress(userId: String): List<DailyProgress>
+
+    suspend fun getCompletedChapterCount(userId: String): Int
 }
