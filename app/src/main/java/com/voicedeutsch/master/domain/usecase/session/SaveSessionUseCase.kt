@@ -17,23 +17,28 @@ class SaveSessionUseCase(
 
     suspend operator fun invoke(session: LearningSession, result: SessionResult) {
         // 1. Save session record
-        sessionRepository.saveSession(session)
+        sessionRepository.updateSession(session)
 
         // 2. Update user statistics
         userRepository.incrementSessionStats(
             userId = session.userId,
             durationMinutes = result.durationMinutes,
             wordsLearned = result.wordsLearned,
-            rulesLearned = result.rulesLearned,
+            rulesLearned = result.rulesPracticed,
         )
 
         // 3. Update daily statistics
-        sessionRepository.updateDailyStatistics(
+        sessionRepository.upsertDailyStatistics(
             userId = session.userId,
             date = DateUtils.todayDateString(),
-            sessionDurationMinutes = result.durationMinutes,
+            sessionsCount = 1,
+            totalMinutes = result.durationMinutes,
             wordsLearned = result.wordsLearned,
             wordsReviewed = result.wordsReviewed,
+            exercisesCompleted = result.exercisesCompleted,
+            exercisesCorrect = result.exercisesCorrect,
+            averageScore = result.averageScore,
+            streakMaintained = true
         )
     }
 }
