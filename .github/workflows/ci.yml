@@ -60,7 +60,32 @@ jobs:
           --parallel \
           --build-cache \
           --no-daemon \
-          --no-configuration-cache 2>&1 | tee build_log.txt
+          --configuration-cache 2>&1 | tee build_log.txt
+
+    - name: Set up Keystore
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: |
+        if [ -n "${{ secrets.KEYSTORE_FILE }}" ]; then
+          echo "${{ secrets.KEYSTORE_FILE }}" | base64 -d > app/release.keystore
+          echo "✅ Keystore decoded from secrets"
+        else
+          echo "❌ ERROR: KEYSTORE_FILE secret is not set"
+          exit 1
+        fi
+
+    - name: Build Release APK
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: |
+        set -o pipefail
+        ./gradlew assembleRelease \
+          --parallel \
+          --build-cache \
+          --no-daemon \
+          --configuration-cache \
+          -Pandroid.injected.signing.store.file=${{ github.workspace }}/app/release.keystore \
+          -Pandroid.injected.signing.store.password=${{ secrets.KEY_PASSWORD }} \
+          -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
+          -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }} 2>&1 | tee -a build_log.txt
 
     - name: Collect build errors
       if: always()
@@ -70,14 +95,20 @@ jobs:
     - name: Verify APK exists
       if: success()
       run: |
-        APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -1)
+        if [[ "${{ github.event_name }}" == 'push' && "${{ github.ref }}" == 'refs/heads/main' ]]; then
+          APK=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
+          APK_DIR="app/build/outputs/apk/release/"
+        else
+          APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -1)
+          APK_DIR="app/build/outputs/apk/debug/"
+        fi
         if [ -z "$APK" ]; then
           echo "❌ APK not found after successful build!"
           cat build_errors.txt
           exit 1
         fi
         echo "✅ APK found: $APK"
-        ls -lh app/build/outputs/apk/debug/
+        ls -lh "$APK_DIR"
 
     - name: Create Release (success)
       if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -90,7 +121,7 @@ jobs:
           **Commit:** `${{ github.sha }}`
           **Build #:** ${{ github.run_number }}
           ### 📦 Скачайте APK ниже ⬇️
-        files: app/build/outputs/apk/debug/*.apk
+        files: app/build/outputs/apk/release/*.apk
         fail_on_unmatched_files: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
