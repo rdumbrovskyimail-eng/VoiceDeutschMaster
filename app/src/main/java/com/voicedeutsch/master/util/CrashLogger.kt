@@ -175,42 +175,21 @@ class CrashLogger private constructor(
         android.util.Log.i(TAG, "📁 Logs: ${logDirectory.absolutePath}")
     }
 
-    /**
-     * Снимает актуальные ошибки/предупреждения из logcat (однократный дамп).
-     * Сохраняет в приватную директорию, возвращает файл.
-     */
     fun saveLogCatErrors(): File? {
-        return try {
-            val ts = timestamp()
-            val file = File(logDirectory, "${LOGCAT_PREFIX}${ts}.txt")
-            val pid = android.os.Process.myPid().toString()
-
-            // -d = однократный дамп (не ждать новых строк)
-            val process = Runtime.getRuntime().exec(
-                arrayOf("logcat", "-d", "-v", "time", "--pid=$pid", "*:W") // W и выше: Warning, Error
-            )
-            val output = process.inputStream.bufferedReader().readText()
-            process.waitFor()
-
-            if (output.isBlank()) {
-                android.util.Log.i(TAG, "ℹ️ No errors/warnings in logcat for this session")
-                return null
-            }
-
-            file.writeText(
-                buildString {
-                    append("=".repeat(70)).append("\n")
-                    append("📋 LOGCAT ERRORS/WARNINGS — $ts\n")
-                    append("=".repeat(70)).append("\n\n")
-                    append(output)
-                }
-            )
-            android.util.Log.i(TAG, "✅ Logcat errors saved: ${file.absolutePath}")
+        val appLogger = AppLogger.getInstance() ?: return null
+        val ts = timestamp()
+        val file = File(logDirectory, "${LOGCAT_PREFIX}${ts}.txt")
+        return runCatching {
+            val snapshot = appLogger.getBufferSnapshot()
+            if (snapshot.isBlank()) return null
+            file.writeText(buildString {
+                append("=".repeat(70)).append("\n")
+                append("📋 APP LOG SNAPSHOT — $ts\n")
+                append("=".repeat(70)).append("\n\n")
+                append(snapshot)
+            })
             file
-        } catch (e: Exception) {
-            android.util.Log.e(TAG, "❌ saveLogCatErrors failed", e)
-            null
-        }
+        }.getOrNull()
     }
 
     fun getAllLogs(): List<LogFile> {
