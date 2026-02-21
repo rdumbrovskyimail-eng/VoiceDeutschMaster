@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
@@ -117,9 +118,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
 
-    // ── Firebase AI Logic ─────────────────────────────────────────────────────
-    implementation(libs.firebase.ai)
-
     // ── Security ─────────────────────────────────────────────────────────────
     implementation(libs.security.crypto)
 
@@ -128,6 +126,7 @@ dependencies {
 
     // ── Firebase ─────────────────────────────────────────────────────────────
     implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.ai)
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.crashlytics)
     implementation(libs.firebase.performance)
