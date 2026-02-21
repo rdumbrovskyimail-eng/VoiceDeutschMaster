@@ -7,15 +7,17 @@ import com.voicedeutsch.master.domain.repository.UserRepository
 import com.voicedeutsch.master.voicecore.engine.GeminiConfig
 import com.voicedeutsch.master.voicecore.engine.VoiceCoreEngine
 import com.voicedeutsch.master.voicecore.session.VoiceSessionState
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * ViewModel for [SessionScreen].
@@ -56,36 +58,19 @@ class SessionViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
 
-            runCatching {
-                // 1. Resolve active user
+            try {
                 val userId = userRepository.getActiveUserId()
                     ?: error("No active user found. Please complete onboarding.")
-
-                // 2. Resolve Gemini API key
-                // FIX: getGeminiApiKey() is a suspend fun returning String? directly,
-                // NOT a Flow<String?> — remove the invalid .firstOrNull() call
                 val apiKey = preferencesDataStore.getGeminiApiKey()
                     ?: error("Gemini API key not configured. Go to Settings.")
-
-                // 3. Initialise and start
                 val geminiConfig = GeminiConfig(apiKey = apiKey)
                 voiceCoreEngine.initialize(geminiConfig)
                 voiceCoreEngine.startSession(userId)
-            }.onSuccess {
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        isSessionActive = true,
-                        showHint = false,
-                    )
-                }
-            }.onFailure { error ->
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        errorMessage = error.message ?: "Unknown error starting session",
-                    )
-                }
+                _uiState.update { it.copy(isLoading = false, isSessionActive = true, showHint = false) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, errorMessage = e.message ?: "Unknown error starting session") }
             }
         }
     }
@@ -136,13 +121,17 @@ class SessionViewModel(
         }
     }
 
-    private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
     override fun onCleared() {
         super.onCleared()
-        cleanupScope.launch {
-            runCatching { voiceCoreEngine.endSession() }
+        val cleanupJob = CoroutineScope(Dispatchers.IO + NonCancellable).launch {
+            runCatching {
+                withTimeout(5_000L) { voiceCoreEngine.endSession() }
+            }.onFailure { e ->
+                android.util.Log.e("SessionViewModel", "cleanup endSession failed", e)
+            }
         }
-        cleanupScope.cancel()
+        runBlocking {
+            withTimeoutOrNull(5_500L) { cleanupJob.join() }
+        }
     }
 }
