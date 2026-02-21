@@ -21,6 +21,19 @@ object PromptOptimizer {
     /** Chars-per-token estimate for mixed RU/DE text. */
     private const val CHARS_PER_TOKEN = 4
 
+    private val RECOMMENDATIONS_REGEX = Regex(
+        "=== RECOMMENDATIONS ===.*?=== END RECOMMENDATIONS ===",
+        RegexOption.DOT_MATCHES_ALL
+    )
+    private val PROBLEM_WORDS_REGEX = Regex(
+        "Проблемные слова:.*?(?=\\n[A-ZА-Я])",
+        RegexOption.DOT_MATCHES_ALL
+    )
+    private val SESSION_HISTORY_REGEX = Regex(
+        "=== SESSION HISTORY ===.*?=== END SESSION HISTORY ===",
+        RegexOption.DOT_MATCHES_ALL
+    )
+
     /**
      * Ensures prompt fits within token budget.
      *
@@ -32,33 +45,29 @@ object PromptOptimizer {
         val estimatedTokens = fullPrompt.length / CHARS_PER_TOKEN
         if (estimatedTokens <= maxTokens) return fullPrompt
 
-        // Strategy 1: Remove recommendation section
-        var result = fullPrompt.replace(
-            Regex("=== RECOMMENDATIONS ===.*?=== END RECOMMENDATIONS ===", RegexOption.DOT_MATCHES_ALL),
-            "=== RECOMMENDATIONS === [trimmed for brevity] ==="
-        )
-        if (result.length / CHARS_PER_TOKEN <= maxTokens) return result
+        return try {
+            var result = RECOMMENDATIONS_REGEX.replace(fullPrompt,
+                "=== RECOMMENDATIONS === [trimmed for brevity] ===")
+            if (result.length / CHARS_PER_TOKEN <= maxTokens) return result
 
-        // Strategy 2: Trim problem words list to top 5
-        result = result.replace(
-            Regex("Проблемные слова:.*?(?=\\n[A-ZА-Я])", RegexOption.DOT_MATCHES_ALL)
-        ) { match ->
-            val lines = match.value.lines()
-            lines.take(6).joinToString("\n") // header + 5 items
+            result = PROBLEM_WORDS_REGEX.replace(result) { match ->
+                match.value.lines().take(6).joinToString("\n")
+            }
+            if (result.length / CHARS_PER_TOKEN <= maxTokens) return result
+
+            result = SESSION_HISTORY_REGEX.replace(result,
+                "=== SESSION HISTORY === [recent sessions trimmed] ===")
+
+            val maxChars = maxTokens * CHARS_PER_TOKEN
+            if (result.length > maxChars) {
+                result = result.take(maxChars - 100) + "\n[... prompt truncated to fit token budget ...]"
+            }
+            result
+        } catch (e: Exception) {
+            val maxChars = maxTokens * CHARS_PER_TOKEN
+            if (fullPrompt.length > maxChars) {
+                fullPrompt.take(maxChars - 100) + "\n[... truncated ...]"
+            } else fullPrompt
         }
-        if (result.length / CHARS_PER_TOKEN <= maxTokens) return result
-
-        // Strategy 3: Trim session history to last 10 entries
-        result = result.replace(
-            Regex("=== SESSION HISTORY ===.*?=== END SESSION HISTORY ===", RegexOption.DOT_MATCHES_ALL),
-            "=== SESSION HISTORY === [recent sessions trimmed] ==="
-        )
-
-        // Strategy 4: Hard truncate at max char limit (emergency)
-        val maxChars = maxTokens * CHARS_PER_TOKEN
-        if (result.length > maxChars) {
-            result = result.take(maxChars - 100) + "\n[... prompt truncated to fit token budget ...]"
-        }
-        return result
     }
 }
