@@ -33,7 +33,7 @@ class VoiceSessionManager {
         val pausedAt: Long? = null,
         val totalPausedMs: Long = 0,
         val currentStrategy: LearningStrategy = LearningStrategy.LINEAR_BOOK,
-        val strategiesUsed: MutableSet<LearningStrategy> = mutableSetOf(),
+        val strategiesUsed: Set<LearningStrategy> = emptySet(),
         val wordsLearned: Int = 0,
         val wordsReviewed: Int = 0,
         val rulesLearned: Int = 0,
@@ -49,7 +49,7 @@ class VoiceSessionManager {
             isActive = true,
             startedAt = DateUtils.nowTimestamp(),
             currentStrategy = strategy,
-            strategiesUsed = mutableSetOf(strategy),
+            strategiesUsed = setOf(strategy),
         )
         return sessionId
     }
@@ -69,10 +69,7 @@ class VoiceSessionManager {
     }
 
     fun switchStrategy(strategy: LearningStrategy) {
-        _state.update {
-            it.strategiesUsed.add(strategy)
-            it.copy(currentStrategy = strategy)
-        }
+        _state.update { it.copy(strategiesUsed = it.strategiesUsed + strategy, currentStrategy = strategy) }
     }
 
     fun recordWordLearned() = _state.update { it.copy(wordsLearned = it.wordsLearned + 1) }
