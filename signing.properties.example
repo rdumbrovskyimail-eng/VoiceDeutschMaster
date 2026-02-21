@@ -1,0 +1,4 @@
+STORE_FILE=../my-release-key.jks
+STORE_PASSWORD=your_store_password
+KEY_ALIAS=your_key_alias
+KEY_PASSWORD=your_key_password
