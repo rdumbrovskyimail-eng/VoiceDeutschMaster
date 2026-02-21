@@ -7,6 +7,8 @@ import com.voicedeutsch.master.domain.model.knowledge.MistakeRecord
 import com.voicedeutsch.master.domain.model.knowledge.PhraseKnowledge
 import com.voicedeutsch.master.domain.model.knowledge.RuleKnowledge
 import com.voicedeutsch.master.domain.model.knowledge.WordKnowledge
+import com.voicedeutsch.master.data.local.database.entity.PronunciationRecordEntity
+import com.voicedeutsch.master.domain.model.speech.PronunciationResult
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -139,5 +141,30 @@ object KnowledgeMapper {
         pronunciationScore = pronunciationScore,
         createdAt = createdAt,
         updatedAt = updatedAt
+    )
+
+    fun PronunciationRecordEntity.toDomain(json: Json): PronunciationResult = PronunciationResult(
+        id = id,
+        userId = userId,
+        word = word,
+        score = score,
+        problemSounds = runCatching {
+            json.decodeFromString<List<String>>(problemSoundsJson)
+        }.getOrDefault(emptyList()),
+        attemptNumber = attemptNumber,
+        sessionId = sessionId.ifEmpty { null },
+        timestamp = timestamp
+    )
+
+    fun PronunciationResult.toEntity(json: Json): PronunciationRecordEntity = PronunciationRecordEntity(
+        id = id,
+        userId = userId,
+        word = word,
+        score = score,
+        problemSoundsJson = json.encodeToString(problemSounds),
+        attemptNumber = attemptNumber,
+        sessionId = sessionId ?: "",
+        timestamp = timestamp,
+        createdAt = System.currentTimeMillis()
     )
 }
