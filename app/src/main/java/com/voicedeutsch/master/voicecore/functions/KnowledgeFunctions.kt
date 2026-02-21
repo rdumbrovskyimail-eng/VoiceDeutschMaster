@@ -20,7 +20,7 @@ object KnowledgeFunctions {
                 "pronunciation_score" to ("number" to "Оценка произношения 0.0-1.0"),
                 "context" to ("string" to "Контекст использования"),
             ),
-            required = listOf("word", "quality"),
+            required = listOf("word", "translation", "level", "quality"),
         ),
         FunctionRegistry.declare(
             name = "save_rule_knowledge",
