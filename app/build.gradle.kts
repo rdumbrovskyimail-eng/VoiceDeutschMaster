@@ -141,11 +141,16 @@ dependencies {
     testImplementation(libs.koin.test.junit5)
     testImplementation(libs.work.testing)
     testImplementation(libs.ktor.client.mock)
+    testImplementation(libs.turbine)
+    testImplementation(libs.kotlinx.coroutines.test)
 
     // ── Android Instrumented Testing ─────────────────────────────────────────
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test.junit4)
     androidTestImplementation(libs.mockk.android)
+    androidTestImplementation(libs.room.testing)
+    androidTestImplementation(libs.test.core)
+    androidTestImplementation(libs.test.runner)
 }
 
 tasks.withType<Test> {
