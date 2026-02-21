@@ -46,16 +46,6 @@ import org.koin.dsl.module
  */
 val dataModule = module {
 
-    // ─── Kotlinx Json ────────────────────────────────────────────────────────
-    // Shared single — используется в репозиториях, BookFileReader и GeminiClient.
-    single {
-        Json {
-            ignoreUnknownKeys = true
-            isLenient = true
-            encodeDefaults = true
-        }
-    }
-
     // ─── Ktor HttpClient ─────────────────────────────────────────────────────
     // Shared single — используется в GeminiClient для WebSocket-соединения.
     // WebSockets plugin обязателен для Gemini Live API.
@@ -125,15 +115,15 @@ val dataModule = module {
 
     // ─── Repositories ────────────────────────────────────────────────────────
 
-    // UserRepositoryImpl(userDao, knowledgeDao, wordDao, preferencesDataStore, json)
+    // UserRepositoryImpl(userDao, knowledgeDao, wordDao, grammarRuleDao, preferencesDataStore, json)
     single<UserRepository> {
-        UserRepositoryImpl(get(), get(), get(), get(), get())
+        UserRepositoryImpl(get(), get(), get(), get(), get(), get())
     }
 
     // KnowledgeRepositoryImpl(wordDao, knowledgeDao, grammarRuleDao, phraseDao,
-    //                          progressDao, mistakeDao, json)
+    //     progressDao, mistakeDao, bookProgressDao, userDao, sessionDao, json)
     single<KnowledgeRepository> {
-        KnowledgeRepositoryImpl(get(), get(), get(), get(), get(), get(), get())
+        KnowledgeRepositoryImpl(get(), get(), get(), get(), get(), get(), get(), get(), get(), get())
     }
 
     // BookRepositoryImpl(bookFileReader, bookProgressDao, wordDao,
