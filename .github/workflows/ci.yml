@@ -53,6 +53,20 @@ jobs:
     - name: Create local.properties
       run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
+    - name: Run Unit Tests
+      run: |
+        set -o pipefail
+        ./gradlew testDebugUnitTest \
+          --no-daemon \
+          --build-cache 2>&1 | tee test_log.txt
+
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: app/build/reports/tests/
+
     - name: Build Debug APK
       run: |
         set -o pipefail
