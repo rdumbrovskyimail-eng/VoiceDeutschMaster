@@ -29,7 +29,8 @@ class BuildKnowledgeSummaryUseCase(
     private val knowledgeRepository: KnowledgeRepository,
     private val sessionRepository: SessionRepository,
     private val bookRepository: BookRepository,
-    private val progressRepository: ProgressRepository
+    private val progressRepository: ProgressRepository,
+    private val getWeakPointsUseCase: GetWeakPointsUseCase
 ) {
 
     suspend operator fun invoke(userId: String): KnowledgeSnapshot {
@@ -108,6 +109,8 @@ class BuildKnowledgeSummaryUseCase(
 
     private suspend fun buildGrammarSnapshot(userId: String): GrammarSnapshot {
         val allRuleKnowledge = knowledgeRepository.getAllRuleKnowledge(userId)
+        val allRules = knowledgeRepository.getAllGrammarRules()
+        val ruleMap = allRules.associateBy { it.id }
 
         val rulesByLevel = allRuleKnowledge
             .groupBy { it.knowledgeLevel }
@@ -116,14 +119,14 @@ class BuildKnowledgeSummaryUseCase(
         val knownRules = allRuleKnowledge
             .filter { it.knowledgeLevel > 0 }
             .mapNotNull { rk ->
-                val rule = knowledgeRepository.getGrammarRule(rk.ruleId)
+                val rule = ruleMap[rk.ruleId]
                 rule?.let { KnownRuleInfo(it.nameRu, rk.knowledgeLevel) }
             }
 
         val problemRules = allRuleKnowledge
             .filter { it.knowledgeLevel <= 2 && it.timesPracticed >= 3 }
             .mapNotNull { rk ->
-                knowledgeRepository.getGrammarRule(rk.ruleId)?.nameRu
+                ruleMap[rk.ruleId]?.nameRu
             }
 
         return GrammarSnapshot(
@@ -190,8 +193,7 @@ class BuildKnowledgeSummaryUseCase(
     }
 
     private suspend fun buildWeakPoints(userId: String): List<String> {
-        val weakPointsUseCase = GetWeakPointsUseCase(knowledgeRepository)
-        return weakPointsUseCase(userId).map { it.description }
+        return getWeakPointsUseCase(userId).map { it.description }
     }
 
     private fun buildRecommendations(
