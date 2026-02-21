@@ -91,13 +91,15 @@ class VoiceSessionManager {
         return SessionResult(
             sessionId = data.sessionId,
             durationMinutes = (durationMs / 60_000).toInt(),
-            strategiesUsed = data.strategiesUsed.toList(),
             wordsLearned = data.wordsLearned,
             wordsReviewed = data.wordsReviewed,
-            rulesLearned = data.rulesLearned,
-            mistakeCount = data.mistakeCount,
-            correctCount = data.correctCount,
-            totalResponses = data.correctCount + data.mistakeCount,
+            rulesPracticed = data.rulesLearned,
+            exercisesCompleted = data.correctCount + data.mistakeCount,
+            exercisesCorrect = data.correctCount,
+            averageScore = 0f,
+            averagePronunciationScore = 0f,
+            strategiesUsed = data.strategiesUsed.map { it.name },
+            summary = ""
         )
     }
 
