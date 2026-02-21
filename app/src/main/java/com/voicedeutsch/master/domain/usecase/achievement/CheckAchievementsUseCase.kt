@@ -21,6 +21,8 @@ class CheckAchievementsUseCase(
         val allAchievements = achievementRepository.getAllAchievements()
         val profile = userRepository.getUserProfile(userId) ?: return emptyList()
         val stats = userRepository.getUserStatistics(userId)
+        val knownWordsCount = knowledgeRepository.getKnownWordsCount(userId)
+        val knownRulesCount = knowledgeRepository.getKnownRulesCount(userId)
         val granted = mutableListOf<UserAchievement>()
 
         for (achievement in allAchievements) {
@@ -28,19 +30,15 @@ class CheckAchievementsUseCase(
 
             val earned = when (achievement.condition.type) {
                 "streak_days" -> profile.streakDays >= achievement.condition.threshold
-                "word_count" -> (stats?.totalWordsLearned ?: 0) >= achievement.condition.threshold
-                "rule_count" -> (stats?.totalRulesLearned ?: 0) >= achievement.condition.threshold
-                "total_minutes" -> (stats?.totalMinutes ?: 0) >= achievement.condition.threshold
+                "word_count" -> knownWordsCount >= achievement.condition.threshold
+                "rule_count" -> knownRulesCount >= achievement.condition.threshold
+                "total_minutes" -> stats.totalMinutes >= achievement.condition.threshold
                 "chapters_completed" -> {
                     val count = progressRepository.getCompletedChapterCount(userId)
                     count >= achievement.condition.threshold
                 }
                 "cefr_level" -> {
-                    val levelOrdinal = when (profile.cefrLevel.level) {
-                        "A1" -> 1; "A2" -> 2; "B1" -> 3; "B2" -> 4; "C1" -> 5; "C2" -> 6
-                        else -> 0
-                    }
-                    levelOrdinal >= achievement.condition.threshold
+                    profile.cefrLevel.order >= achievement.condition.threshold
                 }
                 "perfect_pronunciation" -> {
                     val count = knowledgeRepository.getPerfectPronunciationCount(userId)
