@@ -15,6 +15,14 @@ import com.voicedeutsch.master.voicecore.context.SystemPromptBuilder
 import com.voicedeutsch.master.voicecore.session.SessionHistory
 import com.voicedeutsch.master.voicecore.session.VoiceSessionManager
 import com.voicedeutsch.master.voicecore.strategy.StrategySelector
+import com.voicedeutsch.master.voicecore.strategy.LinearBookStrategy
+import com.voicedeutsch.master.voicecore.strategy.RepetitionStrategy
+import com.voicedeutsch.master.voicecore.strategy.FreePracticeStrategy
+import com.voicedeutsch.master.voicecore.strategy.GapFillingStrategy
+import com.voicedeutsch.master.voicecore.strategy.PronunciationStrategy
+import com.voicedeutsch.master.voicecore.strategy.GrammarStrategy
+import com.voicedeutsch.master.voicecore.strategy.VocabularyStrategy
+import com.voicedeutsch.master.voicecore.strategy.ListeningStrategy
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
 
@@ -108,6 +116,16 @@ val voiceCoreModule = module {
             json       = get(), // kotlinx.serialization.json.Json (single, DataModule)
         )
     }
+
+    // ─── Strategy handlers ────────────────────────────────────────────────────
+    factory { LinearBookStrategy() }
+    factory { RepetitionStrategy() }
+    factory { FreePracticeStrategy() }
+    factory { GapFillingStrategy() }
+    factory { PronunciationStrategy() }
+    factory { GrammarStrategy() }
+    factory { VocabularyStrategy() }
+    factory { ListeningStrategy() }
 
     // ─── Engine (the heart of the system) ────────────────────────────────────
     // VoiceCoreEngineImpl(contextBuilder, functionRouter, audioPipeline,
