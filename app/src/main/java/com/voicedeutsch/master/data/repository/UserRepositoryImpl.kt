@@ -136,4 +136,20 @@ class UserRepositoryImpl(
 
     override suspend fun userExists(): Boolean =
         userDao.getUserCount() > 0
+
+    override suspend fun getAllUserIds(): List<String> =
+        userDao.getAllUserIds()
+
+    override suspend fun updateStreakIfNeeded(userId: String) {
+        val user = userDao.getUser(userId) ?: return
+        val now = DateUtils.nowTimestamp()
+        val lastSession = user.lastSessionDate
+        val oneDayMs = 24 * 60 * 60 * 1000L
+        val twoDaysMs = 2 * oneDayMs
+        val diff = now - lastSession
+        when {
+            diff > twoDaysMs -> userDao.updateStreak(userId, 0, now)
+            diff > oneDayMs -> userDao.updateStreak(userId, user.streakDays + 1, now)
+        }
+    }
 }
