@@ -7,6 +7,10 @@ import com.voicedeutsch.master.domain.repository.UserRepository
 import com.voicedeutsch.master.voicecore.engine.GeminiConfig
 import com.voicedeutsch.master.voicecore.engine.VoiceCoreEngine
 import com.voicedeutsch.master.voicecore.session.VoiceSessionState
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -106,24 +110,17 @@ class SessionViewModel(
 
     private fun togglePause() {
         val current = voiceState.value
-        viewModelScope.launch {
-            if (current.isListening) {
-                voiceCoreEngine.stopListening()
-            } else if (current.isSessionActive) {
-                voiceCoreEngine.startListening()
-            }
+        if (current.isListening) {
+            voiceCoreEngine.stopListening()
+        } else if (current.isSessionActive) {
+            voiceCoreEngine.startListening()
         }
     }
 
     private fun toggleMic() {
         val current = voiceState.value
-        viewModelScope.launch {
-            if (current.isListening) {
-                voiceCoreEngine.stopListening()
-            } else {
-                voiceCoreEngine.startListening()
-            }
-        }
+        if (current.isListening) voiceCoreEngine.stopListening()
+        else voiceCoreEngine.startListening()
     }
 
     private fun sendText(text: String) {
@@ -139,10 +136,13 @@ class SessionViewModel(
         }
     }
 
+    private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun onCleared() {
         super.onCleared()
-        viewModelScope.launch {
+        cleanupScope.launch {
             runCatching { voiceCoreEngine.endSession() }
         }
+        cleanupScope.cancel()
     }
 }
