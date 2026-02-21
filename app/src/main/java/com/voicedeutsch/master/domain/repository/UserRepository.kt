@@ -39,4 +39,8 @@ interface UserRepository {
     suspend fun setActiveUserId(userId: String)
 
     suspend fun userExists(): Boolean
+
+    suspend fun getAllUserIds(): List<String>
+
+    suspend fun updateStreakIfNeeded(userId: String)
 }
