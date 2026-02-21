@@ -55,8 +55,6 @@ val voiceCoreModule = module {
     single { UserContextProvider(get()) }
     // BookContextProvider(bookRepository)
     single { BookContextProvider(get()) }
-    // SystemPromptBuilder(userContextProvider, bookContextProvider)
-    factory { SystemPromptBuilder(get(), get()) }
 
     // ─── Function routing ─────────────────────────────────────────────────────
     // Объявляем ДО ContextBuilder — он зависит от FunctionRouter.getDeclarations().
