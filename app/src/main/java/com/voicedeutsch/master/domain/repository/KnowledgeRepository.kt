@@ -156,4 +156,6 @@ interface KnowledgeRepository {
     // ==========================================
 
     suspend fun buildKnowledgeSnapshot(userId: String): KnowledgeSnapshot
+
+    suspend fun recalculateOverdueItems(userId: String)
 }
