@@ -21,6 +21,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -85,7 +86,7 @@ class VoiceCoreEngineImpl(
     @Volatile private var config: GeminiConfig? = null
     @Volatile private var activeSessionId: String? = null
     @Volatile private var activeUserId: String? = null
-    @Volatile private var reconnectAttempts: Int = 0
+    private val reconnectAttempts = java.util.concurrent.atomic.AtomicInteger(0)
     @Volatile private var sessionStartMs: Long = 0L
 
     // ── State helpers ─────────────────────────────────────────────────────────
@@ -144,7 +145,7 @@ class VoiceCoreEngineImpl(
         val cfg = checkNotNull(config) { "Call initialize() before startSession()" }
 
         transitionEngine(VoiceEngineState.CONTEXT_LOADING)
-        reconnectAttempts = 0
+        reconnectAttempts.set(0)
 
         // 1. Domain: create session record
         val sessionData = withContext(Dispatchers.IO) {
@@ -185,7 +186,7 @@ class VoiceCoreEngineImpl(
         // 6. Activate session state
         transitionEngine(VoiceEngineState.SESSION_ACTIVE)
         transitionConnection(ConnectionState.CONNECTED)
-        reconnectAttempts = 0
+        reconnectAttempts.set(0)
 
         updateState {
             copy(
@@ -271,18 +272,28 @@ class VoiceCoreEngineImpl(
      */
     override fun startListening() {
         if (_sessionState.value.isSessionActive && !_sessionState.value.isListening) {
-            audioPipeline.startRecording()
+            runCatching {
+                audioPipeline.startRecording()
+            }.onFailure { e ->
+                android.util.Log.e("VoiceCoreEngine", "startRecording failed", e)
+                updateState { copy(errorMessage = "Не удалось запустить микрофон: ${e.message}") }
+                return
+            }
             transitionAudio(AudioState.RECORDING)
-
-            // Запускаем форвардинг аудио → Gemini
             audioForwardJob = engineScope.launch(Dispatchers.IO) {
-                audioPipeline.audioChunks().collect { pcmChunk ->
-                    runCatching {
-                        geminiClient.sendAudioChunk(pcmChunk)
-                    }.onFailure { e ->
-                        android.util.Log.w("VoiceCoreEngine", "sendAudioChunk failed: ${e.message}")
+                audioPipeline.audioChunks()
+                    .catch { e ->
+                        android.util.Log.e("VoiceCoreEngine", "Audio stream error", e)
+                        transitionAudio(AudioState.IDLE)
+                        handleSessionError(e)
                     }
-                }
+                    .collect { pcmChunk ->
+                        runCatching {
+                            geminiClient.sendAudioChunk(pcmChunk)
+                        }.onFailure { e ->
+                            android.util.Log.w("VoiceCoreEngine", "sendAudioChunk failed: ${e.message}")
+                        }
+                    }
             }
         }
     }
@@ -365,7 +376,11 @@ class VoiceCoreEngineImpl(
                                 voiceTranscript = response.transcript ?: voiceTranscript,
                             )
                         }
-                        audioPipeline.enqueueAudio(response.audioData!!)
+                        val audioData = response.audioData ?: run {
+                            android.util.Log.e("VoiceCoreEngine", "hasAudio() true but audioData is null")
+                            return@when
+                        }
+                        audioPipeline.enqueueAudio(audioData)
                         if (response.isTurnComplete) {
                             transitionAudio(AudioState.IDLE)
                             transitionEngine(VoiceEngineState.WAITING)
@@ -424,11 +439,11 @@ class VoiceCoreEngineImpl(
             transitionEngine(VoiceEngineState.ERROR)
             updateState { copy(errorMessage = error.message) }
 
-            if (reconnectAttempts < maxAttempts) {
-                reconnectAttempts++
+            if (reconnectAttempts.get() < maxAttempts) {
+                val attempts = reconnectAttempts.incrementAndGet()
                 val delayMs =
                     (config?.reconnectDelayMs ?: GeminiConfig.DEFAULT_RECONNECT_DELAY_MS) *
-                            reconnectAttempts
+                            attempts
                 transitionEngine(VoiceEngineState.RECONNECTING)
                 transitionConnection(ConnectionState.RECONNECTING)
                 delay(delayMs)
