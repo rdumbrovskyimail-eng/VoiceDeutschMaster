@@ -21,7 +21,8 @@ class GeminiService(
 ) {
 
     private var session: WebSocketSession? = null
-    private val _incomingMessages = Channel<GeminiServerMessage>(Channel.BUFFERED)
+    @Volatile private var _isConnected = false
+    private val _incomingMessages = Channel<GeminiServerMessage>(Channel.UNLIMITED)
     val incomingMessages: Flow<GeminiServerMessage> = _incomingMessages.receiveAsFlow()
 
     suspend fun connect(apiKey: String, model: String): Boolean {
@@ -29,14 +30,22 @@ class GeminiService(
         return runCatching {
             httpClient.webSocket(url) {
                 session = this
-                for (frame in incoming) {
-                    if (frame is Frame.Text) {
-                        val text = frame.readText()
-                        runCatching {
-                            val msg = json.decodeFromString<GeminiServerMessage>(text)
-                            _incomingMessages.send(msg)
+                _isConnected = true
+                try {
+                    for (frame in incoming) {
+                        if (frame is Frame.Text) {
+                            val text = frame.readText()
+                            runCatching {
+                                val msg = json.decodeFromString<GeminiServerMessage>(text)
+                                _incomingMessages.send(msg)
+                            }.onFailure { e ->
+                                android.util.Log.w("GeminiService", "Frame parse error", e)
+                            }
                         }
                     }
+                } finally {
+                    _isConnected = false
+                    session = null
                 }
             }
         }.isSuccess
@@ -47,9 +56,10 @@ class GeminiService(
     }
 
     suspend fun disconnect() {
+        _isConnected = false
         session?.close()
         session = null
     }
 
-    val isConnected: Boolean get() = session != null
+    val isConnected: Boolean get() = _isConnected && session?.isActive == true
 }
