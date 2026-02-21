@@ -49,6 +49,11 @@ class SessionRepositoryImpl(
     override suspend fun getTotalMinutes(userId: String): Int =
         sessionDao.getTotalMinutes(userId)
 
+    override suspend fun getSessionsFromDate(userId: String, fromTimestamp: Long): List<LearningSession> =
+        sessionDao.getRecentSessions(userId, Int.MAX_VALUE)
+            .filter { it.startedAt >= fromTimestamp }
+            .map { it.toDomain(json) }
+
     override suspend fun addSessionEvent(event: SessionEvent) =
         sessionDao.insertSessionEvent(event.toEntity())
 
