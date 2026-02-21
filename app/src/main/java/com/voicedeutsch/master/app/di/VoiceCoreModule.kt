@@ -101,9 +101,7 @@ val voiceCoreModule = module {
     // поэтому смена ключа в SettingsScreen подхватится на следующей сессии
     // без перезапуска приложения.
     factory {
-        GeminiConfig(
-            apiKey = get<SecurityRepository>().getGeminiApiKey(),
-        )
+        GeminiConfig(apiKey = get<SecurityRepository>().getGeminiApiKey())
     }
 
     // ─── Gemini Live WebSocket client ─────────────────────────────────────────
