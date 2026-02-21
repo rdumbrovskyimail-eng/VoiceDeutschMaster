@@ -16,7 +16,7 @@ object GeminiMapper {
                     temperature = config.temperature,
                     speechConfig = GeminiSpeechConfig(
                         voiceConfig = GeminiVoiceConfig(
-                            prebuiltVoiceConfig = GeminiPrebuiltVoice(voiceName = config.voiceName)
+                            prebuiltVoiceConfig = GeminiPrebuiltVoice(voiceName = "Kore")
                         )
                     )
                 ),
