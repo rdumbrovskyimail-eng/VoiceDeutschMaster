@@ -27,6 +27,17 @@ android {
         getByName("debug") {
             // Uses default debug keystore — no config needed
         }
+        create("release") {
+            val props = java.util.Properties()
+            val signingFile = rootProject.file("signing.properties")
+            if (signingFile.exists()) {
+                props.load(signingFile.inputStream())
+                storeFile = file(props["STORE_FILE"] as String)
+                storePassword = props["STORE_PASSWORD"] as String
+                keyAlias = props["KEY_ALIAS"] as String
+                keyPassword = props["KEY_PASSWORD"] as String
+            }
+        }
     }
 
     buildTypes {
@@ -37,6 +48,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -82,6 +94,7 @@ android {
         warningsAsErrors = false
         checkDependencies = true
         htmlReport = true
+        baseline = file("lint-baseline.xml")
     }
 }
 
@@ -139,6 +152,7 @@ dependencies {
     testImplementation(libs.koin.test)
     testImplementation(libs.koin.test.junit5)
     testImplementation(libs.work.testing)
+    testImplementation(libs.mockk)
     testImplementation(libs.ktor.client.mock)
     testImplementation(libs.turbine)
     testImplementation(libs.kotlinx.coroutines.test)
