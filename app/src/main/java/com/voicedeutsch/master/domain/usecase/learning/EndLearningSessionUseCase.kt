@@ -107,6 +107,12 @@ class EndLearningSessionUseCase(
 
         val today = DateUtils.todayDateString()
         val existingDaily = sessionRepository.getDailyStatistics(session.userId, today)
+        val prevCompleted = existingDaily?.exercisesCompleted ?: 0
+        val prevScore = existingDaily?.averageScore ?: 0f
+        val combinedScore = if (prevCompleted + exercisesCompleted > 0)
+            (prevScore * prevCompleted + averageScore * exercisesCompleted) /
+            (prevCompleted + exercisesCompleted)
+        else 0f
         sessionRepository.upsertDailyStatistics(
             userId = session.userId,
             date = today,
@@ -116,7 +122,7 @@ class EndLearningSessionUseCase(
             wordsReviewed = (existingDaily?.wordsReviewed ?: 0) + wordsReviewed,
             exercisesCompleted = (existingDaily?.exercisesCompleted ?: 0) + exercisesCompleted,
             exercisesCorrect = (existingDaily?.exercisesCorrect ?: 0) + exercisesCorrect,
-            averageScore = averageScore,
+            averageScore = combinedScore,
             streakMaintained = true
         )
 
