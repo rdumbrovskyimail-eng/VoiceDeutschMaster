@@ -26,6 +26,15 @@ import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
+import com.voicedeutsch.master.data.local.file.AudioCacheManager
+import com.voicedeutsch.master.data.local.file.ExportImportManager
+import com.voicedeutsch.master.data.remote.gemini.GeminiService
+import com.voicedeutsch.master.data.remote.sync.BackupManager
+import com.voicedeutsch.master.data.remote.sync.CloudSyncService
+import com.voicedeutsch.master.data.repository.AchievementRepositoryImpl
+import com.voicedeutsch.master.data.repository.SpeechRepositoryImpl
+import com.voicedeutsch.master.domain.repository.AchievementRepository
+import com.voicedeutsch.master.domain.repository.SpeechRepository
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
 
@@ -89,9 +98,7 @@ val dataModule = module {
             AppDatabase.DATABASE_NAME,
         )
             .addMigrations(
-                // Register all migrations here as they are created.
-                // MIGRATION_1_2,
-                // MIGRATION_2_3,
+                AppDatabase.MIGRATION_1_2,
             )
             .fallbackToDestructiveMigrationFrom(
                 *(1..LAST_DESTRUCTIVE_VERSION).toList().toIntArray()
@@ -109,6 +116,7 @@ val dataModule = module {
     single { get<AppDatabase>().progressDao() }
     single { get<AppDatabase>().bookProgressDao() }
     single { get<AppDatabase>().mistakeDao() }
+    single { get<AppDatabase>().achievementDao() }
 
     // ─── DataStore & Assets ──────────────────────────────────────────────────
     single { UserPreferencesDataStore(androidContext()) }
@@ -144,6 +152,27 @@ val dataModule = module {
     single<ProgressRepository> {
         ProgressRepositoryImpl(get(), get(), get(), get(), get(), get(), get(), get())
     }
+
+    // AchievementRepositoryImpl(achievementDao, json)
+    single<AchievementRepository> {
+        AchievementRepositoryImpl(get(), get())
+    }
+
+    // SpeechRepositoryImpl(knowledgeDao, json)
+    single<SpeechRepository> {
+        SpeechRepositoryImpl(get(), get())
+    }
+
+    // ─── File Managers ───────────────────────────────────────────────────────
+    single { AudioCacheManager(androidContext()) }
+    // ExportImportManager(context, json)
+    single { ExportImportManager(androidContext(), get()) }
+    single { BackupManager(androidContext()) }
+
+    // ─── Remote Services ─────────────────────────────────────────────────────
+    single { CloudSyncService() }
+    // GeminiService(httpClient, json)
+    single { GeminiService(get(), get()) }
 }
 
 // ── Migration constants ───────────────────────────────────────────────────────
@@ -153,7 +182,7 @@ val dataModule = module {
  * Set this to the schema version used during internal/alpha testing BEFORE
  * the first public release. After launch, this value MUST NOT be increased.
  */
-private const val LAST_DESTRUCTIVE_VERSION = 1
+private const val LAST_DESTRUCTIVE_VERSION = 0
 
 // ── Migration examples ────────────────────────────────────────────────────────
 // Uncomment and adapt when the schema evolves.
