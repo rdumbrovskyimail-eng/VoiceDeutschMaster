@@ -82,6 +82,10 @@ class FunctionRouter(
                 // Pronunciation
                 "save_pronunciation_result" -> handleSavePronunciationResult(args, userId, sessionId)
                 "get_pronunciation_targets" -> handleGetPronunciationTargets(userId)
+                // UI
+                "show_word_card"            -> handleShowWordCard(args)
+                "show_grammar_hint"         -> handleShowGrammarHint(args)
+                "trigger_celebration"       -> handleTriggerCelebration(args)
 
                 else -> FunctionCallResult(
                     functionName = functionName,
@@ -358,7 +362,7 @@ class FunctionRouter(
         recordPronunciation(
             RecordPronunciationResultUseCase.Params(
                 userId        = userId,
-                sessionId     = sessionId ?: "",
+                 sessionId     = sessionId,
                 word          = args.str("word") ?: "",
                 score         = args.float("score") ?: 0.5f,
                 problemSounds = args["problem_sounds"]?.jsonArray
@@ -461,16 +465,15 @@ class FunctionRouter(
         """,
         """
         {
-          "name": "advance_to_next_lesson",
-          "description": "Переводит пользователя к следующему уроку после завершения текущего.",
-          "parameters": {
-            "type": "OBJECT",
-            "properties": {
-              "completed_lesson":  { "type": "INTEGER", "description": "Номер завершённого урока" },
-              "completed_chapter": { "type": "INTEGER", "description": "Номер завершённой главы" }
-            },
-            "required": ["completed_lesson", "completed_chapter"]
-          }
+           "name": "advance_to_next_lesson",
+           "description": "Переводит пользователя к следующему уроку после завершения текущего.",
+           "parameters": {
+             "type": "OBJECT",
+             "properties": {
+               "score": { "type": "NUMBER", "description": "Оценка за урок 0.0-1.0" }
+             },
+             "required": ["score"]
+           }
         }
         """,
         """
@@ -521,7 +524,7 @@ class FunctionRouter(
               "strategy": {
                 "type": "STRING",
                 "description": "Название стратегии",
-                "enum": ["LINEAR_BOOK", "SPACED_REPETITION", "CONVERSATION", "GRAMMAR_FOCUS", "PRONUNCIATION_FOCUS"]
+                "enum": ["LINEAR_BOOK", "GAP_FILLING", "REPETITION", "FREE_PRACTICE", "PRONUNCIATION", "GRAMMAR_DRILL", "VOCABULARY_BOOST", "LISTENING", "ASSESSMENT"]
               }
             },
             "required": ["strategy"]
@@ -602,6 +605,17 @@ class FunctionRouter(
         }
         """
     )
+
+    // ── UI handlers ───────────────────────────────────────────────────────────
+
+    private fun handleShowWordCard(args: JsonObject) =
+        FunctionCallResult("show_word_card", true, """{"status":"displayed"}""")
+
+    private fun handleShowGrammarHint(args: JsonObject) =
+        FunctionCallResult("show_grammar_hint", true, """{"status":"displayed"}""")
+
+    private fun handleTriggerCelebration(args: JsonObject) =
+        FunctionCallResult("trigger_celebration", true, """{"status":"triggered"}""")
 
     // ── Tiny JsonObject extension helpers ─────────────────────────────────────
 
