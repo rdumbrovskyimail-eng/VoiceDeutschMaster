@@ -123,7 +123,7 @@ val dataModule = module {
     // KnowledgeRepositoryImpl(wordDao, knowledgeDao, grammarRuleDao, phraseDao,
     //     progressDao, mistakeDao, bookProgressDao, userDao, sessionDao, json)
     single<KnowledgeRepository> {
-        KnowledgeRepositoryImpl(get(), get(), get(), get(), get(), get(), get(), get(), get(), get())
+        KnowledgeRepositoryImpl(get(), get(), get(), get(), get(), get(), get())
     }
 
     // BookRepositoryImpl(bookFileReader, bookProgressDao, wordDao,
