@@ -37,6 +37,7 @@ sealed interface SettingsEvent {
     data class ToggleReminder(val enabled: Boolean) : SettingsEvent
     data class UpdateReminderTime(val hour: Int, val minute: Int) : SettingsEvent
     data object DismissMessages : SettingsEvent
+    data object SaveLearningPrefs : SettingsEvent
 }
 
 // ── ViewModel ─────────────────────────────────────────────────────────────────
@@ -72,22 +73,22 @@ class SettingsViewModel(
             is SettingsEvent.ToggleReminder        -> _uiState.update { it.copy(reminderEnabled = event.enabled) }
             is SettingsEvent.UpdateReminderTime    -> _uiState.update { it.copy(reminderHour = event.hour, reminderMinute = event.minute) }
             is SettingsEvent.DismissMessages       -> _uiState.update { it.copy(successMessage = null, errorMessage = null) }
+            is SettingsEvent.SaveLearningPrefs     -> saveLearningPreferences()
         }
     }
 
     private fun loadSettings() {
         viewModelScope.launch {
             runCatching {
-                val apiKey = preferencesDataStore.getGeminiApiKey() ?: ""
-                val theme  = preferencesDataStore.getThemeFlow().let {
-                    var t = "system"
-                    it.collect { v -> t = v; return@collect }
-                    t
-                }
+                val apiKey   = preferencesDataStore.getGeminiApiKey() ?: ""
+                val duration = preferencesDataStore.getSessionDuration() ?: 30
+                val goal     = preferencesDataStore.getDailyGoal() ?: 10
                 _uiState.update {
                     it.copy(
-                        isLoading    = false,
-                        geminiApiKey = apiKey,
+                        isLoading              = false,
+                        geminiApiKey           = apiKey,
+                        sessionDurationMinutes = duration,
+                        dailyGoalWords         = goal,
                     )
                 }
             }.onFailure {
@@ -106,6 +107,24 @@ class SettingsViewModel(
             runCatching { preferencesDataStore.setGeminiApiKey(key) }
                 .onSuccess { _uiState.update { it.copy(successMessage = "API ключ сохранён") } }
                 .onFailure { e -> _uiState.update { it.copy(errorMessage = e.message) } }
+        }
+    }
+
+    private fun saveLearningPreferences() {
+        viewModelScope.launch {
+            runCatching {
+                val userId = userRepository.getActiveUserId() ?: error("Пользователь не найден")
+                configureUserPreferences(
+                    userId                 = userId,
+                    sessionDurationMinutes = _uiState.value.sessionDurationMinutes,
+                    dailyGoalWords         = _uiState.value.dailyGoalWords,
+                )
+                // Также сохранить в DataStore для быстрого доступа
+                preferencesDataStore.setSessionDuration(_uiState.value.sessionDurationMinutes)
+                preferencesDataStore.setDailyGoal(_uiState.value.dailyGoalWords)
+            }
+            .onSuccess { _uiState.update { it.copy(successMessage = "✅ Настройки занятий сохранены") } }
+            .onFailure { e -> _uiState.update { it.copy(errorMessage = "❌ ${e.message}") } }
         }
     }
 
