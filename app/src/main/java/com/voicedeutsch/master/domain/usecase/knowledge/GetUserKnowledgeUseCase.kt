@@ -24,7 +24,8 @@ class GetUserKnowledgeUseCase(
         val phrasesForReviewToday: Int,
         val averagePronunciationScore: Float,
         val topicDistribution: Map<String, Int>,
-        val recentActivity: List<RecentWordActivity>
+        val recentActivity: List<RecentWordActivity>,
+        val grammarByCategory: Map<String, Float> = emptyMap()
     )
 
     data class RecentWordActivity(
@@ -65,6 +66,16 @@ class GetUserKnowledgeUseCase(
             }
         }
 
+        val allGrammarRules = knowledgeRepository.getAllGrammarRules()
+        val grammarByCategory = allGrammarRules
+            .groupBy { it.category.name }
+            .mapValues { (_, rules) ->
+                val knownInCategory = allRuleKnowledge.count { rk ->
+                    rules.any { r -> r.id == rk.ruleId } && rk.knowledgeLevel >= 4
+                }
+                if (rules.isEmpty()) 0f else knownInCategory.toFloat() / rules.size
+            }
+
         val recentActivity = allWordKnowledge
             .filter { it.lastSeen != null }
             .sortedByDescending { it.lastSeen }
@@ -93,7 +104,8 @@ class GetUserKnowledgeUseCase(
             phrasesForReviewToday = phrasesForReviewToday,
             averagePronunciationScore = averagePronunciationScore,
             topicDistribution = topicDistribution,
-            recentActivity = recentActivity
+            recentActivity = recentActivity,
+            grammarByCategory = grammarByCategory
         )
     }
 }
