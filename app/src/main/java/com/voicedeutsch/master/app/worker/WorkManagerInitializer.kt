@@ -1,7 +1,6 @@
 package com.voicedeutsch.master.app.worker
 
 import android.content.Context
-import androidx.work.Configuration
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
@@ -16,11 +15,6 @@ import java.util.concurrent.TimeUnit
 object WorkManagerInitializer {
 
     fun initialize(context: Context) {
-        try {
-            WorkManager.initialize(context, Configuration.Builder().build())
-        } catch (e: IllegalStateException) {
-            // WorkManager already initialized — safe to ignore
-        }
         val wm = WorkManager.getInstance(context)
 
         // ── SRS recalculation — daily ─────────────────────────────────────────
