@@ -7,6 +7,7 @@ import com.voicedeutsch.master.data.local.database.dao.PhraseDao
 import com.voicedeutsch.master.data.local.database.dao.ProgressDao
 import com.voicedeutsch.master.data.local.database.dao.WordDao
 import com.voicedeutsch.master.data.local.database.entity.PhraseEntity
+import com.voicedeutsch.master.data.mapper.KnowledgeMapper
 import com.voicedeutsch.master.data.mapper.KnowledgeMapper.toDomain
 import com.voicedeutsch.master.data.mapper.KnowledgeMapper.toEntity
 import com.voicedeutsch.master.data.mapper.ProgressMapper.toDomain
