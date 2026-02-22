@@ -65,6 +65,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import android.Manifest
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import com.voicedeutsch.master.presentation.components.PulsingMicButton
 import com.voicedeutsch.master.presentation.components.SessionTimer
 import com.voicedeutsch.master.presentation.components.StatusBadge
@@ -109,6 +116,38 @@ fun SessionScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // ── BackHandler — защита от случайного выхода ────────────────────────────────
+    var showExitDialog by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = uiState.isSessionActive) {
+        showExitDialog = true
+    }
+
+    if (showExitDialog) {
+        AlertDialog(
+            onDismissRequest = { showExitDialog = false },
+            title = { Text("Завершить занятие?") },
+            text  = { Text("Ваш текущий прогресс будет сохранен.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showExitDialog = false
+                        viewModel.onEvent(SessionEvent.EndSession)
+                        onSessionEnd()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) { Text("Завершить") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitDialog = false }) {
+                    Text("Остаться")
+                }
+            }
+        )
+    }
+
     // Show snackbar messages
     LaunchedEffect(uiState.snackbarMessage) {
         uiState.snackbarMessage?.let {
@@ -117,10 +156,20 @@ fun SessionScreen(
         }
     }
 
-    // Auto-start session when screen opens
+    // Permission launcher — запрашивает микрофон, затем стартует сессию
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            viewModel.onEvent(SessionEvent.StartSession)
+        } else {
+            viewModel.onEvent(SessionEvent.PermissionDenied)
+        }
+    }
+
     LaunchedEffect(Unit) {
         if (!uiState.isSessionActive && !uiState.isLoading) {
-            viewModel.onEvent(SessionEvent.StartSession)
+            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
 
@@ -230,6 +279,19 @@ fun SessionScreen(
                 )
 
                 Spacer(Modifier.height(16.dp))
+
+                // ── Strategy Test Canvas ─────────────────────────────────────────────────────
+                voiceState.currentStrategy?.let { strategy ->
+                    StrategyTestCanvas(
+                        strategy           = strategy,
+                        wordsLearned       = voiceState.wordsLearnedInSession,
+                        exercisesCompleted = voiceState.exercisesCompleted,
+                        modifier           = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
 
                 // ── Transcript area ──────────────────────────────────────────
                 TranscriptArea(
