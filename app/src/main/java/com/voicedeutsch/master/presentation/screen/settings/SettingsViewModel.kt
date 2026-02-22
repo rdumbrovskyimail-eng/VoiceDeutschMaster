@@ -114,10 +114,13 @@ class SettingsViewModel(
         viewModelScope.launch {
             runCatching {
                 val userId = userRepository.getActiveUserId() ?: error("Пользователь не найден")
-                configureUserPreferences(
-                    userId                 = userId,
-                    sessionDurationMinutes = _uiState.value.sessionDurationMinutes,
-                    dailyGoalWords         = _uiState.value.dailyGoalWords,
+                configureUserPreferences.updatePreferredSessionDuration(
+                    userId, _uiState.value.sessionDurationMinutes
+                )
+                configureUserPreferences.updateDailyGoal(
+                    userId,
+                    words   = _uiState.value.dailyGoalWords,
+                    minutes = _uiState.value.sessionDurationMinutes,
                 )
                 // Также сохранить в DataStore для быстрого доступа
                 preferencesDataStore.setSessionDuration(_uiState.value.sessionDurationMinutes)
