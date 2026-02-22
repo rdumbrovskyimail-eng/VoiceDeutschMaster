@@ -328,13 +328,13 @@ class KnowledgeRepositoryImpl(
     // ==========================================
 
     override suspend fun savePronunciationResult(result: PronunciationResult) =
-        progressDao.insertPronunciationRecord(result.toEntity(json))
+        progressDao.insertPronunciationRecord(with(KnowledgeMapper) { result.toEntity(json) })
 
     override suspend fun getPronunciationResults(
         userId: String,
         word: String
     ): List<PronunciationResult> =
-        progressDao.getPronunciationRecords(userId, word).map { it.toDomain(json) }
+        progressDao.getPronunciationRecords(userId, word).map { with(KnowledgeMapper) { it.toDomain(json) } }
 
     override suspend fun getAveragePronunciationScore(userId: String): Float =
         progressDao.getAveragePronunciationScore(userId)
@@ -391,7 +391,7 @@ class KnowledgeRepositoryImpl(
         knowledgeDao.getPerfectPronunciationCount(userId)
 
     override suspend fun getRecentPronunciationRecords(userId: String, limit: Int): List<PronunciationResult> =
-        knowledgeDao.getRecentPronunciationRecords(userId, limit).map { it.toDomain(json) }
+        knowledgeDao.getRecentPronunciationRecords(userId, limit).map { with(KnowledgeMapper) { it.toDomain(json) } }
 
     override suspend fun recalculateOverdueItems(userId: String) {
         val now = DateUtils.nowTimestamp()
