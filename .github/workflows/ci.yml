@@ -151,7 +151,8 @@ jobs:
           **Commit:** `${{ github.sha }}`
           **Build #:** ${{ github.run_number }}
           Логи: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        files: build_errors.txt
+        files: b
+        uild_errors.txt
         fail_on_unmatched_files: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
