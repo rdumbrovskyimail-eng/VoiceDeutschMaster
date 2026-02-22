@@ -24,6 +24,7 @@ data class KnowledgeUiState(
     val weakPoints: List<GetWeakPointsUseCase.WeakPoint>? = null,
     val errorMessage: String? = null,
     val selectedTab: KnowledgeTab = KnowledgeTab.OVERVIEW,
+    val showAllWords: Boolean = false,
 )
 
 enum class KnowledgeTab { OVERVIEW, WORDS, GRAMMAR, WEAK_POINTS }
@@ -32,6 +33,7 @@ sealed interface KnowledgeEvent {
     data object Refresh : KnowledgeEvent
     data class SelectTab(val tab: KnowledgeTab) : KnowledgeEvent
     data object DismissError : KnowledgeEvent
+    data object ToggleShowAllWords : KnowledgeEvent
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -63,6 +65,7 @@ class KnowledgeViewModel(
             is KnowledgeEvent.Refresh      -> loadData()
             is KnowledgeEvent.SelectTab    -> _uiState.update { it.copy(selectedTab = event.tab) }
             is KnowledgeEvent.DismissError -> _uiState.update { it.copy(errorMessage = null) }
+            is KnowledgeEvent.ToggleShowAllWords -> _uiState.update { it.copy(showAllWords = !it.showAllWords) }
         }
     }
 
