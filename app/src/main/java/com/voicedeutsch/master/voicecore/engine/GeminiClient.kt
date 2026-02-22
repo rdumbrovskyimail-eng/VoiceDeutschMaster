@@ -200,7 +200,7 @@ class GeminiClient(
     ) {
         val setupMessage = buildJsonObject {
             putJsonObject("setup") {
-                put("model", "models/$MODEL_LIVE")
+                put("model", "models/${config.modelName}")
 
                 putJsonObject("generationConfig") {
                     put("temperature", config.temperature)
