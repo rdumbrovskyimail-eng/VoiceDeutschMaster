@@ -95,6 +95,25 @@ val voiceCoreModule = module {
     // SessionHistory — in-memory история диалога (новый экземпляр на каждую сессию)
     factory { SessionHistory() }
 
+    // ─── Gemini configuration ─────────────────────────────────────────────────
+    // factory вместо single — ключ читается при каждом обращении,
+    // поэтому смена ключа в SettingsScreen подхватится на следующей сессии
+    // без перезапуска приложения.
+    factory {
+        GeminiConfig(apiKey = get<SecurityRepository>().getGeminiApiKey())
+    }
+
+    // ─── Gemini Live WebSocket client ─────────────────────────────────────────
+    // factory — пересоздаётся вместе с GeminiConfig при каждой новой сессии.
+    // HttpClient и Json — single из DataModule, переиспользуются.
+    factory {
+        GeminiClient(
+            config     = get(), // GeminiConfig (factory)
+            httpClient = get(), // io.ktor.client.HttpClient (single, DataModule)
+            json       = get(), // kotlinx.serialization.json.Json (single, DataModule)
+        )
+    }
+
     // ─── Strategy handlers ────────────────────────────────────────────────────
     factory { LinearBookStrategy() }
     factory { RepetitionStrategy() }
@@ -120,9 +139,7 @@ val voiceCoreModule = module {
             buildKnowledgeSummary = get(),
             startLearningSession  = get(),
             endLearningSession    = get(),
-            securityRepository    = get(),
-            httpClient            = get(),
-            json                  = get(),
+            geminiClient          = get(),
             networkMonitor        = get(), // ← NetworkMonitor из AppModule
         )
     }
