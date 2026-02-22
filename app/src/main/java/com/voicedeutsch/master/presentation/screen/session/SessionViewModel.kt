@@ -51,6 +51,7 @@ class SessionViewModel(
             is SessionEvent.ToggleTextInput -> _uiState.update { it.copy(showTextInput = !it.showTextInput) }
             is SessionEvent.DismissHint     -> _uiState.update { it.copy(showHint = false) }
             is SessionEvent.ConsumeSnackbar -> _uiState.update { it.copy(snackbarMessage = null) }
+            is SessionEvent.PermissionDenied -> handlePermissionDenied()
         }
     }
 
@@ -118,6 +119,15 @@ class SessionViewModel(
                     it.copy(snackbarMessage = error.message ?: "Failed to send message")
                 }
             }
+        }
+    }
+
+    private fun handlePermissionDenied() {
+        _uiState.update {
+            it.copy(
+                isLoading = false,
+                errorMessage = "Доступ к микрофону запрещён. Откройте Настройки → Приложения → Разрешения."
+            )
         }
     }
 
