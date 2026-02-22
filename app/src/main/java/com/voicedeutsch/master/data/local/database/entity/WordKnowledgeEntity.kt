@@ -25,7 +25,8 @@ import androidx.room.PrimaryKey
     indices = [
         Index("user_id", "next_review"),
         Index("user_id", "knowledge_level"),
-        Index(value = ["user_id", "word_id"], unique = true)
+        Index(value = ["user_id", "word_id"], unique = true),
+        Index("word_id")
     ]
 )
 data class WordKnowledgeEntity(
