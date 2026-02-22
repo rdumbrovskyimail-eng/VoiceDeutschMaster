@@ -34,13 +34,19 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,7 +54,9 @@ import androidx.compose.ui.graphics.Color
 import com.voicedeutsch.master.presentation.components.shimmerEffect
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.voicedeutsch.master.presentation.components.LevelIndicator
 import com.voicedeutsch.master.presentation.components.ProgressRing
 import com.voicedeutsch.master.presentation.theme.Background
@@ -87,7 +95,18 @@ fun DashboardScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
 
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(state.errorMessage) {
+        state.errorMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.onEvent(DashboardEvent.DismissError)
+        }
+    }
+
+    val pullRefreshState = rememberPullToRefreshState()
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = Background,
         topBar = {
             TopAppBar(
@@ -165,11 +184,17 @@ fun DashboardScreen(
             return@Scaffold
         }
 
+        PullToRefreshBox(
+            isRefreshing = state.isLoading,
+            onRefresh    = { viewModel.onEvent(DashboardEvent.Refresh) },
+            state        = pullRefreshState,
+            modifier     = Modifier.fillMaxSize(),
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .verticalScroll(rememberScrollState())
+                .padding(padding)
                 .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -185,6 +210,31 @@ fun DashboardScreen(
                             (prog.vocabularyProgress.totalWords.coerceAtLeast(1)) * 100f
                     } ?: 0f,
                 )
+            } ?: run {
+                if (!state.isLoading) {
+                    Card(
+                        colors   = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            modifier              = Modifier.padding(20.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment     = Alignment.CenterVertically,
+                        ) {
+                            Column {
+                                Text("Профиль не загружен", style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    "Попробуйте обновить",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            TextButton(onClick = { viewModel.onEvent(DashboardEvent.Refresh) }) {
+                                Text("Обновить")
+                            }
+                        }
+                    }
+                }
             }
 
             // ── Daily stats row ───────────────────────────────────────────────
@@ -195,9 +245,7 @@ fun DashboardScreen(
             )
 
             // ── Weekly chart ──────────────────────────────────────────────────
-            if (state.weeklyProgress.isNotEmpty()) {
-                WeeklyChart(days = state.weeklyProgress)
-            }
+            WeeklyChart(days = state.weeklyProgress)
 
             // ── CTA button ────────────────────────────────────────────────────
             Button(
@@ -230,6 +278,7 @@ fun DashboardScreen(
 
             Spacer(Modifier.height(16.dp))
         }
+        } // end PullToRefreshBox
     }
 }
 
@@ -354,6 +403,31 @@ private fun WeeklyChart(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(12.dp))
+
+            if (days.isEmpty()) {
+                Column(
+                    modifier            = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("📈", fontSize = 32.sp)
+                    Text(
+                        "Начните первое занятие!",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                    Text(
+                        "Ваш прогресс за неделю появится здесь",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+                return@Column
+            }
+
             Row(
                 modifier                = Modifier.fillMaxWidth(),
                 horizontalArrangement   = Arrangement.SpaceEvenly,
