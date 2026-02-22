@@ -15,7 +15,7 @@ class UserPreferencesDataStore(private val context: Context) {
 
     companion object {
         val ACTIVE_USER_ID = stringPreferencesKey("active_user_id")
-        val GEMINI_API_KEY = stringPreferencesKey("gemini_api_key")
+
         val THEME = stringPreferencesKey("theme")
         val IS_ONBOARDING_COMPLETE = booleanPreferencesKey("is_onboarding_complete")
         val IS_BOOK_LOADED = booleanPreferencesKey("is_book_loaded")
@@ -30,12 +30,6 @@ class UserPreferencesDataStore(private val context: Context) {
         context.dataStore.edit { it[ACTIVE_USER_ID] = userId }
     }
 
-    suspend fun getGeminiApiKey(): String? =
-        context.dataStore.data.first()[GEMINI_API_KEY]
-
-    suspend fun setGeminiApiKey(key: String) {
-        context.dataStore.edit { it[GEMINI_API_KEY] = key }
-    }
 
     fun getThemeFlow(): Flow<String> =
         context.dataStore.data.map { it[THEME] ?: "system" }
