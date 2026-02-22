@@ -17,6 +17,12 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
 
+    <!-- Для Downloads/LogVoiceCrash через MediaStore — разрешений не нужно -->
+    <!-- Это разрешение только для старых устройств (API <= 28) -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
     <application
         android:name=".app.VoiceDeutschApp"
         android:allowBackup="true"
