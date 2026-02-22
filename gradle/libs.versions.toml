@@ -3,7 +3,7 @@
 # Kotlin & Core
 kotlin = "2.3.0"
 agp = "9.0.1"
-ksp = "2.3.0-1.0.24"
+ksp = "2.3.5"
 
 # Compose
 compose-bom = "2026.01.01"
