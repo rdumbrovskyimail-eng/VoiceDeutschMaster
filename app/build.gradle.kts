@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -27,7 +29,7 @@ android {
             // Uses default debug keystore — no config needed
         }
         create("release") {
-            val props = java.util.Properties()
+            val props = Properties()
             val signingFile = rootProject.file("signing.properties")
             if (signingFile.exists()) {
                 props.load(signingFile.inputStream())
