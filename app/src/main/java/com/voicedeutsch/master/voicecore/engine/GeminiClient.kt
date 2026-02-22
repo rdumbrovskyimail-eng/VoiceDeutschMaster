@@ -75,7 +75,11 @@ class GeminiClient(
     // ── Состояние соединения ──────────────────────────────────────────────────
 
     private var wsSession: WebSocketSession? = null
-    private val clientScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val exceptionHandler = kotlinx.coroutines.CoroutineExceptionHandler { _, throwable ->
+        android.util.Log.e(TAG, "Unhandled exception in GeminiClient scope", throwable)
+        setupComplete = false
+    }
+    private val clientScope = CoroutineScope(SupervisorJob() + Dispatchers.IO + exceptionHandler)
     private var connectionJob: Job? = null
 
     // Канал входящих ответов от сервера (заполняется в receiveLoop)
@@ -99,16 +103,22 @@ class GeminiClient(
     ) {
         setupComplete = false
         connectionJob = clientScope.launch {
-            httpClient.webSocket(
-                host = WS_HOST,
-                path = "$WS_PATH?key=${config.apiKey}",
-            ) {
-                wsSession = this
-                sendSetup(context, config)
-                receiveLoop()
+            try {
+                // СТРОГО WSS! Иначе Google сбросит соединение и будет краш.
+                val urlString = "wss://$WS_HOST$WS_PATH?key=${config.apiKey}"
+                httpClient.webSocket(urlString) {
+                    wsSession = this
+                    sendSetup(context, config)
+                    receiveLoop()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e(TAG, "WebSocket connection failed", e)
+                setupComplete = false
+                responseChannel.close(e) // Сигнализируем движку об ошибке
+            } finally {
+                wsSession = null
+                responseChannel.close()
             }
-            wsSession = null
-            responseChannel.close()
         }
         waitForSetupComplete()
     }
@@ -362,14 +372,17 @@ class GeminiClient(
     }
 
     private suspend fun waitForSetupComplete() {
-        // Ждём максимум 5 секунд — сервер обычно отвечает за < 500 ms
         var waited = 0L
         while (!setupComplete && waited < 5_000L) {
+            // Если корутина соединения упала (неверный ключ, нет интернета) - прерываем ожидание сразу
+            if (connectionJob?.isActive != true && !setupComplete) {
+                throw IllegalStateException("Ошибка подключения к Gemini. Проверьте интернет или правильность API-ключа.")
+            }
             kotlinx.coroutines.delay(50)
             waited += 50
         }
         if (!setupComplete) {
-            throw IllegalStateException("Gemini setup timeout — no setupComplete received")
+            throw IllegalStateException("Превышено время ожидания ответа от сервера Gemini.")
         }
     }
 
