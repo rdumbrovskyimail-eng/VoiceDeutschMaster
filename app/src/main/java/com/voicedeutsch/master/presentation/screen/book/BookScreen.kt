@@ -250,9 +250,9 @@ fun BookScreen(
                         com.voicedeutsch.master.presentation.components.WordCard(
                             german          = word.german,
                             russian         = word.russian,
-                            knowledgeLevel  = word.knowledgeLevel,
-                            partOfSpeech    = word.partOfSpeech,
-                            exampleSentence = word.exampleSentence,
+                            knowledgeLevel  = 0,
+                            partOfSpeech    = word.gender?.let { "($it)" },
+                            exampleSentence = null,
                         )
                     }
                 } else {
