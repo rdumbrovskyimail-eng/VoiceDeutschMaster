@@ -19,6 +19,8 @@ class UserPreferencesDataStore(private val context: Context) {
         val THEME = stringPreferencesKey("theme")
         val IS_ONBOARDING_COMPLETE = booleanPreferencesKey("is_onboarding_complete")
         val IS_BOOK_LOADED = booleanPreferencesKey("is_book_loaded")
+        val SESSION_DURATION = androidx.datastore.preferences.core.intPreferencesKey("session_duration")
+        val DAILY_GOAL = androidx.datastore.preferences.core.intPreferencesKey("daily_goal")
     }
 
     suspend fun getActiveUserId(): String? =
@@ -54,5 +56,19 @@ class UserPreferencesDataStore(private val context: Context) {
 
     suspend fun setBookLoaded(loaded: Boolean) {
         context.dataStore.edit { it[IS_BOOK_LOADED] = loaded }
+    }
+
+    suspend fun getSessionDuration(): Int? =
+        context.dataStore.data.first()[SESSION_DURATION]
+
+    suspend fun setSessionDuration(minutes: Int) {
+        context.dataStore.edit { it[SESSION_DURATION] = minutes }
+    }
+
+    suspend fun getDailyGoal(): Int? =
+        context.dataStore.data.first()[DAILY_GOAL]
+
+    suspend fun setDailyGoal(words: Int) {
+        context.dataStore.edit { it[DAILY_GOAL] = words }
     }
 }
