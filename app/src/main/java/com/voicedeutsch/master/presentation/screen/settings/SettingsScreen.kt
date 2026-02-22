@@ -3,6 +3,7 @@ package com.voicedeutsch.master.presentation.screen.settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
@@ -15,7 +16,14 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +61,7 @@ fun SettingsScreen(
     // ── Состояние диагностики ─────────────────────────────────────────────────
     var isSavingLog by remember { mutableStateOf(false) }
     var logStats by remember { mutableStateOf(CrashLogger.getInstance()?.getStats()) }
+    var showTimePicker by remember { mutableStateOf(false) }
 
     // ── SAF-пикер: выбор места для сохранения лога ───────────────────────────
     val saveLogLauncher = rememberLauncherForActivityResult(
@@ -151,17 +160,18 @@ fun SettingsScreen(
 
             // ── Theme ─────────────────────────────────────────────────────────
             SettingsSection(title = "Оформление") {
-                val themes = listOf("system" to "Системная", "dark" to "Тёмная", "light" to "Светлая")
-                themes.forEach { (value, label) ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(label, style = MaterialTheme.typography.bodyMedium)
-                        RadioButton(
-                            selected = state.theme == value,
+                val themes = listOf(
+                    "system" to "Системная",
+                    "dark"   to "Тёмная",
+                    "light"  to "Светлая",
+                )
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    themes.forEachIndexed { index, (value, label) ->
+                        SegmentedButton(
+                            shape    = SegmentedButtonDefaults.itemShape(index = index, count = themes.size),
                             onClick  = { viewModel.onEvent(SettingsEvent.UpdateTheme(value)) },
+                            selected = state.theme == value,
+                            label    = { Text(label) },
                         )
                     }
                 }
@@ -170,20 +180,30 @@ fun SettingsScreen(
             // ── Session preferences ───────────────────────────────────────────
             SettingsSection(title = "Занятия") {
                 LabeledSlider(
-                    label    = "Длительность сессии: ${state.sessionDurationMinutes} мин",
-                    value    = state.sessionDurationMinutes.toFloat(),
+                    label         = "Длительность: ${state.sessionDurationMinutes} мин",
+                    value         = state.sessionDurationMinutes.toFloat(),
                     onValueChange = { viewModel.onEvent(SettingsEvent.UpdateSessionDuration(it.toInt())) },
-                    valueRange = 10f..60f,
-                    steps    = 9,
+                    valueRange    = 10f..60f,
+                    steps         = 9,
                 )
                 Spacer(Modifier.height(8.dp))
                 LabeledSlider(
-                    label    = "Цель: ${state.dailyGoalWords} слов/день",
-                    value    = state.dailyGoalWords.toFloat(),
+                    label         = "Цель: ${state.dailyGoalWords} слов/день",
+                    value         = state.dailyGoalWords.toFloat(),
                     onValueChange = { viewModel.onEvent(SettingsEvent.UpdateDailyGoal(it.toInt())) },
-                    valueRange = 5f..50f,
-                    steps    = 8,
+                    valueRange    = 5f..50f,
+                    steps         = 8,
                 )
+                Spacer(Modifier.height(4.dp))
+                Button(
+                    onClick  = {
+                        focusManager.clearFocus()
+                        viewModel.onEvent(SettingsEvent.SaveLearningPrefs)
+                    },
+                    modifier = Modifier.align(Alignment.End),
+                ) {
+                    Text("Сохранить настройки")
+                }
             }
 
             // ── Reminder ──────────────────────────────────────────────────────
@@ -200,12 +220,60 @@ fun SettingsScreen(
                     )
                 }
                 if (state.reminderEnabled) {
-                    Text(
-                        text  = "Время: ${state.reminderHour.toString().padStart(2, '0')}:${state.reminderMinute.toString().padStart(2, '0')}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showTimePicker = true }
+                            .padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Время: ${state.reminderHour.toString().padStart(2, '0')}:" +
+                                state.reminderMinute.toString().padStart(2, '0'),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Icon(
+                            Icons.Outlined.Edit,
+                            contentDescription = "Изменить время",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
                 }
+            }
+
+            // ── TimePicker диалог ─────────────────────────────────────────────
+            if (showTimePicker) {
+                val timePickerState = rememberTimePickerState(
+                    initialHour   = state.reminderHour,
+                    initialMinute = state.reminderMinute,
+                    is24Hour      = true,
+                )
+                AlertDialog(
+                    onDismissRequest = { showTimePicker = false },
+                    title = { Text("Время напоминания") },
+                    text  = {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
+                            TimePicker(state = timePickerState)
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            viewModel.onEvent(
+                                SettingsEvent.UpdateReminderTime(
+                                    timePickerState.hour,
+                                    timePickerState.minute,
+                                )
+                            )
+                            showTimePicker = false
+                        }) { Text("OK") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showTimePicker = false }) { Text("Отмена") }
+                    },
+                )
             }
 
             // ── 🐛 Диагностика ────────────────────────────────────────────────
