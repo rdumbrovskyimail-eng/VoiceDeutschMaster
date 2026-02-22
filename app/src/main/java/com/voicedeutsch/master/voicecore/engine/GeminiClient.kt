@@ -64,10 +64,6 @@ class GeminiClient(
         private const val WS_PATH =
             "/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
 
-        // Актуальная модель на февраль 2026.
-        // gemini-2.0-flash-live-001 retire 31.03.2026 → используем 2.5
-        private const val MODEL_LIVE = "gemini-2.5-flash-live"
-
         // Размер внутреннего буфера входящих ответов от Gemini
         private const val RESPONSE_CHANNEL_CAPACITY = 64
     }
