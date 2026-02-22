@@ -35,7 +35,8 @@ data class GeminiConfig(
     }
 
     companion object {
-        const val MODEL_GEMINI_LIVE = "gemini-2.5-flash-live"
+        // Актуальная модель Google для Live API
+        const val MODEL_GEMINI_LIVE = "gemini-2.0-flash"
         const val MAX_CONTEXT_TOKENS = 2_000_000
         const val DEFAULT_TEMPERATURE = 0.5f
         const val DEFAULT_TOP_P = 0.95f
