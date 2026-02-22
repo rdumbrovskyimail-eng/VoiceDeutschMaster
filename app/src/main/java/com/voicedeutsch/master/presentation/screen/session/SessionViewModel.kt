@@ -3,6 +3,7 @@ package com.voicedeutsch.master.presentation.screen.session
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.voicedeutsch.master.data.local.datastore.UserPreferencesDataStore
+import com.voicedeutsch.master.domain.repository.SecurityRepository
 import com.voicedeutsch.master.domain.repository.UserRepository
 import com.voicedeutsch.master.voicecore.engine.GeminiConfig
 import com.voicedeutsch.master.voicecore.engine.VoiceCoreEngine
@@ -33,6 +34,7 @@ class SessionViewModel(
     private val voiceCoreEngine: VoiceCoreEngine,
     private val userRepository: UserRepository,
     private val preferencesDataStore: UserPreferencesDataStore,
+    private val securityRepository: SecurityRepository,
 ) : ViewModel() {
 
     val voiceState: StateFlow<VoiceSessionState> = voiceCoreEngine.sessionState
@@ -63,8 +65,8 @@ class SessionViewModel(
             try {
                 val userId = userRepository.getActiveUserId()
                     ?: error("No active user found. Please complete onboarding.")
-                val apiKey = preferencesDataStore.getGeminiApiKey()
-                    ?: error("Gemini API key not configured. Go to Settings.")
+                val apiKey = securityRepository.getGeminiApiKey()
+                if (apiKey.isBlank()) error("Gemini API key not configured. Go to Settings.")
                 val geminiConfig = GeminiConfig(apiKey = apiKey)
                 voiceCoreEngine.initialize(geminiConfig)
                 voiceCoreEngine.startSession(userId)
