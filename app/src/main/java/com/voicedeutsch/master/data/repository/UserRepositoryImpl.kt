@@ -143,7 +143,7 @@ class UserRepositoryImpl(
     override suspend fun updateStreakIfNeeded(userId: String) {
         val user = userDao.getUser(userId) ?: return
         val now = DateUtils.nowTimestamp()
-        val lastSession = user.lastSessionDate
+        val lastSession = user.lastSessionDate ?: 0L
         val oneDayMs = 24 * 60 * 60 * 1000L
         val twoDaysMs = 2 * oneDayMs
         val diff = now - lastSession
