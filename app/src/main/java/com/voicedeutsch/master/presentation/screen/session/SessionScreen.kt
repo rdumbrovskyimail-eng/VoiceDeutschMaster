@@ -27,6 +27,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -72,10 +73,14 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import com.voicedeutsch.master.presentation.components.PulsingMicButton
 import com.voicedeutsch.master.presentation.components.SessionTimer
 import com.voicedeutsch.master.presentation.components.StatusBadge
 import com.voicedeutsch.master.presentation.components.VoiceWaveform
+import androidx.compose.ui.text.font.FontWeight
 import com.voicedeutsch.master.presentation.theme.Background
 import com.voicedeutsch.master.presentation.theme.Secondary
 import com.voicedeutsch.master.voicecore.session.VoiceEngineState
@@ -109,6 +114,7 @@ import org.koin.androidx.compose.koinViewModel
 fun SessionScreen(
     onSessionEnd: () -> Unit,
     onNavigateToDashboard: () -> Unit,
+    onNavigateToStatistics: () -> Unit = {},
     viewModel: SessionViewModel = koinViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -118,6 +124,7 @@ fun SessionScreen(
 
     // ── BackHandler — защита от случайного выхода ────────────────────────────────
     var showExitDialog by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
 
     BackHandler(enabled = uiState.isSessionActive) {
         showExitDialog = true
@@ -197,15 +204,58 @@ fun SessionScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        viewModel.onEvent(SessionEvent.EndSession)
-                        onSessionEnd()
-                    }) {
-                        Icon(
-                            imageVector        = Icons.Filled.Close,
-                            contentDescription = "Завершить сессию",
-                            tint               = MaterialTheme.colorScheme.onBackground,
-                        )
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(
+                                Icons.Filled.MoreVert,
+                                contentDescription = "Меню",
+                                tint = MaterialTheme.colorScheme.onBackground,
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Текстовый ввод") },
+                                leadingIcon = {
+                                    Icon(Icons.Outlined.Keyboard, contentDescription = null)
+                                },
+                                onClick = {
+                                    showMenu = false
+                                    viewModel.onEvent(SessionEvent.ToggleTextInput)
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Статистика") },
+                                leadingIcon = {
+                                    Icon(Icons.Outlined.BarChart, contentDescription = null)
+                                },
+                                onClick = {
+                                    showMenu = false
+                                    onNavigateToStatistics()
+                                },
+                            )
+                            HorizontalDivider()
+                            if (uiState.isSessionActive) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text("Завершить занятие", color = MaterialTheme.colorScheme.error)
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Filled.Close,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.error,
+                                        )
+                                    },
+                                    onClick = {
+                                        showMenu = false
+                                        showExitDialog = true
+                                    },
+                                )
+                            }
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -220,7 +270,7 @@ fun SessionScreen(
                 uiState = uiState,
                 voiceEngineState = voiceState.engineState,
                 onEvent = viewModel::onEvent,
-                onNavigateToStats = onNavigateToDashboard,
+                onNavigateToStats = onNavigateToStatistics,
             )
         },
     ) { paddingValues ->
@@ -313,6 +363,59 @@ fun SessionScreen(
                             .fillMaxWidth()
                             .padding(horizontal = 24.dp, vertical = 8.dp),
                     )
+                }
+
+                // ── Hint overlay ─────────────────────────────────────────────
+                AnimatedVisibility(
+                    visible = uiState.showHint,
+                    enter = fadeIn() + slideInVertically { it },
+                    exit  = fadeOut() + slideOutVertically { it },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 96.dp, start = 16.dp, end = 16.dp),
+                ) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Icon(
+                                Icons.Filled.Mic,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(32.dp),
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Нажмите на микрофон",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    "или говорите — AI репетитор вас слышит",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            IconButton(
+                                onClick = { viewModel.onEvent(SessionEvent.DismissHint) },
+                                modifier = Modifier.size(24.dp),
+                            ) {
+                                Icon(
+                                    Icons.Filled.Close,
+                                    contentDescription = "Закрыть подсказку",
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                        }
+                    }
                 }
 
                 // ── Text input (accessibility fallback) ──────────────────────
@@ -680,6 +783,13 @@ private fun SessionResultCard(
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurface,
+            )
+
+            Text(
+                text = "✓ Прогресс сохранён",
+                style = MaterialTheme.typography.bodySmall,
+                color = Secondary,
+                fontWeight = FontWeight.Medium,
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
