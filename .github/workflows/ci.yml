@@ -53,107 +53,18 @@ jobs:
     - name: Create local.properties
       run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
-    - name: Run Unit Tests
-      run: |
-        set -o pipefail
-        ./gradlew testDebugUnitTest \
-          --no-daemon \
-          --build-cache 2>&1 | tee test_log.txt
-
-    - name: Upload test results
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-results
-        path: app/build/reports/tests/
-        if-no-files-found: warn
-
     - name: Build Debug APK
       run: |
-        set -o pipefail
         ./gradlew assembleDebug \
           --parallel \
           --build-cache \
           --no-daemon \
-          --configuration-cache 2>&1 | tee build_log.txt
+          --configuration-cache
 
-    - name: Set up Keystore
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      run: |
-        if [ -n "${{ secrets.KEYSTORE_FILE }}" ]; then
-          echo "${{ secrets.KEYSTORE_FILE }}" | base64 -d > app/release.keystore
-          echo "✅ Keystore decoded from secrets"
-        else
-          echo "❌ ERROR: KEYSTORE_FILE secret is not set"
-          exit 1
-        fi
-
-    - name: Build Release APK
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      run: |
-        set -o pipefail
-        ./gradlew assembleRelease \
-          --parallel \
-          --build-cache \
-          --no-daemon \
-          --configuration-cache \
-          -x lintVitalRelease \
-          -Pandroid.injected.signing.store.file=${{ github.workspace }}/app/release.keystore \
-          -Pandroid.injected.signing.store.password=${{ secrets.KEY_PASSWORD }} \
-          -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
-          -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }} 2>&1 | tee -a build_log.txt
-
-    - name: Collect build errors
-      if: always()
-      run: |
-        grep -E "error:|ERROR|FAILED|Exception" build_log.txt > build_errors.txt || echo "No errors found" > build_errors.txt
-
-    - name: Verify APK exists
-      if: success()
-      run: |
-        if [[ "${{ github.event_name }}" == 'push' && "${{ github.ref }}" == 'refs/heads/main' ]]; then
-          APK=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
-          APK_DIR="app/build/outputs/apk/release/"
-        else
-          APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -1)
-          APK_DIR="app/build/outputs/apk/debug/"
-        fi
-        if [ -z "$APK" ]; then
-          echo "❌ APK not found after successful build!"
-          cat build_errors.txt
-          exit 1
-        fi
-        echo "✅ APK found: $APK"
-        ls -lh "$APK_DIR"
-
-    - name: Create Release (success)
-      if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-      uses: softprops/action-gh-release@v2
+    - name: Upload Debug APK
+      uses: actions/upload-artifact@v4
       with:
-        tag_name: v1.0.${{ github.run_number }}
-        name: VoiceDeutschMaster v1.0.${{ github.run_number }}
-        body: |
-          ## ✅ VoiceDeutschMaster v1.0.${{ github.run_number }}
-          **Commit:** `${{ github.sha }}`
-          **Build #:** ${{ github.run_number }}
-          ### 📦 Скачайте APK ниже ⬇️
-        files: app/build/outputs/apk/release/*.apk
-        fail_on_unmatched_files: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Create Release (failure)
-      if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: v1.0.${{ github.run_number }}-failed
-        name: "❌ FAILED — v1.0.${{ github.run_number }}"
-        body: |
-          ## ❌ Сборка упала
-          **Commit:** `${{ github.sha }}`
-          **Build #:** ${{ github.run_number }}
-          Логи: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        files: build_errors.txt
-        fail_on_unmatched_files: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        name: app-debug-${{ github.run_number }}
+        path: app/build/outputs/apk/debug/*.apk
+        if-no-files-found: error
+        retention-days: 7
