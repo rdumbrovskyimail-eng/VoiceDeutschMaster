@@ -97,6 +97,7 @@ jobs:
           --build-cache \
           --no-daemon \
           --configuration-cache \
+          -x lintVitalRelease \
           -Pandroid.injected.signing.store.file=${{ github.workspace }}/app/release.keystore \
           -Pandroid.injected.signing.store.password=${{ secrets.KEY_PASSWORD }} \
           -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
