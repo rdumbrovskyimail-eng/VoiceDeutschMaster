@@ -55,7 +55,9 @@ class VoiceCoreEngineImpl(
     private val buildKnowledgeSummary: BuildKnowledgeSummaryUseCase,
     private val startLearningSession: StartLearningSessionUseCase,
     private val endLearningSession: EndLearningSessionUseCase,
-    private val geminiClient: GeminiClient,
+    private val securityRepository: SecurityRepository,
+    private val httpClient: HttpClient,
+    private val json: Json,
     private val networkMonitor: com.voicedeutsch.master.util.NetworkMonitor,
 ) : VoiceCoreEngine {
 
@@ -181,6 +183,10 @@ class VoiceCoreEngineImpl(
                 currentLesson = sessionData.currentLesson,
             )
         }
+
+        val apiKey = securityRepository.getGeminiApiKey()
+        val cfg = GeminiConfig(apiKey = apiKey)
+        val geminiClient = GeminiClient(cfg, httpClient, json)
 
         // 5. Открыть WebSocket и отправить BidiGenerateContentSetup.
         //    GeminiClient блокирует до получения setupComplete от сервера.
