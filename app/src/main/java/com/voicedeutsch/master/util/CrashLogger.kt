@@ -1,7 +1,9 @@
 package com.voicedeutsch.master.util
 
+import android.content.ContentValues
 import android.content.Context
 import android.os.Build
+import android.provider.MediaStore
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -224,6 +226,40 @@ class CrashLogger private constructor(
     }
 
     fun getCrashLogDirectory(): String = logDirectory.absolutePath
+
+    /**
+     * Копирует последний краш-файл в Downloads/LogVoiceCrash через MediaStore.
+     * Вызывается при следующем старте приложения, не во время краша.
+     */
+    fun copyLatestCrashToDownloads(context: Context) {
+        val latestCrash = getLatestCrashLog() ?: return
+
+        // Копируем только если файл новее 24 часов (не старые логи)
+        val oneDayAgo = System.currentTimeMillis() - (24 * 60 * 60 * 1000)
+        if (latestCrash.lastModified() < oneDayAgo) return
+
+        try {
+            val values = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, latestCrash.name)
+                put(MediaStore.Downloads.MIME_TYPE, "text/plain")
+                put(MediaStore.Downloads.RELATIVE_PATH, "Download/LogVoiceCrash")
+            }
+
+            val resolver = context.contentResolver
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return
+
+            resolver.openOutputStream(uri)?.use { out ->
+                latestCrash.inputStream().use { input ->
+                    input.copyTo(out)
+                }
+            }
+
+            android.util.Log.i(TAG, "✅ Crash log copied to Downloads/LogVoiceCrash/${latestCrash.name}")
+
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "❌ Failed to copy to Downloads", e)
+        }
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
 
