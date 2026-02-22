@@ -221,7 +221,7 @@ object PromptTemplates {
     private fun buildAssessmentPrompt(snapshot: KnowledgeSnapshot): String = """
         ТЕКУЩАЯ СТРАТЕГИЯ: ASSESSMENT (Оценка уровня)
         
-        Текущий уровень по данным системы: ${snapshot.userLevel?.name ?: "неизвестен"}
+        Текущий уровень по данным системы: определяется в ходе оценки
         
         Инструкции:
         1. Проведи БЫСТРУЮ оценку (10-15 минут) для определения актуального уровня
