@@ -7,6 +7,7 @@ import com.voicedeutsch.master.domain.repository.UserRepository
 import com.voicedeutsch.master.voicecore.engine.GeminiConfig
 import com.voicedeutsch.master.voicecore.engine.VoiceCoreEngine
 import com.voicedeutsch.master.voicecore.session.VoiceSessionState
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
