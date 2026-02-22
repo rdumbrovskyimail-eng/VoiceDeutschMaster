@@ -3,7 +3,7 @@ package com.voicedeutsch.master.data.repository
 import com.voicedeutsch.master.data.local.database.dao.AchievementDao
 import com.voicedeutsch.master.data.local.database.entity.AchievementEntity
 import com.voicedeutsch.master.data.local.database.entity.UserAchievementEntity
-import com.voicedeutsch.master.data.mapper.AchievementMapper
+
 import com.voicedeutsch.master.domain.model.achievement.Achievement
 import com.voicedeutsch.master.domain.model.achievement.AchievementCategory
 import com.voicedeutsch.master.domain.model.achievement.AchievementCondition
