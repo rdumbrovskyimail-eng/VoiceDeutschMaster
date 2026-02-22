@@ -104,7 +104,14 @@ class OnboardingViewModel(
                 }
                 OnboardingStep.BOOK_LOAD
             }
-            OnboardingStep.BOOK_LOAD -> OnboardingStep.DONE
+            OnboardingStep.BOOK_LOAD -> {
+                if (_uiState.value.bookLoaded) {
+                    completeOnboarding()
+                } else {
+                    loadBook()
+                }
+                return
+            }
             OnboardingStep.DONE      -> return
         }
         _uiState.update { it.copy(step = next, errorMessage = null) }
@@ -130,8 +137,8 @@ class OnboardingViewModel(
                     bookRepository.loadBookIntoDatabase()
                 }
             }.onSuccess {
-                _uiState.update { it.copy(isLoadingBook = false, bookLoaded = true) }
-                nextStep()
+                // Сначала завершаем онбординг (создаём юзера, сохраняем ключ, флаг)
+                completeOnboarding()
             }.onFailure { e ->
                 _uiState.update {
                     it.copy(
@@ -145,25 +152,27 @@ class OnboardingViewModel(
 
     private fun completeOnboarding() {
         viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingBook = false) }
             runCatching {
                 val state = _uiState.value
                 val userId = generateUUID()
 
-                // Build minimal UserProfile — full profile stored via UserRepository
                 val profile = com.voicedeutsch.master.domain.model.user.UserProfile(
                     id        = userId,
                     name      = state.name.trim(),
                     cefrLevel = state.selectedLevel,
                 )
 
-                // Persist user and API key
                 userRepository.createUser(profile)
                 userRepository.setActiveUserId(userId)
                 preferencesDataStore.setGeminiApiKey(state.apiKey.trim())
                 preferencesDataStore.setOnboardingComplete(true)
 
+            }.onSuccess {
+                // Теперь ставим DONE — навигация сработает через LaunchedEffect в Screen
+                _uiState.update { it.copy(bookLoaded = true, step = OnboardingStep.DONE, errorMessage = null) }
             }.onFailure { e ->
-                _uiState.update { it.copy(errorMessage = "Ошибка при создании профиля: ${e.message}") }
+                _uiState.update { it.copy(isLoadingBook = false, errorMessage = "Ошибка: ${e.message}") }
             }
         }
     }
