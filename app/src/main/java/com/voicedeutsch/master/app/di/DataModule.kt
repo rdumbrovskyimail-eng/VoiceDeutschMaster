@@ -28,7 +28,6 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 import com.voicedeutsch.master.data.local.file.AudioCacheManager
 import com.voicedeutsch.master.data.local.file.ExportImportManager
-import com.voicedeutsch.master.data.remote.gemini.GeminiService
 import com.voicedeutsch.master.data.remote.sync.BackupManager
 import com.voicedeutsch.master.data.remote.sync.CloudSyncService
 import com.voicedeutsch.master.data.repository.AchievementRepositoryImpl
