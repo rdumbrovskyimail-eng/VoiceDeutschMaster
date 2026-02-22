@@ -66,6 +66,7 @@ jobs:
       with:
         name: test-results
         path: app/build/reports/tests/
+        if-no-files-found: warn
 
     - name: Build Debug APK
       run: |
@@ -151,8 +152,7 @@ jobs:
           **Commit:** `${{ github.sha }}`
           **Build #:** ${{ github.run_number }}
           Логи: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        files: b
-        uild_errors.txt
+        files: build_errors.txt
         fail_on_unmatched_files: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
