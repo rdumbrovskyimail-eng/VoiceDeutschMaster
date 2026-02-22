@@ -371,7 +371,6 @@ fun SessionScreen(
                     enter = fadeIn() + slideInVertically { it },
                     exit  = fadeOut() + slideOutVertically { it },
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
                         .padding(bottom = 96.dp, start = 16.dp, end = 16.dp),
                 ) {
                     Card(
