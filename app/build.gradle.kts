@@ -144,6 +144,10 @@ dependencies {
     implementation(libs.firebase.crashlytics)
     implementation(libs.firebase.performance)
 
+    // ── UI Polish ─────────────────────────────────────────────────────────────
+    implementation("androidx.core:core-splashscreen:1.0.1")
+    implementation("androidx.compose.ui:ui-text-google-fonts:1.6.4")
+
     // ── Unit Testing ─────────────────────────────────────────────────────────
     testImplementation(libs.bundles.testing)
     testRuntimeOnly(libs.junit5.engine)
