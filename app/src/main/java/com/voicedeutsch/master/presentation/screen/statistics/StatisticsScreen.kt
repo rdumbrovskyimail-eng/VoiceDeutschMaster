@@ -23,8 +23,11 @@ import com.voicedeutsch.master.presentation.theme.Background
 import com.voicedeutsch.master.presentation.theme.Primary
 import com.voicedeutsch.master.presentation.theme.Secondary
 import com.voicedeutsch.master.presentation.theme.WaveSpeaking
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Psychology
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextAlign
 import com.voicedeutsch.master.presentation.components.GenericEmptyState
 import org.koin.androidx.compose.koinViewModel
 import kotlin.math.cos
@@ -39,6 +42,7 @@ import kotlin.math.sin
 @Composable
 fun StatisticsScreen(
     onBack: () -> Unit,
+    onStartSession: () -> Unit = {},
     viewModel: StatisticsViewModel = koinViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -89,18 +93,23 @@ fun StatisticsScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 when (state.selectedTab) {
-                    StatsTab.OVERVIEW -> OverviewTab(state)
+                    StatsTab.OVERVIEW -> OverviewTab(state, onStartSession)
                     StatsTab.WEEKLY   -> BarChartTab(
-                        days        = state.weeklyProgress,
-                        title       = "Слова за неделю",
-                        dayLabels   = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"),
+                        days           = state.weeklyProgress,
+                        title          = "Слова за неделю",
+                        dayLabels      = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"),
+                        onStartSession = onStartSession,
                     )
                     StatsTab.MONTHLY  -> BarChartTab(
-                        days      = state.monthlyProgress,
-                        title     = "Слова за месяц",
-                        dayLabels = state.monthlyProgress.mapIndexed { i, _ -> "${i + 1}" },
+                        days           = state.monthlyProgress,
+                        title          = "Слова за месяц",
+                        dayLabels      = state.monthlyProgress.mapIndexed { i, _ -> "${i + 1}" },
+                        onStartSession = onStartSession,
                     )
-                    StatsTab.SKILLS   -> SkillsTab(state.skillProgress)
+                    StatsTab.SKILLS   -> SkillsTab(
+                        skillProgress  = state.skillProgress,
+                        onStartSession = onStartSession,
+                    )
                 }
             }
         }
@@ -117,7 +126,21 @@ private val StatsTab.label: String get() = when (this) {
 // ── Tab content ───────────────────────────────────────────────────────────────
 
 @Composable
-private fun OverviewTab(state: StatisticsUiState) {
+private fun OverviewTab(
+    state: StatisticsUiState,
+    onStartSession: () -> Unit = {},
+) {
+    if (state.overallProgress == null && !state.isLoading) {
+        EmptyStateWithCTA(
+            icon        = Icons.Outlined.BarChart,
+            title       = "Статистика пуста",
+            description = "Проведите первое занятие, и здесь появится ваш прогресс",
+            ctaText     = "Начать первое занятие",
+            onCta       = onStartSession,
+        )
+        return
+    }
+
     val prog = state.overallProgress
 
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -162,12 +185,15 @@ private fun BarChartTab(
     days: List<DailyProgress>,
     title: String,
     dayLabels: List<String>,
+    onStartSession: () -> Unit = {},
 ) {
     if (days.isEmpty()) {
-        GenericEmptyState(
+        EmptyStateWithCTA(
             icon        = Icons.Outlined.BarChart,
             title       = "Нет данных",
             description = "Данные появятся после первых занятий",
+            ctaText     = "Начать занятие",
+            onCta       = onStartSession,
         )
         return
     }
@@ -217,12 +243,17 @@ private fun BarChartTab(
 }
 
 @Composable
-private fun SkillsTab(skillProgress: SkillProgress?) {
+private fun SkillsTab(
+    skillProgress: SkillProgress?,
+    onStartSession: () -> Unit = {},
+) {
     if (skillProgress == null) {
-        GenericEmptyState(
+        EmptyStateWithCTA(
             icon        = Icons.Outlined.Psychology,
             title       = "Навыки ещё не оценены",
-            description = "Пройдите несколько сессий, чтобы увидеть прогресс по навыкам",
+            description = "Пройдите несколько сессий, чтобы увидеть прогресс",
+            ctaText     = "Начать занятие",
+            onCta       = onStartSession,
         )
         return
     }
@@ -269,6 +300,41 @@ private fun SkillsTab(skillProgress: SkillProgress?) {
                     Text("${(value * 100).toInt()}%", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+        }
+    }
+}
+
+// ── Empty state with CTA ──────────────────────────────────────────────────────
+
+@Composable
+private fun EmptyStateWithCTA(
+    icon: ImageVector,
+    title: String,
+    description: String,
+    ctaText: String,
+    onCta: () -> Unit,
+) {
+    Column(
+        modifier            = Modifier.fillMaxWidth().padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(
+            icon, null,
+            modifier = Modifier.size(72.dp),
+            tint     = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f),
+        )
+        Text(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+        Text(
+            description,
+            style     = MaterialTheme.typography.bodySmall,
+            color     = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+            textAlign = TextAlign.Center,
+        )
+        Button(onClick = onCta) {
+            Icon(Icons.Filled.Mic, null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(ctaText)
         }
     }
 }
