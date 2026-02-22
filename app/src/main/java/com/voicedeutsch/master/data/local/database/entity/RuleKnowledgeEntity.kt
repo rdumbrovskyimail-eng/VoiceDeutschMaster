@@ -24,6 +24,7 @@ import androidx.room.PrimaryKey
     ],
     indices = [
         Index("user_id", "next_review"),
+        Index("rule_id"),
         Index(value = ["user_id", "rule_id"], unique = true)
     ]
 )
