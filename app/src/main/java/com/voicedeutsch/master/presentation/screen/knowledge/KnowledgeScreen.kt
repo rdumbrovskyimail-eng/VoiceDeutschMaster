@@ -35,7 +35,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.outlined.EmojiEvents
 import com.voicedeutsch.master.domain.usecase.knowledge.GetWeakPointsUseCase
+import com.voicedeutsch.master.presentation.components.GenericEmptyState
 import com.voicedeutsch.master.presentation.components.KnowledgeMap
 import com.voicedeutsch.master.presentation.theme.Background
 import org.koin.androidx.compose.koinViewModel
@@ -201,10 +203,10 @@ private fun GrammarTab(state: KnowledgeUiState) {
 private fun WeakPointsTab(state: KnowledgeUiState) {
     val weakPoints = state.weakPoints
     if (weakPoints.isNullOrEmpty()) {
-        Text(
-            "Слабых мест не найдено. Продолжайте занятия!",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+        GenericEmptyState(
+            icon        = Icons.Outlined.EmojiEvents,
+            title       = "Слабых мест не найдено",
+            description = "Отличная работа! Продолжайте занятия, чтобы отслеживать прогресс",
         )
         return
     }
