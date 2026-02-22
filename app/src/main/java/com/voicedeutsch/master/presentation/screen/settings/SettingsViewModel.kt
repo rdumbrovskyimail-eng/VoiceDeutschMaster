@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.voicedeutsch.master.data.local.datastore.UserPreferencesDataStore
 import com.voicedeutsch.master.domain.usecase.user.ConfigureUserPreferencesUseCase
+import com.voicedeutsch.master.domain.repository.SecurityRepository
 import com.voicedeutsch.master.domain.repository.UserRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -54,6 +55,7 @@ sealed interface SettingsEvent {
 class SettingsViewModel(
     private val configureUserPreferences: ConfigureUserPreferencesUseCase,
     private val preferencesDataStore: UserPreferencesDataStore,
+    private val securityRepository: SecurityRepository,
     private val userRepository: UserRepository,
 ) : ViewModel() {
 
@@ -80,7 +82,7 @@ class SettingsViewModel(
     private fun loadSettings() {
         viewModelScope.launch {
             runCatching {
-                val apiKey   = preferencesDataStore.getGeminiApiKey() ?: ""
+                val apiKey   = securityRepository.getGeminiApiKey()
                 val duration = preferencesDataStore.getSessionDuration() ?: 30
                 val goal     = preferencesDataStore.getDailyGoal() ?: 10
                 _uiState.update {
@@ -104,7 +106,7 @@ class SettingsViewModel(
             return
         }
         viewModelScope.launch {
-            runCatching { preferencesDataStore.setGeminiApiKey(key) }
+            runCatching { securityRepository.saveGeminiApiKey(key) }
                 .onSuccess { _uiState.update { it.copy(successMessage = "API ключ сохранён") } }
                 .onFailure { e -> _uiState.update { it.copy(errorMessage = e.message) } }
         }
