@@ -23,7 +23,8 @@ import androidx.room.PrimaryKey
         )
     ],
     indices = [
-        Index(value = ["user_id", "phrase_id"], unique = true)
+        Index(value = ["user_id", "phrase_id"], unique = true),
+        Index("phrase_id")
     ]
 )
 data class PhraseKnowledgeEntity(
