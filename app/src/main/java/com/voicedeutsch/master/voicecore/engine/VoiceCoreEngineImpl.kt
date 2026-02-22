@@ -55,7 +55,8 @@ class VoiceCoreEngineImpl(
     private val buildKnowledgeSummary: BuildKnowledgeSummaryUseCase,
     private val startLearningSession: StartLearningSessionUseCase,
     private val endLearningSession: EndLearningSessionUseCase,
-    private val geminiClient: GeminiClient,
+    private val httpClient: io.ktor.client.HttpClient,
+    private val json: kotlinx.serialization.json.Json,
     private val networkMonitor: com.voicedeutsch.master.util.NetworkMonitor,
 ) : VoiceCoreEngine {
 
@@ -85,6 +86,7 @@ class VoiceCoreEngineImpl(
 
     // Mutable runtime fields (only accessed under lifecycleMutex or from sessionJob)
     @Volatile private var config: GeminiConfig? = null
+    @Volatile private var geminiClient: GeminiClient? = null // Создаем вручную
     @Volatile private var activeSessionId: String? = null
     @Volatile private var activeUserId: String? = null
     private val reconnectAttempts = java.util.concurrent.atomic.AtomicInteger(0)
@@ -129,6 +131,8 @@ class VoiceCoreEngineImpl(
             runCatching {
                 audioPipeline.initialize()
                 this.config = config
+                this.geminiClient?.release()
+                this.geminiClient = GeminiClient(config, httpClient, json)
             }.onFailure { error ->
                 transitionEngine(VoiceEngineState.ERROR)
                 updateState { copy(errorMessage = error.message) }
@@ -187,7 +191,7 @@ class VoiceCoreEngineImpl(
         transitionEngine(VoiceEngineState.CONNECTING)
         transitionConnection(ConnectionState.CONNECTING)
         withContext(Dispatchers.IO) {
-            geminiClient.connect(cfg, sessionContext)
+            requireNotNull(geminiClient).connect(cfg, sessionContext)
         }
 
         // 6. Activate session state
@@ -235,7 +239,7 @@ class VoiceCoreEngineImpl(
                     audioPipeline.stopAll()
                     transitionAudio(AudioState.IDLE)
                     transitionConnection(ConnectionState.DISCONNECTED)
-                    geminiClient.disconnect()
+                    geminiClient?.disconnect()
                     endLearningSession(sessionId)
                 }.onFailure { error ->
                     updateState { copy(errorMessage = "Session save failed: ${error.message}") }
@@ -263,7 +267,8 @@ class VoiceCoreEngineImpl(
     override suspend fun destroy() {
         runCatching { endSession() }
         lifecycleMutex.withLock {
-            geminiClient.release()
+            geminiClient?.release()
+            geminiClient = null
             audioPipeline.release()
             config = null
         }
@@ -296,7 +301,7 @@ class VoiceCoreEngineImpl(
                     }
                     .collect { pcmChunk ->
                         runCatching {
-                            geminiClient.sendAudioChunk(pcmChunk)
+                            geminiClient?.sendAudioChunk(pcmChunk)
                         }.onFailure { e ->
                             android.util.Log.w("VoiceCoreEngine", "sendAudioChunk failed: ${e.message}")
                         }
@@ -332,21 +337,21 @@ class VoiceCoreEngineImpl(
 
     override suspend fun sendTextMessage(text: String) {
         check(_sessionState.value.isSessionActive) { "No active session" }
-        geminiClient.sendText(text)
+        requireNotNull(geminiClient).sendText(text)
     }
 
     override suspend fun requestStrategyChange(strategy: LearningStrategy) {
         updateState { copy(currentStrategy = strategy) }
-        geminiClient.sendText(buildStrategyChangeMessage(strategy))
+        requireNotNull(geminiClient).sendText(buildStrategyChangeMessage(strategy))
     }
 
     override suspend fun requestBookNavigation(chapter: Int, lesson: Int) {
         check(chapter > 0 && lesson > 0) { "Chapter and lesson must be positive" }
-        geminiClient.sendText("Перейди к главе $chapter, уроку $lesson.")
+        requireNotNull(geminiClient).sendText("Перейди к главе $chapter, уроку $lesson.")
     }
 
     override suspend fun submitFunctionResult(callId: String, resultJson: String) {
-        geminiClient.sendFunctionResult(callId, resultJson)
+        requireNotNull(geminiClient).sendFunctionResult(callId, resultJson)
     }
 
     // ── Main session loop ─────────────────────────────────────────────────────
@@ -363,7 +368,7 @@ class VoiceCoreEngineImpl(
     private suspend fun runSessionLoop() {
         try {
             while (currentCoroutineContext().isActive) {
-                val response = geminiClient.receiveNextResponse()
+                val response = requireNotNull(geminiClient).receiveNextResponse()
 
                 // null = канал закрыт (goAway или disconnect)
                 if (response == null) {
@@ -411,7 +416,7 @@ class VoiceCoreEngineImpl(
                         }
 
                         applyFunctionSideEffects(call.name, result)
-                        geminiClient.sendFunctionResult(call.id, result.resultJson)
+                        requireNotNull(geminiClient).sendFunctionResult(call.id, result.resultJson)
                         updateState { copy(isProcessing = false) }
                     }
 
