@@ -167,8 +167,6 @@ val dataModule = module {
 
     // ─── Remote Services ─────────────────────────────────────────────────────
     single { CloudSyncService() }
-    // GeminiService(httpClient, json)
-    single { GeminiService(get(), get()) }
 }
 
 // ── Migration constants ───────────────────────────────────────────────────────
