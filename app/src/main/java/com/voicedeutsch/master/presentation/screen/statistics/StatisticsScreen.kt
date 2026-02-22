@@ -23,6 +23,9 @@ import com.voicedeutsch.master.presentation.theme.Background
 import com.voicedeutsch.master.presentation.theme.Primary
 import com.voicedeutsch.master.presentation.theme.Secondary
 import com.voicedeutsch.master.presentation.theme.WaveSpeaking
+import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.Psychology
+import com.voicedeutsch.master.presentation.components.GenericEmptyState
 import org.koin.androidx.compose.koinViewModel
 import kotlin.math.cos
 import kotlin.math.sin
@@ -161,7 +164,11 @@ private fun BarChartTab(
     dayLabels: List<String>,
 ) {
     if (days.isEmpty()) {
-        Text("Нет данных", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f))
+        GenericEmptyState(
+            icon        = Icons.Outlined.BarChart,
+            title       = "Нет данных",
+            description = "Данные появятся после первых занятий",
+        )
         return
     }
 
@@ -212,7 +219,11 @@ private fun BarChartTab(
 @Composable
 private fun SkillsTab(skillProgress: SkillProgress?) {
     if (skillProgress == null) {
-        Text("Нет данных по навыкам", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f))
+        GenericEmptyState(
+            icon        = Icons.Outlined.Psychology,
+            title       = "Навыки ещё не оценены",
+            description = "Пройдите несколько сессий, чтобы увидеть прогресс по навыкам",
+        )
         return
     }
 
