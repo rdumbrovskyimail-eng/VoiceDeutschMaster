@@ -115,9 +115,9 @@ val dataModule = module {
 
     // ─── Repositories ────────────────────────────────────────────────────────
 
-    // UserRepositoryImpl(userDao, knowledgeDao, wordDao, grammarRuleDao, preferencesDataStore, json)
+    // UserRepositoryImpl(userDao, knowledgeDao, wordDao, preferencesDataStore, json)
     single<UserRepository> {
-        UserRepositoryImpl(get(), get(), get(), get(), get(), get())
+        UserRepositoryImpl(get(), get(), get(), get(), get())
     }
 
     // KnowledgeRepositoryImpl(wordDao, knowledgeDao, grammarRuleDao, phraseDao,
