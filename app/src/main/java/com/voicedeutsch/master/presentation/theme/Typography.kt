@@ -4,23 +4,26 @@ import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.googlefonts.Font
+import androidx.compose.ui.text.googlefonts.GoogleFont
 import androidx.compose.ui.unit.sp
+import com.voicedeutsch.master.R
 
-// ── Font family ───────────────────────────────────────────────────────────────
-// FIX: R.font.inter_regular/medium/semibold/bold resources don't exist in
-// res/font/ — referencing them causes a compile-time unresolved reference error.
-// Using FontFamily.Default until the actual Inter .ttf files are added to
-// app/src/main/res/font/ and the Font() declarations are restored.
-//
-// To re-enable Inter: add inter_regular.ttf, inter_medium.ttf,
-// inter_semibold.ttf, inter_bold.ttf to res/font/ and replace the line below with:
-//   val InterFontFamily = FontFamily(
-//       Font(R.font.inter_regular, FontWeight.Normal),
-//       Font(R.font.inter_medium, FontWeight.Medium),
-//       Font(R.font.inter_semibold, FontWeight.SemiBold),
-//       Font(R.font.inter_bold, FontWeight.Bold),
-//   )
-val InterFontFamily: FontFamily = FontFamily.Default
+// ── Font family — Inter via Google Fonts ──────────────────────────────────────
+private val googleFontProvider = GoogleFont.Provider(
+    providerAuthority = "com.google.android.gms.fonts",
+    providerPackage   = "com.google.android.gms",
+    certificates      = R.array.com_google_android_gms_fonts_certs,
+)
+
+private val interGoogleFont = GoogleFont("Inter")
+
+val InterFontFamily = androidx.compose.ui.text.font.FontFamily(
+    Font(googleFont = interGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.Normal),
+    Font(googleFont = interGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.Medium),
+    Font(googleFont = interGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.SemiBold),
+    Font(googleFont = interGoogleFont, fontProvider = googleFontProvider, weight = FontWeight.Bold),
+)
 
 val VoiceDeutschTypography = Typography(
     // ── Display ─────────────────────────────────────────────────────────────
