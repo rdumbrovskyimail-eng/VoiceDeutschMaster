@@ -6,6 +6,7 @@ import com.voicedeutsch.master.data.local.datastore.UserPreferencesDataStore
 import com.voicedeutsch.master.domain.model.user.CefrLevel
 import com.voicedeutsch.master.domain.usecase.user.GetUserProfileUseCase
 import com.voicedeutsch.master.domain.repository.BookRepository
+import com.voicedeutsch.master.domain.repository.SecurityRepository
 import com.voicedeutsch.master.domain.repository.UserRepository
 import com.voicedeutsch.master.util.generateUUID
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -63,6 +64,7 @@ class OnboardingViewModel(
     private val userRepository: UserRepository,
     private val bookRepository: BookRepository,
     private val preferencesDataStore: UserPreferencesDataStore,
+    private val securityRepository: SecurityRepository,
     private val getUserProfile: GetUserProfileUseCase,
 ) : ViewModel() {
 
@@ -165,7 +167,7 @@ class OnboardingViewModel(
 
                 userRepository.createUser(profile)
                 userRepository.setActiveUserId(userId)
-                preferencesDataStore.setGeminiApiKey(state.apiKey.trim())
+                securityRepository.saveGeminiApiKey(state.apiKey.trim())
                 preferencesDataStore.setOnboardingComplete(true)
 
             }.onSuccess {
