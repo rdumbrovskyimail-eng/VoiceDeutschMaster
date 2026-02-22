@@ -56,7 +56,13 @@ val dataModule = module {
                 json(get())
             }
             install(Logging) {
-                level = LogLevel.HEADERS // В release сменить на LogLevel.NONE
+                // Включаем максимальный лог, чтобы увидеть ответ от Google (например, 403 Forbidden)
+                level = LogLevel.ALL 
+                logger = object : io.ktor.client.plugins.logging.Logger {
+                    override fun log(message: String) {
+                        android.util.Log.d("KtorNetwork", message)
+                    }
+                }
             }
         }
     }
