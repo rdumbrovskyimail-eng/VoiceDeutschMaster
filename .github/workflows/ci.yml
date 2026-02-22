@@ -20,4 +20,4 @@ jobs:
             -keypass mypassword123
 
       - name: Print Base64
-        run: base64 -w 0 release.keystore
+        run: base64 -w 0 release.keystore 
