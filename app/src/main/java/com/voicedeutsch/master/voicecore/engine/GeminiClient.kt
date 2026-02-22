@@ -62,7 +62,7 @@ class GeminiClient(
         // Официальный WebSocket endpoint Gemini Live API (v1beta, февраль 2026)
         private const val WS_HOST = "generativelanguage.googleapis.com"
         private const val WS_PATH =
-            "/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent"
+            "/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
 
         // Актуальная модель на февраль 2026.
         // gemini-2.0-flash-live-001 retire 31.03.2026 → используем 2.5
