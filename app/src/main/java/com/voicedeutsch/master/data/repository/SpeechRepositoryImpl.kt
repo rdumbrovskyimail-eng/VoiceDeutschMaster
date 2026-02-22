@@ -77,7 +77,7 @@ class SpeechRepositoryImpl(
             json.decodeFromString<List<String>>(problemSoundsJson)
         }.getOrDefault(emptyList()),
         attemptNumber = attemptNumber,
-        sessionId = sessionId.ifEmpty { null },
+        sessionId = sessionId?.ifEmpty { null },
         timestamp = timestamp
     )
 }
