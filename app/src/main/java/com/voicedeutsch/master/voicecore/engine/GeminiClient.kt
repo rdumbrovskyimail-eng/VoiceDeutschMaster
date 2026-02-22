@@ -112,9 +112,11 @@ class GeminiClient(
                     receiveLoop()
                 }
             } catch (e: Exception) {
-                android.util.Log.e(TAG, "WebSocket connection failed", e)
+                val errorMsg = "Ошибка сети: ${e::class.java.simpleName} - ${e.message}"
+                android.util.Log.e(TAG, errorMsg, e)
                 setupComplete = false
-                responseChannel.close(e) // Сигнализируем движку об ошибке
+                // Передаем понятную ошибку наверх
+                responseChannel.close(IllegalStateException(errorMsg, e)) 
             } finally {
                 wsSession = null
                 responseChannel.close()
