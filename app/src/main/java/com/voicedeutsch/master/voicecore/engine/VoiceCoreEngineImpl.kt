@@ -383,14 +383,15 @@ class VoiceCoreEngineImpl(
                                 voiceTranscript = response.transcript ?: voiceTranscript,
                             )
                         }
-                        val audioData = response.audioData ?: run {
+                        val audioData = response.audioData
+                        if (audioData == null) {
                             android.util.Log.e("VoiceCoreEngine", "hasAudio() true but audioData is null")
-                            return@when
-                        }
-                        audioPipeline.enqueueAudio(audioData)
-                        if (response.isTurnComplete) {
-                            transitionAudio(AudioState.IDLE)
-                            transitionEngine(VoiceEngineState.WAITING)
+                        } else {
+                            audioPipeline.enqueueAudio(audioData)
+                            if (response.isTurnComplete) {
+                                transitionAudio(AudioState.IDLE)
+                                transitionEngine(VoiceEngineState.WAITING)
+                            }
                         }
                     }
 
