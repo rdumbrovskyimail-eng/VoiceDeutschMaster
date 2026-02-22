@@ -11,7 +11,7 @@ import com.voicedeutsch.master.voicecore.engine.VoiceCoreEngine
 import com.voicedeutsch.master.voicecore.engine.VoiceCoreEngineImpl
 import com.voicedeutsch.master.voicecore.functions.FunctionRouter
 import com.voicedeutsch.master.voicecore.functions.FunctionRegistry
-import com.voicedeutsch.master.voicecore.context.SystemPromptBuilder
+
 import com.voicedeutsch.master.voicecore.session.SessionHistory
 import com.voicedeutsch.master.voicecore.session.VoiceSessionManager
 import com.voicedeutsch.master.voicecore.strategy.StrategySelector
