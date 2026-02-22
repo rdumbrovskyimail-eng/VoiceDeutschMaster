@@ -10,41 +10,24 @@ import com.voicedeutsch.master.presentation.screen.statistics.StatisticsViewMode
 import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.dsl.module
 
-/**
- * Koin module for all Presentation-layer ViewModels.
- *
- * Each ViewModel is declared with `viewModel { }` so Koin creates a new instance
- * per screen destination (lifecycle-scoped by the NavBackStackEntry).
- *
- * Dependencies (Use Cases, Repositories, DataStore) are resolved automatically
- * from domainModule, dataModule and voiceCoreModule.
- *
- * Sessions implemented:
- *  - Session 7 : SessionViewModel (voice session)
- *  - Session 9 : All remaining screens
- */
 val presentationModule = module {
-
-    // ── Session (Session 8) ───────────────────────────────────────────────────
     viewModel {
         SessionViewModel(
             voiceCoreEngine      = get(),
             userRepository       = get(),
             preferencesDataStore = get(),
+            securityRepository   = get(),
         )
     }
-
-    // ── Onboarding (Session 9) ────────────────────────────────────────────────
     viewModel {
         OnboardingViewModel(
             userRepository       = get(),
             bookRepository       = get(),
             preferencesDataStore = get(),
+            securityRepository   = get(),
             getUserProfile       = get(),
         )
     }
-
-    // ── Dashboard (Session 9) ─────────────────────────────────────────────────
     viewModel {
         DashboardViewModel(
             getUserProfile           = get(),
@@ -53,8 +36,6 @@ val presentationModule = module {
             userRepository           = get(),
         )
     }
-
-    // ── Knowledge Map (Session 9) ─────────────────────────────────────────────
     viewModel {
         KnowledgeViewModel(
             getUserKnowledge = get(),
@@ -62,8 +43,6 @@ val presentationModule = module {
             userRepository   = get(),
         )
     }
-
-    // ── Book (Session 9) ──────────────────────────────────────────────────────
     viewModel {
         BookViewModel(
             getCurrentLesson = get(),
@@ -71,17 +50,14 @@ val presentationModule = module {
             userRepository   = get(),
         )
     }
-
-    // ── Settings (Session 9) ──────────────────────────────────────────────────
     viewModel {
         SettingsViewModel(
             configureUserPreferences = get(),
             preferencesDataStore     = get(),
+            securityRepository       = get(),
             userRepository           = get(),
         )
     }
-
-    // ── Statistics (Session 9) ────────────────────────────────────────────────
     viewModel {
         StatisticsViewModel(
             calculateOverallProgress = get(),
