@@ -139,7 +139,8 @@ val voiceCoreModule = module {
             buildKnowledgeSummary = get(),
             startLearningSession  = get(),
             endLearningSession    = get(),
-            geminiClient          = get(), // factory — свежий экземпляр
+            geminiClient          = get(),
+            networkMonitor        = get(), // ← NetworkMonitor из AppModule
         )
     }
 }
