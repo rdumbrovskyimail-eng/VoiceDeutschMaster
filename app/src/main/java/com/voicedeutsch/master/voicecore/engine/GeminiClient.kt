@@ -84,6 +84,9 @@ class GeminiClient(
     // Флаг готовности: сервер ответил setupComplete
     @Volatile private var setupComplete = false
 
+    // Deferred для ожидания setupComplete от сервера
+    private var setupDeferred = kotlinx.coroutines.CompletableDeferred<Unit>()
+
     // ── Public API ────────────────────────────────────────────────────────────
 
     /**
@@ -98,6 +101,7 @@ class GeminiClient(
         context: ContextBuilder.SessionContext,
     ) {
         setupComplete = false
+        setupDeferred = kotlinx.coroutines.CompletableDeferred()
         connectionJob = clientScope.launch {
             try {
                 // СТРОГО WSS! Иначе Google сбросит соединение и будет краш.
@@ -111,6 +115,7 @@ class GeminiClient(
                 val errorMsg = "Ошибка сети: ${e::class.java.simpleName} - ${e.message}"
                 android.util.Log.e(TAG, errorMsg, e)
                 setupComplete = false
+                setupDeferred.completeExceptionally(IllegalStateException(errorMsg, e))
                 // Передаем понятную ошибку наверх
                 responseChannel.close(IllegalStateException(errorMsg, e)) 
             } finally {
@@ -285,6 +290,7 @@ class GeminiClient(
                 // Сервер подтвердил инициализацию сессии
                 root.containsKey("setupComplete") -> {
                     setupComplete = true
+                    setupDeferred.complete(Unit)
                     Log.d(TAG, "Setup complete — session ready")
                 }
 
@@ -375,16 +381,11 @@ class GeminiClient(
     }
 
     private suspend fun waitForSetupComplete() {
-        var waited = 0L
-        while (!setupComplete && waited < 5_000L) {
-            // Если корутина соединения упала (неверный ключ, нет интернета) - прерываем ожидание сразу
-            if (connectionJob?.isActive != true && !setupComplete) {
-                throw IllegalStateException("Ошибка подключения к Gemini. Проверьте интернет или правильность API-ключа.")
+        try {
+            kotlinx.coroutines.withTimeout(5_000L) {
+                setupDeferred.await()
             }
-            kotlinx.coroutines.delay(50)
-            waited += 50
-        }
-        if (!setupComplete) {
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
             throw IllegalStateException("Превышено время ожидания ответа от сервера Gemini.")
         }
     }
