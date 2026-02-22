@@ -56,6 +56,7 @@ class VoiceCoreEngineImpl(
     private val startLearningSession: StartLearningSessionUseCase,
     private val endLearningSession: EndLearningSessionUseCase,
     private val geminiClient: GeminiClient,
+    private val networkMonitor: com.voicedeutsch.master.util.NetworkMonitor,
 ) : VoiceCoreEngine {
 
     // ── Coroutine infrastructure ──────────────────────────────────────────────
@@ -143,6 +144,12 @@ class VoiceCoreEngineImpl(
             "startSession() called in invalid state: $current"
         }
         val cfg = checkNotNull(config) { "Call initialize() before startSession()" }
+
+        if (!networkMonitor.isOnline()) {
+            transitionEngine(VoiceEngineState.ERROR)
+            updateState { copy(errorMessage = "Нет подключения к интернету. Проверьте сеть.") }
+            return@withLock _sessionState.value
+        }
 
         transitionEngine(VoiceEngineState.CONTEXT_LOADING)
         reconnectAttempts.set(0)
