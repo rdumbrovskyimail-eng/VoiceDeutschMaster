@@ -65,4 +65,6 @@ sealed interface SessionEvent {
     data object DismissHint : SessionEvent
     /** Acknowledge and clear a shown snackbar. */
     data object ConsumeSnackbar : SessionEvent
+    /** Пользователь отказал в доступе к микрофону. */
+    data object PermissionDenied : SessionEvent
 }
