@@ -125,6 +125,7 @@ dependencies {
 
     // ── Ktor Network ─────────────────────────────────────────────────────────
     implementation(libs.bundles.ktor)
+    implementation(libs.ktor.client.cio)
 
     // ── Kotlin ───────────────────────────────────────────────────────────────
     implementation(libs.kotlin.stdlib)
