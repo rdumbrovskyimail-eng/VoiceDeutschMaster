@@ -1,34 +1,3 @@
-[plugins]
-# ⚠️ AGP 9.0: kotlin-android плагин DEPRECATED при использовании AGP 9.0+.
-# Kotlin поддержка теперь встроена в AGP. Не применяйте kotlin-android
-# в модулях android-application / android-library.
-# kotlin-android оставлен здесь ТОЛЬКО для чистых JVM/KMP модулей,
-# где AGP не применяется (напр. отдельный :domain или :data модуль).
-android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
-kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
-kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
-
-# KSP 2.3.5: версия больше НЕ должна совпадать с версией Kotlin.
-# KSP2 по умолчанию с начала 2025. KSP1 deprecated.
-ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
-
-room = { id = "androidx.room", version.ref = "room" }
-google-services = { id = "com.google.gms.google-services", version.ref = "google-services" }
-
-# Crashlytics Gradle Plugin 3.0.0 — major release с breaking changes:
-# - Требует Gradle 7+ и AGP 7.4+.
-# - Удалены устаревшие поля mappingFile и strippedNativeLibsDir.
-# - symbolGenerator заменён на symbolGeneratorType + breakpadBinary.
-firebase-crashlytics = { id = "com.google.firebase.crashlytics", version.ref = "firebase-crashlytics-plugin" }
-app/build.gradle.kts
-// app/build.gradle.kts
-// Last verified: 2026-02-23
-//
-// MIGRATION NOTES:
-//   AGP 9.0: kotlin-android плагин УДАЛЁН — Kotlin поддержка встроена в AGP.
-//   Firebase BoM 34.x: -ktx суффиксы удалены, используем базовые артефакты.
-//   App Check: PlayIntegrity в release, Debug-провайдер в debug buildType.
 
 import java.util.Properties
 
