@@ -84,16 +84,20 @@ class EphemeralTokenService(
 
             val tokenResponse = response.body<EphemeralTokenResponse>()
 
-            // Убираем префикс "auth_tokens/" — нужен только сам токен
-            val cleanToken = tokenResponse.token.removePrefix("auth_tokens/")
+            // ✅ FIX: НЕ стрипаем префикс "auth_tokens/".
+            // Google Live API ожидает полный resource name токена в ?key=
+            // формат: auth_tokens/TOKEN_VALUE
+            // Стрипание префикса было причиной потенциального 403.
+            val fullToken = tokenResponse.token
+            Log.d(TAG, "Token resource name: ${fullToken.take(30)}...")
 
             cachedToken = CachedToken(
-                token = cleanToken,
+                token = fullToken,
                 expiresAt = parseExpiresAt(tokenResponse.expiresAt),
             )
 
             Log.d(TAG, "New token received, expires at: ${tokenResponse.expiresAt}")
-            return cleanToken
+            return fullToken
 
         } catch (e: EphemeralTokenException) {
             throw e
