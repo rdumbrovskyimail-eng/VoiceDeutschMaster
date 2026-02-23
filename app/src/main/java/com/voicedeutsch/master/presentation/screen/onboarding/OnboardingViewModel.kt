@@ -6,7 +6,6 @@ import com.voicedeutsch.master.data.local.datastore.UserPreferencesDataStore
 import com.voicedeutsch.master.domain.model.user.CefrLevel
 import com.voicedeutsch.master.domain.usecase.user.GetUserProfileUseCase
 import com.voicedeutsch.master.domain.repository.BookRepository
-import com.voicedeutsch.master.domain.repository.SecurityRepository
 import com.voicedeutsch.master.domain.repository.UserRepository
 import com.voicedeutsch.master.util.generateUUID
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,14 +16,12 @@ import kotlinx.coroutines.launch
 
 // ── State / Event ─────────────────────────────────────────────────────────────
 
-enum class OnboardingStep { WELCOME, NAME, LEVEL, API_KEY, BOOK_LOAD, DONE }
+enum class OnboardingStep { WELCOME, NAME, LEVEL, BOOK_LOAD, DONE }
 
 data class OnboardingUiState(
     val step: OnboardingStep = OnboardingStep.WELCOME,
     val name: String = "",
     val selectedLevel: CefrLevel = CefrLevel.A1,
-    val apiKey: String = "",
-    val apiKeyVisible: Boolean = false,
     val isLoadingBook: Boolean = false,
     val bookLoaded: Boolean = false,
     val errorMessage: String? = null,
@@ -35,8 +32,6 @@ sealed interface OnboardingEvent {
     data object Back : OnboardingEvent
     data class UpdateName(val name: String) : OnboardingEvent
     data class SelectLevel(val level: CefrLevel) : OnboardingEvent
-    data class UpdateApiKey(val key: String) : OnboardingEvent
-    data object ToggleApiKeyVisibility : OnboardingEvent
     data object LoadBook : OnboardingEvent
     data object DismissError : OnboardingEvent
     data object Complete : OnboardingEvent
@@ -48,23 +43,21 @@ sealed interface OnboardingEvent {
  * ViewModel for [OnboardingScreen].
  *
  * Manages a step-by-step flow:
- *   Welcome → Name → Level → API Key → Book Load → Done
+ *   Welcome → Name → Level → Book Load → Done
  *
  * On completion it:
  *  1. Creates the user profile via UserRepository
- *  2. Saves the API key to DataStore
- *  3. Sets onboarding complete flag
+ *  2. Sets onboarding complete flag
  *
  * @param userRepository        Create user, set active user ID.
  * @param bookRepository        Load book assets into the database.
- * @param preferencesDataStore  Save API key and onboarding flags.
+ * @param preferencesDataStore  Save onboarding flags.
  * @param getUserProfile        Verify profile was saved correctly.
  */
 class OnboardingViewModel(
     private val userRepository: UserRepository,
     private val bookRepository: BookRepository,
     private val preferencesDataStore: UserPreferencesDataStore,
-    private val securityRepository: SecurityRepository,
     private val getUserProfile: GetUserProfileUseCase,
 ) : ViewModel() {
 
@@ -73,15 +66,13 @@ class OnboardingViewModel(
 
     fun onEvent(event: OnboardingEvent) {
         when (event) {
-            is OnboardingEvent.Next               -> nextStep()
-            is OnboardingEvent.Back               -> previousStep()
-            is OnboardingEvent.UpdateName         -> _uiState.update { it.copy(name = event.name) }
-            is OnboardingEvent.SelectLevel        -> _uiState.update { it.copy(selectedLevel = event.level) }
-            is OnboardingEvent.UpdateApiKey       -> _uiState.update { it.copy(apiKey = event.key) }
-            is OnboardingEvent.ToggleApiKeyVisibility -> _uiState.update { it.copy(apiKeyVisible = !it.apiKeyVisible) }
-            is OnboardingEvent.LoadBook           -> loadBook()
-            is OnboardingEvent.DismissError       -> _uiState.update { it.copy(errorMessage = null) }
-            is OnboardingEvent.Complete           -> completeOnboarding()
+            is OnboardingEvent.Next          -> nextStep()
+            is OnboardingEvent.Back          -> previousStep()
+            is OnboardingEvent.UpdateName    -> _uiState.update { it.copy(name = event.name) }
+            is OnboardingEvent.SelectLevel   -> _uiState.update { it.copy(selectedLevel = event.level) }
+            is OnboardingEvent.LoadBook      -> loadBook()
+            is OnboardingEvent.DismissError  -> _uiState.update { it.copy(errorMessage = null) }
+            is OnboardingEvent.Complete      -> completeOnboarding()
         }
     }
 
@@ -98,14 +89,7 @@ class OnboardingViewModel(
                 }
                 OnboardingStep.LEVEL
             }
-            OnboardingStep.LEVEL     -> OnboardingStep.API_KEY
-            OnboardingStep.API_KEY   -> {
-                if (current.apiKey.isBlank()) {
-                    _uiState.update { it.copy(errorMessage = "API ключ обязателен для работы приложения") }
-                    return
-                }
-                OnboardingStep.BOOK_LOAD
-            }
+            OnboardingStep.LEVEL     -> OnboardingStep.BOOK_LOAD
             OnboardingStep.BOOK_LOAD -> {
                 if (_uiState.value.bookLoaded) {
                     completeOnboarding()
@@ -124,8 +108,7 @@ class OnboardingViewModel(
             OnboardingStep.WELCOME   -> return
             OnboardingStep.NAME      -> OnboardingStep.WELCOME
             OnboardingStep.LEVEL     -> OnboardingStep.NAME
-            OnboardingStep.API_KEY   -> OnboardingStep.LEVEL
-            OnboardingStep.BOOK_LOAD -> OnboardingStep.API_KEY
+            OnboardingStep.BOOK_LOAD -> OnboardingStep.LEVEL
             OnboardingStep.DONE      -> OnboardingStep.BOOK_LOAD
         }
         _uiState.update { it.copy(step = prev, errorMessage = null) }
@@ -139,7 +122,6 @@ class OnboardingViewModel(
                     bookRepository.loadBookIntoDatabase()
                 }
             }.onSuccess {
-                // Сначала завершаем онбординг (создаём юзера, сохраняем ключ, флаг)
                 completeOnboarding()
             }.onFailure { e ->
                 _uiState.update {
@@ -167,11 +149,9 @@ class OnboardingViewModel(
 
                 userRepository.createUser(profile)
                 userRepository.setActiveUserId(userId)
-                securityRepository.saveGeminiApiKey(state.apiKey.trim())
                 preferencesDataStore.setOnboardingComplete(true)
 
             }.onSuccess {
-                // Теперь ставим DONE — навигация сработает через LaunchedEffect в Screen
                 _uiState.update { it.copy(bookLoaded = true, step = OnboardingStep.DONE, errorMessage = null) }
             }.onFailure { e ->
                 _uiState.update { it.copy(isLoadingBook = false, errorMessage = "Ошибка: ${e.message}") }
