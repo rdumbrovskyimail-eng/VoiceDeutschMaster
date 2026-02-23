@@ -10,9 +10,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -46,7 +43,6 @@ class AudioPipeline(
     // Sub-components (created lazily so tests can replace them)
     private var recorder = AudioRecorder()
     private var player = AudioPlayer()
-    private val vad = VADProcessor()
 
     // ── State ─────────────────────────────────────────────────────────────────
 
@@ -62,13 +58,6 @@ class AudioPipeline(
 
     val isRecording: Boolean get() = _isRecording
     val isPlaying: Boolean get() = _isPlaying
-
-    // ── VAD state flow ────────────────────────────────────────────────────────
-
-    private val _vadStateFlow = MutableStateFlow(VADProcessor.VadState.SILENCE)
-
-    /** Emits the current VAD state: SPEECH or SILENCE. */
-    val vadStateFlow: StateFlow<VADProcessor.VadState> = _vadStateFlow.asStateFlow()
 
     // ── Outgoing audio (mic → Gemini) ─────────────────────────────────────────
 
@@ -168,15 +157,8 @@ class AudioPipeline(
 
                 recordingJob = pipelineScope.launch {
                     recorder.audioFrameFlow.collect { pcmShorts ->
-                        val vadState = vad.process(pcmShorts)
-                        _vadStateFlow.value = vadState
-
-                        if (vadState == VADProcessor.VadState.SPEECH ||
-                            vadState == VADProcessor.VadState.SPEECH_END
-                        ) {
-                            val bytes = AudioUtils.shortArrayToByteArray(pcmShorts)
-                            outgoingChannel.trySend(bytes)
-                        }
+                        val bytes = AudioUtils.shortArrayToByteArray(pcmShorts)
+                        outgoingChannel.trySend(bytes)
                     }
                 }
             }
@@ -226,6 +208,7 @@ class AudioPipeline(
      */
     fun flushPlayback() {
         android.util.Log.d("AudioPipeline", "Экстренный сброс воспроизведения (Interruption)")
+        while (playbackQueue.tryReceive().isSuccess) { /* discard */ }
         player.flush()
     }
 
