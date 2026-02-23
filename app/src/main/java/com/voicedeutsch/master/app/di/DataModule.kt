@@ -50,13 +50,19 @@ val dataModule = module {
     // WebSockets plugin обязателен для Gemini Live API.
     single {
         HttpClient(OkHttp) {
-            install(WebSockets)
-            install(ContentNegotiation) {
-                json(get())
+            install(WebSockets) {
+                // Пинги каждые 20 сек — предотвращают разрыв NAT/прокси в EU.
+                // Gemini Live сессия длится минуты → без пингов соединение умирает.
+                pingIntervalMillis = 20_000L
+                // Максимальный размер фрейма: 10 MB на случай большого systemPrompt
+                maxFrameSize = Long.MAX_VALUE
             }
+            // ContentNegotiation убран: он для REST (HTTP requests),
+            // не для WebSocket (raw JSON frames). Для WebSocket не нужен и
+            // может интерферировать с Content-Type negotiation при upgrade.
             install(Logging) {
-                // Включаем максимальный лог, чтобы увидеть ответ от Google (например, 403 Forbidden)
-                level = LogLevel.ALL 
+                // Оставляем ALL на время отладки, потом переключить на HEADERS
+                level = LogLevel.ALL
                 logger = object : io.ktor.client.plugins.logging.Logger {
                     override fun log(message: String) {
                         android.util.Log.d("KtorNetwork", message)
