@@ -108,6 +108,7 @@ class AudioPlayer {
      */
     fun flush() {
         runCatching {
+            _isPaused.set(false)
             // 1. Останавливаем аппаратное воспроизведение
             audioTrack?.pause()
 
