@@ -6,16 +6,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.*
 import androidx.compose.material3.AlertDialog
@@ -31,9 +27,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.voicedeutsch.master.presentation.theme.Background
 import com.voicedeutsch.master.util.AppLogger
@@ -44,7 +37,7 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Settings screen — API key, theme, session duration, daily goal, reminders.
+ * Settings screen — theme, session duration, daily goal, reminders.
  * + секция "Диагностика" с кнопкой сохранения лога.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -58,12 +51,10 @@ fun SettingsScreen(
     val focusManager = LocalFocusManager.current
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // ── Состояние диагностики ─────────────────────────────────────────────────
     var isSavingLog by remember { mutableStateOf(false) }
     var logStats by remember { mutableStateOf(CrashLogger.getInstance()?.getStats()) }
     var showTimePicker by remember { mutableStateOf(false) }
 
-    // ── SAF-пикер: выбор места для сохранения лога ───────────────────────────
     val saveLogLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/plain"),
     ) { uri ->
@@ -76,11 +67,9 @@ fun SettingsScreen(
         val message = if (success) "✅ Лог сохранён успешно" else "❌ Не удалось сохранить лог"
         Toast.makeText(context, message, Toast.LENGTH_LONG).show()
 
-        // Обновляем статистику после сохранения
         logStats = CrashLogger.getInstance()?.getStats()
     }
 
-    // ── Snackbar для сообщений настроек ──────────────────────────────────────
     LaunchedEffect(state.successMessage, state.errorMessage) {
         val msg = state.successMessage ?: state.errorMessage
         if (msg != null) {
@@ -117,46 +106,6 @@ fun SettingsScreen(
                 .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-
-            // ── Gemini API Key ────────────────────────────────────────────────
-            SettingsSection(title = "Подключение") {
-                OutlinedTextField(
-                    value         = state.geminiApiKey,
-                    onValueChange = { viewModel.onEvent(SettingsEvent.UpdateApiKey(it)) },
-                    label         = { Text("Gemini API Key") },
-                    placeholder   = { Text("AIza...") },
-                    modifier      = Modifier.fillMaxWidth(),
-                    singleLine    = true,
-                    visualTransformation = if (state.geminiApiKeyVisible)
-                        VisualTransformation.None else PasswordVisualTransformation(),
-                    trailingIcon  = {
-                        IconButton(onClick = { viewModel.onEvent(SettingsEvent.ToggleApiKeyVisibility) }) {
-                            Icon(
-                                if (state.geminiApiKeyVisible) Icons.Filled.VisibilityOff
-                                else Icons.Filled.Visibility,
-                                contentDescription = "Показать/скрыть",
-                            )
-                        }
-                    },
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = {
-                        focusManager.clearFocus()
-                        viewModel.onEvent(SettingsEvent.SaveApiKey)
-                    }),
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text  = "Получите ключ на aistudio.google.com",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
-                )
-                Button(
-                    onClick  = { viewModel.onEvent(SettingsEvent.SaveApiKey) },
-                    modifier = Modifier.align(Alignment.End),
-                ) {
-                    Text("Сохранить")
-                }
-            }
 
             // ── Theme ─────────────────────────────────────────────────────────
             SettingsSection(title = "Оформление") {
@@ -215,7 +164,7 @@ fun SettingsScreen(
                 ) {
                     Text("Включить напоминание", style = MaterialTheme.typography.bodyMedium)
                     Switch(
-                        checked  = state.reminderEnabled,
+                        checked         = state.reminderEnabled,
                         onCheckedChange = { viewModel.onEvent(SettingsEvent.ToggleReminder(it)) },
                     )
                 }
@@ -278,9 +227,9 @@ fun SettingsScreen(
 
             // ── 🐛 Диагностика ────────────────────────────────────────────────
             DiagnosticsSection(
-                logStats   = logStats,
-                isSaving   = isSavingLog,
-                onSaveLog  = {
+                logStats  = logStats,
+                isSaving  = isSavingLog,
+                onSaveLog = {
                     isSavingLog = true
                     val ts = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault()).format(Date())
                     saveLogLauncher.launch("voicedeutsch_log_$ts.txt")
@@ -304,7 +253,6 @@ private fun DiagnosticsSection(
 ) {
     SettingsSection(title = "Диагностика") {
 
-        // Статус AppLogger
         val appLogger = AppLogger.getInstance()
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -328,7 +276,6 @@ private fun DiagnosticsSection(
             )
         }
 
-        // Статистика сохранённых логов
         if (logStats != null) {
             Spacer(Modifier.height(4.dp))
             Row(
@@ -357,7 +304,6 @@ private fun DiagnosticsSection(
 
         Spacer(Modifier.height(8.dp))
 
-        // ── Кнопка «Сохранить лог» ────────────────────────────────────────
         Button(
             onClick  = onSaveLog,
             enabled  = !isSaving && appLogger?.isRunning == true,
@@ -365,8 +311,8 @@ private fun DiagnosticsSection(
         ) {
             if (isSaving) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
-                    color = MaterialTheme.colorScheme.onPrimary,
+                    modifier    = Modifier.size(18.dp),
+                    color       = MaterialTheme.colorScheme.onPrimary,
                     strokeWidth = 2.dp,
                 )
                 Spacer(Modifier.width(8.dp))
@@ -400,20 +346,20 @@ private fun SettingsSection(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
-            text       = title.uppercase(),
-            style      = MaterialTheme.typography.labelSmall,
-            color      = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.SemiBold,
+            text          = title.uppercase(),
+            style         = MaterialTheme.typography.labelSmall,
+            color         = MaterialTheme.colorScheme.primary,
+            fontWeight    = FontWeight.SemiBold,
             letterSpacing = androidx.compose.ui.unit.TextUnit(1.5f, androidx.compose.ui.unit.TextUnitType.Sp),
         )
         Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            colors   = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(
-                modifier = Modifier.padding(16.dp),
+                modifier            = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-                content = content,
+                content             = content,
             )
         }
     }
