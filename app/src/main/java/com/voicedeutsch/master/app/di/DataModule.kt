@@ -54,8 +54,6 @@ val dataModule = module {
                 // Пинги каждые 20 сек — предотвращают разрыв NAT/прокси в EU.
                 // Gemini Live сессия длится минуты → без пингов соединение умирает.
                 pingIntervalMillis = 20_000L
-                // Максимальный размер фрейма: 10 MB на случай большого systemPrompt
-                maxFrameSize = Long.MAX_VALUE
             }
             // ContentNegotiation убран: он для REST (HTTP requests),
             // не для WebSocket (raw JSON frames). Для WebSocket не нужен и
