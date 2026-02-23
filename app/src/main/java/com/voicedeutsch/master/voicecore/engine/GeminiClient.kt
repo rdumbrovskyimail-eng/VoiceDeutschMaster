@@ -382,11 +382,15 @@ class GeminiClient(
 
     private suspend fun waitForSetupComplete() {
         try {
-            kotlinx.coroutines.withTimeout(5_000L) {
+            kotlinx.coroutines.withTimeout(30_000L) {
                 setupDeferred.await()
             }
         } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-            throw IllegalStateException("Превышено время ожидания ответа от сервера Gemini.")
+            throw IllegalStateException(
+                "Превышено время ожидания ответа от сервера Gemini (30 сек). " +
+                "Возможные причины: неверный API ключ, недоступен endpoint, " +
+                "или региональные ограничения. Проверьте Logcat тег 'KtorNetwork'."
+            )
         }
     }
 
