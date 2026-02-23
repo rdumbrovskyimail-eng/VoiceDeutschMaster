@@ -58,6 +58,7 @@ class VoiceCoreEngineImpl(
     private val httpClient: io.ktor.client.HttpClient,
     private val json: kotlinx.serialization.json.Json,
     private val networkMonitor: com.voicedeutsch.master.util.NetworkMonitor,
+    private val ephemeralTokenService: com.voicedeutsch.master.data.remote.gemini.EphemeralTokenService,
 ) : VoiceCoreEngine {
 
     // ── Coroutine infrastructure ──────────────────────────────────────────────
@@ -190,8 +191,11 @@ class VoiceCoreEngineImpl(
         //    GeminiClient блокирует до получения setupComplete от сервера.
         transitionEngine(VoiceEngineState.CONNECTING)
         transitionConnection(ConnectionState.CONNECTING)
+        val token = withContext(Dispatchers.IO) {
+            ephemeralTokenService.getToken()
+        }
         withContext(Dispatchers.IO) {
-            requireNotNull(geminiClient).connect(cfg, sessionContext)
+            requireNotNull(geminiClient).connect(cfg, sessionContext, token)
         }
 
         // 6. Activate session state
