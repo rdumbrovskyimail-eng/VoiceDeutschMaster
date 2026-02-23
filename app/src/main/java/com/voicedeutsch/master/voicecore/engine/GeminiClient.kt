@@ -104,9 +104,16 @@ class GeminiClient(
         setupDeferred = kotlinx.coroutines.CompletableDeferred()
         connectionJob = clientScope.launch {
             try {
-                // СТРОГО WSS! Иначе Google сбросит соединение и будет краш.
                 val urlString = "wss://$WS_HOST$WS_PATH?key=${config.apiKey}"
-                httpClient.webSocket(urlString) {
+                httpClient.webSocket(
+                    urlString = urlString,
+                    request = {
+                        // 🟢 В будущем, если ограничишь API ключ по Android приложению в Google Cloud,
+                        // раскомментируй эти две строки и вставь свои данные:
+                        // header("X-Android-Package", "com.voicedeutsch.master")
+                        // header("X-Android-Cert", "ТВОЙ_SHA1_БЕЗ_ДВОЕТОЧИЙ")
+                    }
+                ) {
                     wsSession = this
                     sendSetup(context, config)
                     receiveLoop()
@@ -116,9 +123,10 @@ class GeminiClient(
                 val errorMsg = "Ошибка сети: ${e::class.java.simpleName}: ${e.message}$cause"
                 android.util.Log.e(TAG, errorMsg, e)
                 setupComplete = false
+
+                // 🟢 ГЛАВНОЕ: Моментально отменяем ожидание setupComplete!
                 setupDeferred.completeExceptionally(IllegalStateException(errorMsg, e))
-                // Передаем понятную ошибку наверх
-                responseChannel.close(IllegalStateException(errorMsg, e)) 
+                responseChannel.close(IllegalStateException(errorMsg, e))
             } finally {
                 wsSession = null
                 responseChannel.close()
@@ -319,42 +327,31 @@ class GeminiClient(
     private fun parseServerContent(serverContent: JsonObject) {
         val modelTurn = serverContent["modelTurn"]?.jsonObject
         val turnComplete = serverContent["turnComplete"]?.jsonPrimitive?.contentOrNull == "true"
+        // 🟢 Читаем флаг перебивания от сервера
         val interrupted = serverContent["interrupted"]?.jsonPrimitive?.contentOrNull == "true"
 
-        // Транскрипт выходного аудио (отдельный поток, может прийти раньше/позже аудио)
-        val outputTranscript = serverContent["outputTranscription"]
-            ?.jsonObject?.get("text")?.jsonPrimitive?.contentOrNull
+        val outputTranscript = serverContent["outputTranscription"]?.jsonObject?.get("text")?.jsonPrimitive?.contentOrNull
+        val inputTranscript = serverContent["inputTranscription"]?.jsonObject?.get("text")?.jsonPrimitive?.contentOrNull
 
-        // Транскрипт входного аудио (речь пользователя)
-        val inputTranscript = serverContent["inputTranscription"]
-            ?.jsonObject?.get("text")?.jsonPrimitive?.contentOrNull
-
-        // Извлечь аудио-данные (inlineData.data — Base64 PCM)
-        val audioParts = modelTurn?.get("parts")?.jsonArray
-            ?.mapNotNull { part ->
-                part.jsonObject["inlineData"]?.jsonObject
-                    ?.get("data")?.jsonPrimitive?.contentOrNull
-                    ?.let { Base64.decode(it, Base64.NO_WRAP) }
-            }
-
+        val audioParts = modelTurn?.get("parts")?.jsonArray?.mapNotNull { part ->
+            part.jsonObject["inlineData"]?.jsonObject?.get("data")?.jsonPrimitive?.contentOrNull?.let { Base64.decode(it, Base64.NO_WRAP) }
+        }
         val audioData = audioParts?.firstOrNull()
-
-        // Текстовые части (если модель отвечает текстом)
-        val textTranscript = modelTurn?.get("parts")?.jsonArray
-            ?.mapNotNull { part ->
-                part.jsonObject["text"]?.jsonPrimitive?.contentOrNull
-            }?.joinToString("")
+        val textTranscript = modelTurn?.get("parts")?.jsonArray?.mapNotNull { part ->
+            part.jsonObject["text"]?.jsonPrimitive?.contentOrNull
+        }?.joinToString("")
 
         val finalTranscript = outputTranscript ?: textTranscript
 
-        // Если ничего нет и turn просто complete — всё равно сигнализируем
+        // 🟢 Передаем флаг isInterrupted наверх
         if (audioData != null || finalTranscript != null || turnComplete || interrupted) {
             responseChannel.trySend(
                 GeminiResponse(
                     audioData = audioData,
                     transcript = finalTranscript ?: inputTranscript,
                     functionCall = null,
-                    isTurnComplete = turnComplete || interrupted,
+                    isTurnComplete = turnComplete,
+                    isInterrupted = interrupted,
                 )
             )
         }
@@ -429,6 +426,7 @@ data class GeminiResponse(
     val transcript: String?,
     val functionCall: GeminiFunctionCall?,
     val isTurnComplete: Boolean = false,
+    val isInterrupted: Boolean = false, // 🟢 ДОБАВЛЕН ФЛАГ ПЕРЕБИВАНИЯ
 ) {
     fun hasAudio(): Boolean = audioData != null && audioData.isNotEmpty()
     fun hasFunctionCall(): Boolean = functionCall != null
@@ -441,10 +439,9 @@ data class GeminiResponse(
         return transcript == other.transcript &&
                 functionCall == other.functionCall &&
                 isTurnComplete == other.isTurnComplete &&
-                (audioData == null && other.audioData == null ||
-                        audioData != null && other.audioData != null &&
-                        audioData.contentEquals(other.audioData))
+                isInterrupted == other.isInterrupted &&
+                (audioData?.contentEquals(other.audioData) == true || (audioData == null && other.audioData == null))
     }
 
-    override fun hashCode(): Int = transcript.hashCode() * 31 + isTurnComplete.hashCode()
+    override fun hashCode(): Int = transcript.hashCode() * 31 + isTurnComplete.hashCode() + isInterrupted.hashCode()
 }
