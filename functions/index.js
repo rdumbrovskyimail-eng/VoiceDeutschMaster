@@ -67,4 +67,4 @@ exports.getEphemeralToken = onRequest(
       res.status(500).json({ error: "Internal server error" });
     }
   }
-);            
+);             
