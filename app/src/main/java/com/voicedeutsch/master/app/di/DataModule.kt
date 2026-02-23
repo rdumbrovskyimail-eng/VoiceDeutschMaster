@@ -19,14 +19,14 @@ import com.voicedeutsch.master.domain.repository.SecurityRepository
 import com.voicedeutsch.master.domain.repository.SessionRepository
 import com.voicedeutsch.master.domain.repository.UserRepository
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
-import java.util.concurrent.TimeUnit
+
 import com.voicedeutsch.master.data.local.file.AudioCacheManager
 import com.voicedeutsch.master.data.local.file.ExportImportManager
 import com.voicedeutsch.master.data.remote.sync.BackupManager
@@ -50,13 +50,9 @@ val dataModule = module {
     // Shared single — используется в GeminiClient для WebSocket-соединения.
     // WebSockets plugin обязателен для Gemini Live API.
     single {
-        HttpClient(OkHttp) {
+        HttpClient(CIO) {
             engine {
-                config {
-                    connectTimeout(15, TimeUnit.SECONDS)  // таймаут TCP + TLS
-                    readTimeout(0, TimeUnit.SECONDS)       // 0 = бесконечно для WS
-                    writeTimeout(0, TimeUnit.SECONDS)      // 0 = бесконечно для WS
-                }
+                requestTimeout = 0  // бесконечно для WebSocket
             }
             install(WebSockets) {
                 pingIntervalMillis = 20_000L
