@@ -13,9 +13,9 @@ import org.koin.dsl.module
 val presentationModule = module {
     viewModel {
         SessionViewModel(
-            voiceCoreEngine       = get(),
-            userRepository        = get(),
-            preferencesDataStore  = get(),
+            voiceCoreEngine      = get(),
+            userRepository       = get(),
+            preferencesDataStore = get(),
             ephemeralTokenService = get(),
         )
     }
@@ -24,7 +24,6 @@ val presentationModule = module {
             userRepository       = get(),
             bookRepository       = get(),
             preferencesDataStore = get(),
-            securityRepository   = get(),
             getUserProfile       = get(),
         )
     }
@@ -54,7 +53,6 @@ val presentationModule = module {
         SettingsViewModel(
             configureUserPreferences = get(),
             preferencesDataStore     = get(),
-            securityRepository       = get(),
             userRepository           = get(),
         )
     }
