@@ -1,0 +1,336 @@
+# ─────────────────────────────────────────────────
+# gradle/libs.versions.toml
+# Last verified: 2026-02-23
+# ─────────────────────────────────────────────────
+
+[versions]
+# Kotlin & Core
+# ⚠️ AGP 9.0 + Kotlin 2.3.0: kotlin-android plugin теперь DEPRECATED.
+# AGP 9.0 имеет встроенную поддержку Kotlin — kotlin-android плагин
+# больше не нужен. Kotlin версия используется только для serialization
+# и compose compiler плагинов. См. https://kotl.in/agp9-kotlin
+kotlin = "2.3.0"
+agp = "9.0.1"
+
+# ⚠️ KSP BREAKING CHANGE (с v2.3.0):
+# - KSP1 DEPRECATED — мигрируйте на KSP2.
+# - Версия KSP больше НЕ привязана к версии Kotlin (старый формат
+#   "2.x.y-1.0.z" упразднён). Используйте просто "2.3.5".
+# - KSP2 работает на стабильных API компилятора, поэтому совместим
+#   с Kotlin 2.2+ и AGP 9.0+.
+# Если используете KSP1-процессоры (kapt-совместимые), обновите их
+# до KSP2-совместимых версий.
+ksp = "2.3.5"
+
+# Compose
+compose-bom = "2026.01.01"
+activity-compose = "1.12.2"
+lifecycle = "2.10.0"
+
+# Architecture
+navigation = "2.9.7"
+room = "2.8.4"
+datastore = "1.2.0"
+work = "2.10.0"
+
+# DI
+koin = "4.1.1"
+
+# Network
+# ℹ️ Ktor используется только для вспомогательных HTTP-запросов.
+# Основная коммуникация с Gemini мигрирована на firebase-ai SDK.
+# Ktor-websockets можно удалить, если весь LiveAPI идёт через firebase-ai.
+ktor = "3.4.0"
+
+# Coroutines
+coroutines = "1.10.2"
+
+# Serialization
+serialization = "1.10.0"
+
+# Firebase
+# ✅ АКТУАЛЬНО: BoM 34.9.0 — последний стабильный релиз (февраль 2026).
+# BREAKING (с BoM 34.0.0, июль 2025):
+#   - Все -ktx модули УДАЛЕНЫ из BoM. Используйте только базовые артефакты.
+#   - KTX API перенесены в основные модули (напр. firebase-analytics,
+#     а НЕ firebase-analytics-ktx).
+#   - minSdk требование повышено до 23 (для firebase-auth и ряда других).
+# firebase-ai: заменяет устаревший google-ai / generativeai SDK.
+#   Поддерживает Gemini Live API (реал-тайм голос/стриминг),
+#   Gemini 2.5 Flash с Thinking Levels, Server Prompt Templates,
+#   Live API Transcripts. App Check интегрирован автоматически.
+firebase-bom = "34.9.0"
+firebase-crashlytics-plugin = "3.0.0"
+# ℹ️ google-services 4.4.2 → рекомендуется обновить до 4.4.3
+# (последний стабильный, содержит fixes для BoM 34.x).
+google-services = "4.4.3"
+
+# Android SDK
+compileSdk = "36"
+# ⚠️ minSdk 31 — выше требуемого минимума Firebase Auth (23).
+# Если нужна более широкая аудитория, можно снизить до 23.
+# compileSdk 36 требует AGP 9.0+ (максимальный поддерживаемый API = 36).
+minSdk = "31"
+targetSdk = "36"
+
+# AndroidX
+core-ktx = "1.17.0"
+appcompat = "1.7.1"
+
+# AndroidX Test
+androidx-test = "1.6.1"
+androidx-test-runner = "1.6.2"
+
+# Testing
+junit5 = "5.11.0"
+mockk = "1.14.7"
+turbine = "1.2.1"
+truth = "1.4.0"
+robolectric = "4.14.1"
+
+# Security
+# ⚠️ security-crypto 1.1.0-alpha07 — нет стабильного релиза на февраль 2026.
+# Alpha API может сломаться без предупреждения.
+#
+# Рекомендуемые альтернативы (выберите одну):
+#   1. [ТЕКУЩИЙ ВЫБОР] Зафиксировать alpha07, запретить авто-обновление
+#      через Renovate/Dependabot (strictVersionLock в build.gradle.kts).
+#   2. Мигрировать на DataStore + EncryptedFile (более стабильный API).
+#   3. Использовать Android Keystore API напрямую (нет alpha-зависимостей).
+security-crypto = "1.1.0-alpha07"
+
+# Code Quality
+ktlint = "12.0.0"
+detekt = "1.23.8"
+
+# ─────────────────────────────────────────────────
+
+[libraries]
+# Kotlin
+kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+# ✅ kotlinx-coroutines-play-services: нужен для .await() на Firebase Tasks
+# (напр. auth.signInAnonymously().await(), firestore.get().await()).
+kotlinx-coroutines-play-services = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-play-services", version.ref = "coroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+
+# AndroidX Core
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "core-ktx" }
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+
+# Compose BOM
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
+compose-ui = { module = "androidx.compose.ui:ui" }
+compose-ui-graphics = { module = "androidx.compose.ui:ui-graphics" }
+compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
+compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
+compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
+compose-material3 = { module = "androidx.compose.material3:material3" }
+compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
+compose-animation = { module = "androidx.compose.animation:animation" }
+compose-foundation = { module = "androidx.compose.foundation:foundation" }
+compose-runtime = { module = "androidx.compose.runtime:runtime" }
+
+# Activity & Lifecycle
+activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity-compose" }
+lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycle" }
+lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+lifecycle-viewmodel-ktx = { module = "androidx.lifecycle:lifecycle-viewmodel-ktx", version.ref = "lifecycle" }
+
+# Navigation
+navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation" }
+
+# Room
+room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
+room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
+
+# DataStore
+datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
+datastore-proto = { module = "androidx.datastore:datastore", version.ref = "datastore" }
+
+# WorkManager
+work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
+work-testing = { module = "androidx.work:work-testing", version.ref = "work" }
+
+# Koin
+koin-android = { module = "io.insert-koin:koin-android", version.ref = "koin" }
+koin-androidx-compose = { module = "io.insert-koin:koin-androidx-compose", version.ref = "koin" }
+koin-test = { module = "io.insert-koin:koin-test", version.ref = "koin" }
+koin-test-junit5 = { module = "io.insert-koin:koin-test-junit5", version.ref = "koin" }
+koin-androidx-workmanager = { module = "io.insert-koin:koin-androidx-workmanager", version.ref = "koin" }
+
+# Ktor Client
+# ℹ️ Используется для вспомогательных REST-запросов (не Gemini LiveAPI).
+# Основной AI-транспорт — firebase-ai. Если Ktor нужен только для
+# Gemini — его можно полностью удалить после миграции на firebase-ai.
+ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
+ktor-client-websockets = { module = "io.ktor:ktor-client-websockets", version.ref = "ktor" }
+ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
+ktor-serialization-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
+ktor-client-logging = { module = "io.ktor:ktor-client-logging", version.ref = "ktor" }
+ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
+ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }
+
+# ─── Firebase ────────────────────────────────────
+# Все Firebase зависимости объявляются БЕЗ версий — версии управляются BoM.
+# НЕ используйте -ktx суффиксы (удалены с BoM 34.0.0).
+
+# BoM — платформа управления версиями Firebase.
+# Объявляется через platform() в build.gradle.kts, НЕ как обычная зависимость.
+firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebase-bom" }
+
+# Firebase AI Logic: заменяет устаревший com.google.ai.client.generativeai.
+# Включает: Gemini 2.5 Flash/Pro, Live API (реал-тайм голос + аудио),
+# Thinking Levels, Server Prompt Templates, Transcripts, URL context tool.
+# App Check авторизация встроена — EphemeralTokenService больше не нужен.
+firebase-ai = { module = "com.google.firebase:firebase-ai" }
+
+# Firebase Authentication: анонимный вход, Google Sign-In, Email/Password.
+# Kotlin suspend extensions включены в базовый модуль (не нужен -ktx).
+firebase-auth = { module = "com.google.firebase:firebase-auth" }
+
+# Firebase Analytics: автоматический сбор событий, пользовательские события.
+firebase-analytics = { module = "com.google.firebase:firebase-analytics" }
+
+# Firebase Crashlytics: автоматический сбор крэшей, кастомные ключи/логи.
+firebase-crashlytics = { module = "com.google.firebase:firebase-crashlytics" }
+
+# Firebase Performance Monitoring: автотрейсинг HTTP, кастомные трейсы.
+firebase-performance = { module = "com.google.firebase:firebase-perf" }
+
+# Firebase Cloud Firestore: облачное хранилище документов с real-time sync.
+# Используется для CloudSyncService / BackupManager вместо кастомного решения.
+firebase-firestore = { module = "com.google.firebase:firebase-firestore" }
+
+# Firebase Cloud Storage: хранение файлов (аудио-записи, экспорт/импорт).
+firebase-storage = { module = "com.google.firebase:firebase-storage" }
+
+# Firebase Remote Config: управление конфигурацией без перевыпуска приложения.
+# Полезно для A/B тестов настроек модели Gemini (temperature, tokens и т.д.).
+firebase-remote-config = { module = "com.google.firebase:firebase-config" }
+
+# Firebase App Check: защита бекенда от несанкционированных клиентов.
+# Автоматически интегрирован с firebase-ai для защиты Gemini endpoints.
+firebase-appcheck-playintegrity = { module = "com.google.firebase:firebase-appcheck-playintegrity" }
+# ─────────────────────────────────────────────────
+
+# Security
+security-crypto = { module = "androidx.security:security-crypto", version.ref = "security-crypto" }
+
+# AndroidX Test
+test-core = { module = "androidx.test:core-ktx", version.ref = "androidx-test" }
+test-runner = { module = "androidx.test:runner", version.ref = "androidx-test-runner" }
+
+# Testing
+junit5-api = { module = "org.junit.jupiter:junit-jupiter-api", version.ref = "junit5" }
+junit5-engine = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junit5" }
+junit5-params = { module = "org.junit.jupiter:junit-jupiter-params", version.ref = "junit5" }
+mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
+mockk-android = { module = "io.mockk:mockk-android", version.ref = "mockk" }
+turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
+truth = { module = "com.google.truth:truth", version.ref = "truth" }
+robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+
+# ─────────────────────────────────────────────────
+
+[bundles]
+compose = [
+    "compose-ui",
+    "compose-ui-graphics",
+    "compose-ui-tooling-preview",
+    "compose-material3",
+    "compose-material-icons-extended",
+    "compose-animation",
+    "compose-foundation",
+    "compose-runtime",
+    "activity-compose",
+    "navigation-compose"
+]
+
+compose-debug = [
+    "compose-ui-tooling",
+    "compose-ui-test-manifest"
+]
+
+lifecycle = [
+    "lifecycle-runtime-ktx",
+    "lifecycle-runtime-compose",
+    "lifecycle-viewmodel-compose",
+    "lifecycle-viewmodel-ktx"
+]
+
+room = [
+    "room-runtime",
+    "room-ktx"
+]
+
+ktor = [
+    "ktor-client-core",
+    "ktor-client-okhttp",
+    "ktor-client-websockets",
+    "ktor-client-content-negotiation",
+    "ktor-serialization-json",
+    "ktor-client-logging"
+]
+
+koin = [
+    "koin-android",
+    "koin-androidx-compose",
+    "koin-androidx-workmanager"
+]
+
+# ✅ Firebase bundle: удобно подключать в build.gradle.kts одной строкой.
+# НЕ включайте firebase-bom сюда — он подключается через platform().
+firebase = [
+    "firebase-ai",
+    "firebase-auth",
+    "firebase-analytics",
+    "firebase-crashlytics",
+    "firebase-performance",
+    "firebase-firestore",
+    "firebase-storage",
+    "firebase-remote-config",
+    "firebase-appcheck-playintegrity"
+]
+
+testing = [
+    "junit5-api",
+    "junit5-params",
+    "mockk",
+    "turbine",
+    "truth",
+    "kotlinx-coroutines-test"
+]
+
+# ─────────────────────────────────────────────────
+
+[plugins]
+# ⚠️ AGP 9.0: kotlin-android плагин DEPRECATED при использовании AGP 9.0+.
+# Kotlin поддержка теперь встроена в AGP. Не применяйте kotlin-android
+# в модулях android-application / android-library.
+# kotlin-android оставлен здесь ТОЛЬКО для чистых JVM/KMP модулей,
+# где AGP не применяется (напр. отдельный :domain или :data модуль).
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+
+# KSP 2.3.5: версия больше НЕ должна совпадать с версией Kotlin.
+# KSP2 по умолчанию с начала 2025. KSP1 deprecated.
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+
+room = { id = "androidx.room", version.ref = "room" }
+google-services = { id = "com.google.gms.google-services", version.ref = "google-services" }
+
+# Crashlytics Gradle Plugin 3.0.0 — major release с breaking changes:
+# - Требует Gradle 7+ и AGP 7.4+.
+# - Удалены устаревшие поля mappingFile и strippedNativeLibsDir.
+# - symbolGenerator заменён на symbolGeneratorType + breakpadBinary.
+firebase-crashlytics = { id = "com.google.firebase.crashlytics", version.ref = "firebase-crashlytics-plugin" }
