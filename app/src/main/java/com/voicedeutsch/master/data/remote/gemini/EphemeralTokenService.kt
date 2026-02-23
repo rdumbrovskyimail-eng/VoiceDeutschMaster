@@ -1,14 +1,18 @@
 package com.voicedeutsch.master.data.remote.gemini
 
 import android.util.Log
+import com.google.firebase.auth.FirebaseAuth
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -19,14 +23,10 @@ import kotlinx.serialization.json.put
  * Сервис получения Ephemeral Token для Gemini Live API.
  *
  * Production Standard 2026: API ключ не хранится в APK.
- * Android запрашивает временный токен (TTL ~30 мин) у Firebase Function.
- * Firebase Function хранит настоящий ключ в Secret Manager.
- *
- * Схема:
- *   Android → POST /getEphemeralToken → Firebase Function
- *   Firebase Function → Google API → ephemeral token
- *   Firebase Function → token → Android
- *   Android → WSS с token вместо API key
+ * Android → Firebase Anonymous Auth → ID Token
+ * Android → POST /getEphemeralToken + Bearer ID Token → Firebase Function
+ * Firebase Function → verifyIdToken → Google API → ephemeral token
+ * Android → WSS с ephemeral token вместо API key
  */
 class EphemeralTokenService(
     private val httpClient: HttpClient,
@@ -41,15 +41,14 @@ class EphemeralTokenService(
         private const val REFRESH_BEFORE_EXPIRY_MS = 5 * 60 * 1000L
     }
 
+    private val firebaseAuth = FirebaseAuth.getInstance()
+
     @Volatile private var cachedToken: CachedToken? = null
 
     /**
      * Возвращает валидный Ephemeral Token.
      * Использует кэш если токен ещё не истёк.
      * Автоматически обновляет токен за 5 минут до истечения.
-     *
-     * @param userId ID пользователя (для Firebase Auth в будущем)
-     * @throws EphemeralTokenException если не удалось получить токен
      */
     suspend fun fetchToken(userId: String): String {
         cachedToken?.let { cached ->
@@ -58,16 +57,20 @@ class EphemeralTokenService(
                 return cached.token
             }
         }
-
         return refreshToken(userId)
     }
 
     private suspend fun refreshToken(userId: String): String {
         Log.d(TAG, "Fetching new ephemeral token for user: $userId")
 
+        // ✅ Получаем Firebase ID Token (анонимный вход если нужно)
+        val firebaseIdToken = getFirebaseIdToken()
+
         try {
             val response = httpClient.post(FUNCTION_URL) {
                 contentType(ContentType.Application.Json)
+                // ✅ Firebase ID Token в заголовке Authorization
+                header(HttpHeaders.Authorization, "Bearer $firebaseIdToken")
                 setBody(
                     json.encodeToString(
                         kotlinx.serialization.json.JsonObject.serializer(),
@@ -84,12 +87,9 @@ class EphemeralTokenService(
 
             val tokenResponse = response.body<EphemeralTokenResponse>()
 
-            // ✅ FIX: НЕ стрипаем префикс "auth_tokens/".
-            // Google Live API ожидает полный resource name токена в ?key=
-            // формат: auth_tokens/TOKEN_VALUE
-            // Стрипание префикса было причиной потенциального 403.
+            // ✅ Полный resource name токена — НЕ стрипаем "auth_tokens/"
             val fullToken = tokenResponse.token
-            Log.d(TAG, "Token resource name: ${fullToken.take(30)}...")
+            Log.d(TAG, "Token received: ${fullToken.take(30)}...")
 
             cachedToken = CachedToken(
                 token = fullToken,
@@ -107,6 +107,19 @@ class EphemeralTokenService(
         }
     }
 
+    /**
+     * Получает Firebase ID Token.
+     * Если пользователь не авторизован — анонимный вход автоматически.
+     */
+    private suspend fun getFirebaseIdToken(): String {
+        val currentUser = firebaseAuth.currentUser
+            ?: firebaseAuth.signInAnonymously().await().user
+            ?: throw EphemeralTokenException("Firebase Auth: failed to sign in anonymously")
+
+        return currentUser.getIdToken(false).await().token
+            ?: throw EphemeralTokenException("Firebase Auth: failed to get ID token")
+    }
+
     /** Сбрасывает кэш — вызывается при выходе пользователя. */
     fun clearCache() {
         cachedToken = null
@@ -120,8 +133,6 @@ class EphemeralTokenService(
             System.currentTimeMillis() + 25 * 60 * 1000L
         }
     }
-
-    // ── Data classes ──────────────────────────────────────────────────────────
 
     @Serializable
     private data class EphemeralTokenResponse(
