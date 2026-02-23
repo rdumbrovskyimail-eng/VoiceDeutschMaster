@@ -17,4 +17,4 @@ data class VoiceResponse(
     fun hasTranscript() = !transcript.isNullOrEmpty() && audioData == null && functionCall == null
     override fun equals(other: Any?) = false
     override fun hashCode() = transcript.hashCode() * 31 + isTurnComplete.hashCode()
-}
+} 
