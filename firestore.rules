@@ -1,0 +1,35 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Все запросы требуют валидный App Check токен
+    match /{document=**} {
+      allow read, write: if request.auth != null
+                         && request.app != null;
+    }
+
+    // users/{userId} — пользователь видит только свои данные
+    match /users/{userId} {
+      allow read, write: if request.auth.uid == userId
+                         && request.app != null;
+
+      // users/{userId}/progress
+      match /progress/{docId} {
+        allow read, write: if request.auth.uid == userId
+                           && request.app != null;
+      }
+
+      // users/{userId}/statistics
+      match /statistics/{docId} {
+        allow read, write: if request.auth.uid == userId
+                           && request.app != null;
+      }
+
+      // users/{userId}/backups — только чтение/запись своих бекапов
+      match /backups/{backupId} {
+        allow read, write: if request.auth.uid == userId
+                           && request.app != null;
+      }
+    }
+  }
+}
