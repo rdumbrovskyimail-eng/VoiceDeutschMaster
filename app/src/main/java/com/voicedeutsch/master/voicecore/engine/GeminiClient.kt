@@ -221,8 +221,7 @@ class GeminiClient(
                     put("topP", config.topP)
                     put("topK", config.topK)
                     put("responseModalities", JsonArray(listOf(
-                        JsonPrimitive("AUDIO"), 
-                        JsonPrimitive("TEXT")
+                        JsonPrimitive("AUDIO")
                     )))
 
                     putJsonObject("speechConfig") {
