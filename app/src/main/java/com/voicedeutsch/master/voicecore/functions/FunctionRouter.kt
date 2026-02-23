@@ -603,6 +603,47 @@ class FunctionRouter(
             "required": []
           }
         }
+        """,
+        """
+        {
+          "name": "show_word_card",
+          "description": "Показывает карточку слова в интерфейсе пользователя.",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "word":        { "type": "STRING", "description": "Немецкое слово" },
+              "translation": { "type": "STRING", "description": "Перевод" }
+            },
+            "required": ["word"]
+          }
+        }
+        """,
+        """
+        {
+          "name": "show_grammar_hint",
+          "description": "Показывает подсказку по грамматике в интерфейсе.",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "rule":    { "type": "STRING", "description": "Грамматическое правило" },
+              "example": { "type": "STRING", "description": "Пример использования" }
+            },
+            "required": ["rule"]
+          }
+        }
+        """,
+        """
+        {
+          "name": "trigger_celebration",
+          "description": "Запускает анимацию поздравления в интерфейсе.",
+          "parameters": {
+            "type": "OBJECT",
+            "properties": {
+              "reason": { "type": "STRING", "description": "Причина поздравления" }
+            },
+            "required": []
+          }
+        }
         """
     )
 
