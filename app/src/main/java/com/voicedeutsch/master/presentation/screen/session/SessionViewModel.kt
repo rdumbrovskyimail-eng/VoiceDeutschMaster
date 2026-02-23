@@ -3,8 +3,6 @@ package com.voicedeutsch.master.presentation.screen.session
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.voicedeutsch.master.data.local.datastore.UserPreferencesDataStore
-import com.voicedeutsch.master.data.remote.gemini.EphemeralTokenException
-import com.voicedeutsch.master.data.remote.gemini.EphemeralTokenService
 import com.voicedeutsch.master.domain.repository.UserRepository
 import com.voicedeutsch.master.voicecore.engine.GeminiConfig
 import com.voicedeutsch.master.voicecore.engine.VoiceCoreEngine
@@ -28,15 +26,13 @@ import kotlin.coroutines.cancellation.CancellationException
  * Manages voice session lifecycle via [VoiceCoreEngine].
  *
  * Production Standard 2026:
- * API ключ больше не хранится на устройстве и не передаётся напрямую.
- * [EphemeralTokenService] запрашивает временный токен у Firebase Function.
- * Токен живёт ~1 час и кэшируется в памяти.
+ * API ключ не хранится на устройстве.
+ * EphemeralTokenService вызывается внутри VoiceCoreEngineImpl.startSession().
  */
 class SessionViewModel(
     private val voiceCoreEngine: VoiceCoreEngine,
     private val userRepository: UserRepository,
     private val preferencesDataStore: UserPreferencesDataStore,
-    private val ephemeralTokenService: EphemeralTokenService, // ← заменили securityRepository
 ) : ViewModel() {
 
     val voiceState: StateFlow<VoiceSessionState> = voiceCoreEngine.sessionState
@@ -68,13 +64,8 @@ class SessionViewModel(
                 val userId = userRepository.getActiveUserId()
                     ?: error("No active user found. Please complete onboarding.")
 
-                // ✅ Production Standard 2026:
-                // Запрашиваем временный токен у Firebase Function.
-                // Настоящий API ключ никогда не касается Android.
-                val ephemeralToken = ephemeralTokenService.fetchToken(userId)
-
-                val geminiConfig = GeminiConfig(apiKey = ephemeralToken)
-                voiceCoreEngine.initialize(geminiConfig)
+                // VoiceCoreEngineImpl сам запросит эфемерный токен внутри startSession()
+                voiceCoreEngine.initialize(GeminiConfig())
                 voiceCoreEngine.startSession(userId)
 
                 _uiState.update {
@@ -83,14 +74,6 @@ class SessionViewModel(
 
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: EphemeralTokenException) {
-                // Отдельная обработка ошибки получения токена — понятное сообщение пользователю
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        errorMessage = "Не удалось подключиться к серверу. Проверьте интернет и попробуйте снова."
-                    )
-                }
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(isLoading = false, errorMessage = e.message ?: "Unknown error starting session")
