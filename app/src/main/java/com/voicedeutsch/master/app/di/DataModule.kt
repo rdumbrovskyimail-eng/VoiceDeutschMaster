@@ -27,6 +27,7 @@ import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 import java.util.concurrent.TimeUnit
+import com.voicedeutsch.master.data.remote.gemini.EphemeralTokenService
 
 import com.voicedeutsch.master.data.local.file.AudioCacheManager
 import com.voicedeutsch.master.data.local.file.ExportImportManager
