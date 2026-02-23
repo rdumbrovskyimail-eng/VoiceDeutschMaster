@@ -102,6 +102,26 @@ class AudioPlayer {
         audioTrack?.play()
     }
 
+    /**
+     * Экстренная очистка очереди воспроизведения (Interruption).
+     * Вызывается, когда пользователь перебил ИИ.
+     */
+    fun flush() {
+        runCatching {
+            // 1. Останавливаем аппаратное воспроизведение
+            audioTrack?.pause()
+
+            // 2. Сбрасываем звук, который уже ушел в аудиобуфер Android
+            audioTrack?.flush()
+
+            // 3. Снова переводим трек в состояние PLAY, чтобы он был готов к новому ответу
+            audioTrack?.play()
+
+        }.onFailure { e ->
+            android.util.Log.e("AudioPlayer", "Ошибка при экстренном сбросе (flush): ${e.message}")
+        }
+    }
+
     /** Stops playback and flushes the internal buffer. */
     fun stop() {
         if (!_isPlaying.getAndSet(false)) return
