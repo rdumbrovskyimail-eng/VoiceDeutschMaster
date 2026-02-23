@@ -77,10 +77,16 @@ object Constants {
     // ==========================================
     // GEMINI API
     // ==========================================
-    // ✅ FIX: обновлена модель — старая "gemini-2.0-flash-live" retire 31.03.2026.
     // Актуальная модель совпадает с GeminiConfig.MODEL_GEMINI_LIVE
+    // Старая "gemini-2.0-flash-live" retire 31.03.2026
     const val GEMINI_MODEL_NAME = "gemini-2.5-flash-native-audio-preview"
-    const val GEMINI_MAX_CONTEXT_TOKENS = 2_000_000
+
+    // ⚠️ ВАЖНО: Live API и REST API имеют разные лимиты контекста!
+    // Используй GEMINI_LIVE_MAX_CONTEXT_TOKENS для всего, что связано с WebSocket-сессией.
+    // System Prompt + история + Tools обязаны влезать в 32 768 токенов — иначе сессия сбросится.
+    const val GEMINI_LIVE_MAX_CONTEXT_TOKENS = 32_768      // Live API — жёсткий лимит
+    const val GEMINI_REST_MAX_CONTEXT_TOKENS = 2_000_000   // REST API (generateContent и т.п.)
+
     const val GEMINI_DEFAULT_TEMPERATURE = 0.5f
     const val GEMINI_EXERCISE_TEMPERATURE = 0.3f
     const val GEMINI_CONVERSATION_TEMPERATURE = 0.7f
