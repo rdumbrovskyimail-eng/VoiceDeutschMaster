@@ -44,7 +44,7 @@ import kotlinx.serialization.json.putJsonObject
  *   4. Получать serverContent (audio + transcript) и toolCall (function calls)
  *   5. Отвечать на toolCall через toolResponse
  *
- * Модель: gemini-2.5-flash-live (gemini-2.0-flash-live-001 retire 31.03.2026)
+ * Модель: gemini-2.5-flash-native-audio-preview
  *
  * Thread-safety:
  *   - [connect] и [disconnect] должны вызываться последовательно (под lifecycleMutex в Engine)
@@ -93,8 +93,9 @@ class GeminiClient(
      * Устанавливает WebSocket-соединение и отправляет BidiGenerateContentSetup.
      * Блокирует до получения setupComplete от сервера.
      *
-     * @param config    конфигурация Gemini (apiKey, model, audio formats)
-     * @param context   контекст сессии (systemPrompt + функции)
+     * @param config          конфигурация Gemini (model, audio formats, voice)
+     * @param context         контекст сессии (systemPrompt + функции)
+     * @param ephemeralToken  токен для аутентификации (вместо API-ключа в APK)
      */
     suspend fun connect(
         config: GeminiConfig,
@@ -124,8 +125,6 @@ class GeminiClient(
                 val errorMsg = "Ошибка сети: ${e::class.java.simpleName}: ${e.message}$cause"
                 android.util.Log.e(TAG, errorMsg, e)
                 setupComplete = false
-
-                // 🟢 ГЛАВНОЕ: Моментально отменяем ожидание setupComplete!
                 setupDeferred.completeExceptionally(IllegalStateException(errorMsg, e))
                 if (!responseChannel.isClosedForSend) responseChannel.close(IllegalStateException(errorMsg, e))
             } finally {
@@ -147,7 +146,7 @@ class GeminiClient(
 
     /**
      * Отправляет chunk PCM-аудио через realtimeInput.audio.
-     * Аудио кодируется в Base64 согласно спецификации Blob.
+     * Аудио кодируется в Base64.NO_WRAP — переносы строк ломают парсер Google.
      */
     suspend fun sendAudioChunk(pcmBytes: ByteArray) {
         val base64Audio = Base64.encodeToString(pcmBytes, Base64.NO_WRAP)
@@ -217,6 +216,11 @@ class GeminiClient(
      * Отправляет BidiGenerateContentSetup — первое и единственное сообщение
      * инициализации. Включает модель, конфигурацию генерации, системный промпт
      * и объявления функций (tools).
+     *
+     * ✅ FIX: systemInstruction теперь использует context.fullContext
+     * (= systemPrompt + userContext + bookContext + strategyPrompt),
+     * а не только context.systemPrompt (статичный MasterPrompt).
+     * Ранее Gemini не знал уровень пользователя, текущий урок и стратегию.
      */
     private suspend fun sendSetup(
         context: ContextBuilder.SessionContext,
@@ -243,11 +247,15 @@ class GeminiClient(
                     }
                 }
 
-                // Системный промпт из ContextBuilder
+                // ✅ FIX: context.fullContext вместо context.systemPrompt.
+                // fullContext = объединённый и оптимизированный контекст из ContextBuilder:
+                //   MasterPrompt + userContext + bookContext + strategyPrompt.
+                // После этого фикса Gemini знает: кто пользователь, где он в книге,
+                // какие слова знает и какую стратегию применять.
                 putJsonObject("systemInstruction") {
                     put("role", "user")
                     put("parts", JsonArray(listOf(
-                        buildJsonObject { put("text", context.systemPrompt) }
+                        buildJsonObject { put("text", context.fullContext) }
                     )))
                 }
 
@@ -272,7 +280,7 @@ class GeminiClient(
      *   - setupComplete → устанавливает флаг готовности
      *   - serverContent → audio chunks + transcript → GeminiResponse
      *   - toolCall → function calls → GeminiResponse
-     *   - goAway → инициирует переподключение (TODO: сигнал в Engine)
+     *   - goAway → инициирует переподключение (сигнал в Engine через null)
      */
     private suspend fun receiveLoop() {
         val session = wsSession ?: return
@@ -280,7 +288,6 @@ class GeminiClient(
             for (frame in session.incoming) {
                 if (frame !is Frame.Text) continue
                 val raw = frame.readText()
-                // Выводим ответ Google в лог, чтобы видеть, на что он ругается
                 android.util.Log.d(TAG, "Ответ от сервера: $raw")
                 parseServerMessage(raw)
             }
@@ -296,27 +303,22 @@ class GeminiClient(
             val root = json.parseToJsonElement(raw).jsonObject
 
             when {
-                // Сервер подтвердил инициализацию сессии
                 root.containsKey("setupComplete") -> {
                     setupComplete = true
                     setupDeferred.complete(Unit)
                     Log.d(TAG, "Setup complete — session ready")
                 }
 
-                // Основной контент: аудио + транскрипт
                 root.containsKey("serverContent") -> {
                     parseServerContent(root["serverContent"]!!.jsonObject)
                 }
 
-                // Запрос на выполнение функций
                 root.containsKey("toolCall") -> {
                     parseToolCall(root["toolCall"]!!.jsonObject)
                 }
 
-                // Сервер скоро отключится — Engine должен переподключиться
                 root.containsKey("goAway") -> {
                     Log.w(TAG, "GoAway received — server closing connection soon")
-                    // Engine обработает через receiveNextResponse() → null → reconnect
                     responseChannel.close()
                 }
             }
@@ -326,33 +328,38 @@ class GeminiClient(
     }
 
     private fun parseServerContent(serverContent: JsonObject) {
-        val modelTurn = serverContent["modelTurn"]?.jsonObject
-        val turnComplete = serverContent["turnComplete"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() == true
-        // 🟢 Читаем флаг перебивания от сервера
-        val interrupted = serverContent["interrupted"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() == true
+        val modelTurn   = serverContent["modelTurn"]?.jsonObject
+        val turnComplete = serverContent["turnComplete"]
+            ?.jsonPrimitive?.content?.toBooleanStrictOrNull() == true
+        val interrupted  = serverContent["interrupted"]
+            ?.jsonPrimitive?.content?.toBooleanStrictOrNull() == true
 
-        val outputTranscript = serverContent["outputTranscription"]?.jsonObject?.get("text")?.jsonPrimitive?.contentOrNull
-        val inputTranscript = serverContent["inputTranscription"]?.jsonObject?.get("text")?.jsonPrimitive?.contentOrNull
+        val outputTranscript = serverContent["outputTranscription"]
+            ?.jsonObject?.get("text")?.jsonPrimitive?.contentOrNull
+        val inputTranscript  = serverContent["inputTranscription"]
+            ?.jsonObject?.get("text")?.jsonPrimitive?.contentOrNull
 
         val audioParts = modelTurn?.get("parts")?.jsonArray?.mapNotNull { part ->
-            part.jsonObject["inlineData"]?.jsonObject?.get("data")?.jsonPrimitive?.contentOrNull?.let { Base64.decode(it, Base64.NO_WRAP) }
+            part.jsonObject["inlineData"]?.jsonObject
+                ?.get("data")?.jsonPrimitive?.contentOrNull
+                ?.let { Base64.decode(it, Base64.NO_WRAP) }
         }
         val audioData = audioParts?.firstOrNull()
+
         val textTranscript = modelTurn?.get("parts")?.jsonArray?.mapNotNull { part ->
             part.jsonObject["text"]?.jsonPrimitive?.contentOrNull
         }?.joinToString("")
 
         val finalTranscript = outputTranscript ?: textTranscript
 
-        // 🟢 Передаем флаг isInterrupted наверх
         if (audioData != null || finalTranscript != null || turnComplete || interrupted) {
             responseChannel.trySend(
                 GeminiResponse(
-                    audioData = audioData,
-                    transcript = finalTranscript ?: inputTranscript,
-                    functionCall = null,
+                    audioData     = audioData,
+                    transcript    = finalTranscript ?: inputTranscript,
+                    functionCall  = null,
                     isTurnComplete = turnComplete,
-                    isInterrupted = interrupted,
+                    isInterrupted  = interrupted,
                 )
             )
         }
@@ -363,14 +370,16 @@ class GeminiClient(
 
         functionCalls.forEach { callElement ->
             val call = callElement.jsonObject
-            val id = call["id"]?.jsonPrimitive?.contentOrNull ?: return@forEach
+            val id   = call["id"]?.jsonPrimitive?.contentOrNull ?: return@forEach
             val name = call["name"]?.jsonPrimitive?.contentOrNull ?: return@forEach
-            val args = call["args"]?.let { json.encodeToString(JsonElement.serializer(), it) } ?: "{}"
+            val args = call["args"]?.let {
+                json.encodeToString(JsonElement.serializer(), it)
+            } ?: "{}"
 
             responseChannel.trySend(
                 GeminiResponse(
-                    audioData = null,
-                    transcript = null,
+                    audioData    = null,
+                    transcript   = null,
                     functionCall = GeminiFunctionCall(id = id, name = name, argsJson = args),
                     isTurnComplete = false,
                 )
@@ -413,8 +422,6 @@ class GeminiClient(
 }
 
 // ── Gemini response models ────────────────────────────────────────────────────
-// Перенесены из VoiceCoreEngineImpl.kt — логически принадлежат клиенту.
-// Убран modifier `internal` чтобы receiveNextResponse() мог быть public.
 
 data class GeminiFunctionCall(
     val id: String,
@@ -427,7 +434,7 @@ data class GeminiResponse(
     val transcript: String?,
     val functionCall: GeminiFunctionCall?,
     val isTurnComplete: Boolean = false,
-    val isInterrupted: Boolean = false, // 🟢 ДОБАВЛЕН ФЛАГ ПЕРЕБИВАНИЯ
+    val isInterrupted: Boolean = false,
 ) {
     fun hasAudio(): Boolean = audioData != null && audioData.isNotEmpty()
     fun hasFunctionCall(): Boolean = functionCall != null
@@ -441,8 +448,10 @@ data class GeminiResponse(
                 functionCall == other.functionCall &&
                 isTurnComplete == other.isTurnComplete &&
                 isInterrupted == other.isInterrupted &&
-                (audioData?.contentEquals(other.audioData) == true || (audioData == null && other.audioData == null))
+                (audioData?.contentEquals(other.audioData) == true ||
+                 (audioData == null && other.audioData == null))
     }
 
-    override fun hashCode(): Int = transcript.hashCode() * 31 + isTurnComplete.hashCode() + isInterrupted.hashCode()
+    override fun hashCode(): Int =
+        transcript.hashCode() * 31 + isTurnComplete.hashCode() + isInterrupted.hashCode()
 }
