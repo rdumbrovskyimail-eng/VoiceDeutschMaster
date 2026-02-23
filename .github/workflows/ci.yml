@@ -50,22 +50,29 @@ jobs:
           exit 1
         fi
 
+    - name: Set up signing
+      run: |
+        echo "${{ secrets.KEYSTORE_FILE }}" | base64 -d > keystore.jks
+        echo "STORE_FILE=../keystore.jks" > signing.properties
+        echo "STORE_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> signing.properties
+        echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> signing.properties
+        echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> signing.properties
+
     - name: Create local.properties
       run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
-    - name: Build Debug APK
+    - name: Build Release APK
       run: |
-        ./gradlew assembleDebug \
+        ./gradlew assembleRelease \
           --parallel \
           --build-cache \
           --no-daemon \
           --configuration-cache
 
-    - name: Upload Debug APK
+    - name: Upload Release APK
       uses: actions/upload-artifact@v4
       with:
-        name: app-debug-${{ github.run_number }}
-        path: app/build/outputs/apk/debug/*.apk
+        name: app-release-${{ github.run_number }}
+        path: app/build/outputs/apk/release/*.apk
         if-no-files-found: error
         retention-days: 7
-
