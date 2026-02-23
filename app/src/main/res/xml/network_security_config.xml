@@ -8,7 +8,14 @@
     </base-config>
 
     <domain-config cleartextTrafficPermitted="false">
-        <domain includeSubdomains="true">generativelanguage.googleapis.com</domain>
+        <!-- googleapis.com с includeSubdomains покрывает всё необходимое:
+             firebasevertexai.googleapis.com  — firebase-ai / Gemini Live API
+             firebaseappcheck.googleapis.com  — App Check токены
+             firestore.googleapis.com         — Firestore sync
+             firebasestorage.googleapis.com   — Cloud Storage
+             firebase.googleapis.com          — общие Firebase сервисы
+             Старый домен generativelanguage.googleapis.com удалён —
+             прямой WebSocket к Gemini API заменён firebase-ai SDK proxy. -->
         <domain includeSubdomains="true">googleapis.com</domain>
         <trust-anchors>
             <certificates src="system" />
