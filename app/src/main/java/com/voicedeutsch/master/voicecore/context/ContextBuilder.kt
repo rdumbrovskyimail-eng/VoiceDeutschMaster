@@ -19,7 +19,7 @@ import kotlinx.serialization.json.Json
  *   5. Function Declarations — ~3 000 tokens
  *   6. Session History     — grows during session
  *
- * Total budget: 2 000 000 tokens (Gemini Live).
+ * Total budget: 32 768 tokens (Gemini Live API — жёсткий лимит!).
  */
 class ContextBuilder(
     private val userContextProvider: UserContextProvider,
@@ -66,7 +66,8 @@ class ContextBuilder(
             }
 
         /** Rough token estimate: 1 token ≈ 4 characters. */
-        val estimatedTokens: Int get() = fullContext.length / TOKEN_CHAR_RATIO
+        fun totalEstimatedTokens(functionDeclarations: List<String>): Int =
+            (fullContext.length + functionDeclarations.sumOf { it.length }) / TOKEN_CHAR_RATIO
     }
 
     suspend fun buildSessionContext(
@@ -87,13 +88,22 @@ class ContextBuilder(
         // во избежание рассинхронизации между декларациями и хендлерами.
         val functionDeclarations = functionRouter.getDeclarations()
 
-        return SessionContext(
+        val sessionContext = SessionContext(
             systemPrompt         = systemPrompt,
             userContext          = userContext,
             bookContext          = bookContext,
             strategyPrompt       = strategyPrompt,
             functionDeclarations = functionDeclarations,
         )
+
+        val totalTokens = sessionContext.totalEstimatedTokens(functionDeclarations)
+        if (totalTokens > 28_000) {
+            android.util.Log.w("ContextBuilder",
+                "ВНИМАНИЕ: контекст $totalTokens токенов из 32768. " +
+                "Осталось ${32_768 - totalTokens} токенов на историю сессии.")
+        }
+
+        return sessionContext
     }
 
     companion object {
