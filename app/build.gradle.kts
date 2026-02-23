@@ -145,6 +145,8 @@ dependencies {
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.crashlytics)
     implementation(libs.firebase.performance)
+    implementation(libs.firebase.auth)                          // ✅ ДОБАВЛЕНО
+    implementation(libs.kotlinx.coroutines.play.services)       // ✅ ДОБАВЛЕНО
 
     // ── UI Polish ─────────────────────────────────────────────────────────────
     implementation("androidx.core:core-splashscreen:1.0.1")
