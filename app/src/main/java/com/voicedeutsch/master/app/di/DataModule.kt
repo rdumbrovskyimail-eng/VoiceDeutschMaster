@@ -26,6 +26,7 @@ import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
+import java.util.concurrent.TimeUnit
 import com.voicedeutsch.master.data.local.file.AudioCacheManager
 import com.voicedeutsch.master.data.local.file.ExportImportManager
 import com.voicedeutsch.master.data.remote.sync.BackupManager
@@ -50,16 +51,17 @@ val dataModule = module {
     // WebSockets plugin обязателен для Gemini Live API.
     single {
         HttpClient(OkHttp) {
+            engine {
+                config {
+                    connectTimeout(15, TimeUnit.SECONDS)  // таймаут TCP + TLS
+                    readTimeout(0, TimeUnit.SECONDS)       // 0 = бесконечно для WS
+                    writeTimeout(0, TimeUnit.SECONDS)      // 0 = бесконечно для WS
+                }
+            }
             install(WebSockets) {
-                // Пинги каждые 20 сек — предотвращают разрыв NAT/прокси в EU.
-                // Gemini Live сессия длится минуты → без пингов соединение умирает.
                 pingIntervalMillis = 20_000L
             }
-            // ContentNegotiation убран: он для REST (HTTP requests),
-            // не для WebSocket (raw JSON frames). Для WebSocket не нужен и
-            // может интерферировать с Content-Type negotiation при upgrade.
             install(Logging) {
-                // Оставляем ALL на время отладки, потом переключить на HEADERS
                 level = LogLevel.ALL
                 logger = object : io.ktor.client.plugins.logging.Logger {
                     override fun log(message: String) {
