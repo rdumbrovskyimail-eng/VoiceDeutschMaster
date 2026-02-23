@@ -326,9 +326,9 @@ class GeminiClient(
 
     private fun parseServerContent(serverContent: JsonObject) {
         val modelTurn = serverContent["modelTurn"]?.jsonObject
-        val turnComplete = serverContent["turnComplete"]?.jsonPrimitive?.booleanOrNull == true
+        val turnComplete = serverContent["turnComplete"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() == true
         // 🟢 Читаем флаг перебивания от сервера
-        val interrupted = serverContent["interrupted"]?.jsonPrimitive?.booleanOrNull == true
+        val interrupted = serverContent["interrupted"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() == true
 
         val outputTranscript = serverContent["outputTranscription"]?.jsonObject?.get("text")?.jsonPrimitive?.contentOrNull
         val inputTranscript = serverContent["inputTranscription"]?.jsonObject?.get("text")?.jsonPrimitive?.contentOrNull
