@@ -16,6 +16,7 @@ data class GeminiConfig(
     val topK: Int = DEFAULT_TOP_K,
     val reconnectMaxAttempts: Int = DEFAULT_RECONNECT_ATTEMPTS,
     val reconnectDelayMs: Long = DEFAULT_RECONNECT_DELAY_MS,
+    val voiceName: String = DEFAULT_VOICE,
 ) {
     init {
         require(apiKey.isNotBlank()) { "API key must not be blank" }
@@ -35,7 +36,7 @@ data class GeminiConfig(
     }
 
     companion object {
-        const val MODEL_GEMINI_LIVE = "gemini-2.0-flash-live-001"
+        const val MODEL_GEMINI_LIVE = "gemini-2.5-flash-native-audio-preview"
         // 🟢 Ограничиваем контекст для Live API, чтобы WebSocket Frame не лопнул при коннекте
         const val MAX_CONTEXT_TOKENS = 32_768
         const val DEFAULT_TEMPERATURE = 0.5f
@@ -43,5 +44,6 @@ data class GeminiConfig(
         const val DEFAULT_TOP_K = 40
         const val DEFAULT_RECONNECT_ATTEMPTS = 3
         const val DEFAULT_RECONNECT_DELAY_MS = 2_000L
+        const val DEFAULT_VOICE = "Kore"
     }
 }
