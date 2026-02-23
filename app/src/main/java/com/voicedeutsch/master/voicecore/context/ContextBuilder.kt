@@ -4,6 +4,7 @@ import com.voicedeutsch.master.domain.model.LearningStrategy
 import com.voicedeutsch.master.domain.model.knowledge.KnowledgeSnapshot
 import com.voicedeutsch.master.voicecore.functions.FunctionRouter
 import com.voicedeutsch.master.voicecore.prompt.MasterPrompt
+import com.voicedeutsch.master.voicecore.prompt.PromptOptimizer
 import com.voicedeutsch.master.voicecore.prompt.PromptTemplates
 import kotlinx.serialization.json.Json
 
@@ -11,63 +12,55 @@ import kotlinx.serialization.json.Json
  * Assembles the complete context for a Gemini session.
  * Architecture lines 570-640 (ContextBuilder, context hierarchy).
  *
- * Context token budget (approximate):
- *   1. System Prompt       — ~5 000 tokens
- *   2. User Context        — ~10 000 tokens
- *   3. Book Context        — ~5 000 tokens
- *   4. Strategy Prompt     — ~2 000 tokens
- *   5. Function Declarations — ~3 000 tokens
- *   6. Session History     — grows during session
+ * Token budget (Gemini 2.5 Flash Live, INPUT limit = 131 072 токена):
  *
- * Total budget: 32 768 tokens (Gemini Live API — жёсткий лимит!).
+ *   ┌─────────────────────────────────────────────────────────────┐
+ *   │  131 072  — суммарный лимит Live API (input)               │
+ *   │  -  3 000  — function declarations (~16 функций)           │
+ *   │  - 68 000  — буфер на историю разговора (~30 мин сессии)   │
+ *   │  = 60 000  — бюджет системного контекста (Setup-сообщение) │
+ *   └─────────────────────────────────────────────────────────────┘
+ *
+ * ⚠️ 131 072 — это НЕ лимит только Setup-сообщения.
+ * История разговора, аудио-транскрипты и результаты function calls
+ * тоже тратят этот бюджет в течение сессии.
+ *
+ * Output токены для Live API (AUDIO modality) — не нужно конфигурировать.
+ * Аудио-стриминг не измеряется токенами как текст. maxOutputTokens игнорируется
+ * при responseModalities=["AUDIO"].
+ *
+ * ✅ FIX 1: buildSessionContext() передаёт fullContext (все 4 части) в systemPrompt,
+ *           который GeminiClient кладёт в systemInstruction.
+ * ✅ FIX 2: PromptOptimizer реально вызывается с бюджетом 60 000 токенов.
  */
 class ContextBuilder(
     private val userContextProvider: UserContextProvider,
     private val bookContextProvider: BookContextProvider,
     private val functionRouter: FunctionRouter,
     @Suppress("UnusedPrivateMember")
-    private val json: Json, // reserved for future incremental serialisation
+    private val json: Json,
 ) {
 
     /**
      * Immutable snapshot of the full session context sent to Gemini at session start.
      *
-     * [functionDeclarations] — List<String> где каждый элемент валидный JSON
-     * объект functionDeclaration. Передаётся напрямую в GeminiClient.sendSetup()
-     * как tools[0].functionDeclarations согласно спецификации BidiGenerateContentSetup.
-     *
-     * [fullContext] assembles all parts in priority order для systemInstruction.
+     * [systemPrompt] — полный оптимизированный контекст:
+     *   MasterPrompt + userContext + bookContext + strategyPrompt.
+     *   GeminiClient кладёт это поле в systemInstruction.parts[0].text.
      */
     data class SessionContext(
         val systemPrompt: String,
         val userContext: String,
         val bookContext: String,
         val strategyPrompt: String,
-        val functionDeclarations: List<String>, // ← List<String>, не String
+        val functionDeclarations: List<String>,
     ) {
-        /** Combined context в порядке который Gemini должен обработать.
-         *  Идёт в systemInstruction.parts[0].text при Setup. */
-        val fullContext: String
-            get() = buildString {
-                append(systemPrompt)
-                appendLine()
-                appendLine()
-                appendLine("--- USER CONTEXT ---")
-                appendLine()
-                append(userContext)
-                appendLine()
-                appendLine("--- BOOK CONTEXT ---")
-                appendLine()
-                append(bookContext)
-                appendLine()
-                appendLine("--- CURRENT STRATEGY ---")
-                appendLine()
-                append(strategyPrompt)
-            }
+        /** После фикса fullContext = systemPrompt (уже объединены при сборке). */
+        val fullContext: String get() = systemPrompt
 
         /** Rough token estimate: 1 token ≈ 4 characters. */
         fun totalEstimatedTokens(functionDeclarations: List<String>): Int =
-            (fullContext.length + functionDeclarations.sumOf { it.length }) / TOKEN_CHAR_RATIO
+            (systemPrompt.length + functionDeclarations.sumOf { it.length }) / TOKEN_CHAR_RATIO
     }
 
     suspend fun buildSessionContext(
@@ -77,30 +70,65 @@ class ContextBuilder(
         currentChapter: Int,
         currentLesson: Int,
     ): SessionContext {
-        // MasterPrompt — pure object, no dependencies needed
-        val systemPrompt   = MasterPrompt.build()
-        val userContext    = userContextProvider.buildUserContext(knowledgeSnapshot)
-        val bookContext    = bookContextProvider.buildBookContext(currentChapter, currentLesson)
-        val strategyPrompt = PromptTemplates.getStrategyPrompt(currentStrategy, knowledgeSnapshot)
+        // 1. Собираем все части контекста
+        val staticSystemPrompt = MasterPrompt.build()
+        val userContext        = userContextProvider.buildUserContext(knowledgeSnapshot)
+        val bookContext        = bookContextProvider.buildBookContext(currentChapter, currentLesson)
+        val strategyPrompt     = PromptTemplates.getStrategyPrompt(currentStrategy, knowledgeSnapshot)
 
-        // Декларации функций берём из FunctionRouter — единственный источник правды.
-        // PromptTemplates.getFunctionDeclarationsJson() больше не используется
-        // во избежание рассинхронизации между декларациями и хендлерами.
+        // 2. Декларации функций — единственный источник правды
         val functionDeclarations = functionRouter.getDeclarations()
 
+        // 3. Объединяем всё в один блок для systemInstruction
+        val rawFullContext = buildString {
+            append(staticSystemPrompt)
+            appendLine()
+            appendLine()
+            appendLine("--- USER CONTEXT ---")
+            appendLine()
+            append(userContext)
+            appendLine()
+            appendLine("--- BOOK CONTEXT ---")
+            appendLine()
+            append(bookContext)
+            appendLine()
+            appendLine("--- CURRENT STRATEGY ---")
+            appendLine()
+            append(strategyPrompt)
+        }
+
+        // 4. Оптимизируем под бюджет 60 000 токенов
+        //    (131 072 лимит − 68 000 буфер разговора − 3 000 функции = 60 000)
+        val optimizedContext = PromptOptimizer.optimize(
+            fullPrompt = rawFullContext,
+            maxTokens  = SAFE_CONTEXT_TOKEN_BUDGET,
+        )
+
         val sessionContext = SessionContext(
-            systemPrompt         = systemPrompt,
+            systemPrompt         = optimizedContext,
             userContext          = userContext,
             bookContext          = bookContext,
             strategyPrompt       = strategyPrompt,
             functionDeclarations = functionDeclarations,
         )
 
-        val totalTokens = sessionContext.totalEstimatedTokens(functionDeclarations)
-        if (totalTokens > 28_000) {
+        // 5. Диагностический лог
+        val contextTokens  = optimizedContext.length / TOKEN_CHAR_RATIO
+        val functionTokens = functionDeclarations.sumOf { it.length } / TOKEN_CHAR_RATIO
+        val totalTokens    = contextTokens + functionTokens
+        val remainingForConversation = LIVE_API_TOTAL_TOKEN_LIMIT - totalTokens
+
+        android.util.Log.d("ContextBuilder",
+            "Контекст собран: системный ~$contextTokens токенов, " +
+            "функции ~$functionTokens токенов, " +
+            "итого ~$totalTokens / $LIVE_API_TOTAL_TOKEN_LIMIT. " +
+            "Буфер на разговор: ~$remainingForConversation токенов.")
+
+        if (totalTokens > WARN_TOKEN_THRESHOLD) {
             android.util.Log.w("ContextBuilder",
-                "ВНИМАНИЕ: контекст $totalTokens токенов из 32768. " +
-                "Осталось ${32_768 - totalTokens} токенов на историю сессии.")
+                "ВНИМАНИЕ: Setup занимает $totalTokens токенов. " +
+                "На историю разговора остаётся только ~$remainingForConversation токенов. " +
+                "Рассмотри сокращение UserContextProvider или BookContextProvider.")
         }
 
         return sessionContext
@@ -108,5 +136,26 @@ class ContextBuilder(
 
     companion object {
         private const val TOKEN_CHAR_RATIO = 4
+
+        /**
+         * Суммарный input-лимит Gemini 2.5 Flash Live API.
+         * Источник: ai.google.dev (февраль 2026).
+         */
+        const val LIVE_API_TOTAL_TOKEN_LIMIT = 131_072
+
+        /**
+         * Бюджет для системного контекста в Setup-сообщении:
+         *   131 072 − 68 000 (буфер разговора) − 3 000 (функции) = 60 000
+         *
+         * По мере роста приложения (больше глав книги, больше истории)
+         * этот буфер можно пересматривать, но 60k — безопасная точка старта.
+         */
+        const val SAFE_CONTEXT_TOKEN_BUDGET = 60_000
+
+        /**
+         * Порог предупреждения — когда Setup занимает >85% от суммарного лимита.
+         * При достижении разговор может оборваться раньше времени.
+         */
+        private const val WARN_TOKEN_THRESHOLD = (LIVE_API_TOTAL_TOKEN_LIMIT * 0.85).toInt()
     }
 }
