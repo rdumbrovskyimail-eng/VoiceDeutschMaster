@@ -16,7 +16,9 @@ import com.voicedeutsch.master.domain.repository.SessionRepository
 import com.voicedeutsch.master.domain.repository.UserRepository
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation   // ✅ FIX: добавлен импорт
 import io.ktor.client.plugins.websocket.WebSockets
+import io.ktor.serialization.kotlinx.json.json                         // ✅ FIX: добавлен импорт
 import kotlinx.serialization.json.Json
 import java.util.concurrent.TimeUnit
 import com.voicedeutsch.master.data.remote.gemini.EphemeralTokenService
@@ -48,6 +50,13 @@ val dataModule = module {
                 pingIntervalMillis = 20_000L
                 maxFrameSize = Long.MAX_VALUE
             }
+
+            // ✅ FIX: ContentNegotiation — без него response.body<T>() падает с
+            // NoTransformationFoundException даже при статусе 200
+            install(ContentNegotiation) {
+                json(get<Json>())
+            }
+
             install(io.ktor.client.plugins.logging.Logging) {
                 level = io.ktor.client.plugins.logging.LogLevel.INFO
                 logger = object : io.ktor.client.plugins.logging.Logger {
