@@ -17,6 +17,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -30,6 +31,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 /**
  * Heart of the system — orchestrates all VoiceCore components.
@@ -61,13 +63,20 @@ class VoiceCoreEngineImpl(
     private val ephemeralTokenService: com.voicedeutsch.master.data.remote.gemini.EphemeralTokenService,
 ) : VoiceCoreEngine {
 
+    companion object {
+        /**
+         * Максимальное время выполнения функции (мс).
+         * Gemini разрывает сессию если toolResponse не приходит ~15 секунд.
+         * 12 секунд — безопасный буфер: успеваем ответить даже при зависании Room.
+         */
+        private const val FUNCTION_CALL_TIMEOUT_MS = 12_000L
+    }
+
     // ── Coroutine infrastructure ──────────────────────────────────────────────
 
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var sessionJob: Job? = null
-
     private var audioForwardJob: Job? = null
-
     private val lifecycleMutex = Mutex()
 
     // ── State ─────────────────────────────────────────────────────────────────
@@ -393,23 +402,52 @@ class VoiceCoreEngineImpl(
                     response.hasFunctionCall() -> {
                         updateState { copy(isProcessing = true) }
                         val call = response.functionCall!!
-                        val userId = activeUserId ?: return
+
+                        // ✅ FIX: Защита от null userId — отвечаем Gemini даже в аномальном случае,
+                        // чтобы не получить таймаут сессии (~15 сек без toolResponse).
+                        val userId = activeUserId
                         val sessionId = activeSessionId
 
-                        val result = withContext(Dispatchers.IO) {
-                            functionRouter.route(
+                        val result = if (userId == null) {
+                            android.util.Log.e("VoiceCoreEngine", "hasFunctionCall: activeUserId is null, returning error to Gemini")
+                            FunctionRouter.FunctionCallResult(
                                 functionName = call.name,
-                                argsJson = call.argsJson,
-                                userId = userId,
-                                sessionId = sessionId,
+                                success = false,
+                                resultJson = """{"error":"no active user session"}""",
                             )
+                        } else {
+                            // ✅ FIX: Таймаут 12 секунд — буфер до ~15-секундного таймаута Gemini.
+                            // Если Room завис или UseCase завис — Gemini всё равно получит ответ.
+                            try {
+                                withTimeout(FUNCTION_CALL_TIMEOUT_MS) {
+                                    withContext(Dispatchers.IO) {
+                                        functionRouter.route(
+                                            functionName = call.name,
+                                            argsJson = call.argsJson,
+                                            userId = userId,
+                                            sessionId = sessionId,
+                                        )
+                                    }
+                                }
+                            } catch (e: TimeoutCancellationException) {
+                                android.util.Log.e(
+                                    "VoiceCoreEngine",
+                                    "Function '${call.name}' timed out after ${FUNCTION_CALL_TIMEOUT_MS}ms",
+                                )
+                                FunctionRouter.FunctionCallResult(
+                                    functionName = call.name,
+                                    success = false,
+                                    resultJson = """{"error":"function execution timed out"}""",
+                                )
+                            }
                         }
 
+                        // ✅ toolResponse уходит в WebSocket в любом случае (success или error)
                         applyFunctionSideEffects(call.name, result)
                         requireNotNull(geminiClient).sendFunctionResult(
                             callId = call.id,
                             name = result.functionName,
-                            resultJson = result.resultJson
+                            resultJson = result.resultJson,
                         )
                         updateState { copy(isProcessing = false) }
                     }
