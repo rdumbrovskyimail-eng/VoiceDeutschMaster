@@ -4,17 +4,9 @@ const fetch = require("node-fetch");
 
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 
-/**
- * HTTPS Function: выдаёт Ephemeral Token для Gemini Live API.
- *
- * Android вызывает: POST https://<region>-<project>.cloudfunctions.net/getEphemeralToken
- * Body: { "userId": "..." }
- * Response: { "token": "...", "expiresAt": "..." }
- */
 exports.getEphemeralToken = onRequest(
   { secrets: [GEMINI_API_KEY] },
   async (req, res) => {
-    // CORS
     res.set("Access-Control-Allow-Origin", "*");
     if (req.method === "OPTIONS") {
       res.set("Access-Control-Allow-Methods", "POST");
@@ -45,7 +37,7 @@ exports.getEphemeralToken = onRequest(
 
       if (!googleResponse.ok) {
         const errorBody = await googleResponse.text();
-        console.error("Google API error:", errorBody);
+        console.error("Google API error:", googleResponse.status, errorBody);
         res.status(502).json({ error: "Failed to get token from Google" });
         return;
       }
@@ -67,4 +59,4 @@ exports.getEphemeralToken = onRequest(
       res.status(500).json({ error: "Internal server error" });
     }
   }
-);             
+);
