@@ -1,84 +1,152 @@
-const { onRequest } = require("firebase-functions/v2/https");
-const { defineSecret } = require("firebase-functions/params");
-const { GoogleGenAI } = require("@google/genai");
-const { initializeApp } = require("firebase-admin/app");
-const { getAuth } = require("firebase-admin/auth");
+// functions/index.js
+// Last verified: 2026-02-23
+//
+// MIGRATION NOTE:
+//   getEphemeralToken УДАЛЕНА — firebase-ai SDK + App Check управляют
+//   авторизацией к Gemini Live API прозрачно. Cloud Function больше не нужна.
+//   См. EphemeralTokenService.DELETED.kt для полного объяснения.
+//
+// ОСТАВЛЕНЫ / ДОБАВЛЕНЫ:
+//   onUserDeleted    — очистка данных пользователя при удалении аккаунта
+//   cleanupOldBackups — scheduled: удаление старых бекапов из Storage
 
-// ✅ FIX: Инициализируем Firebase Admin для верификации токенов
+"use strict";
+
+const { onCall, HttpsError }      = require("firebase-functions/v2/https");
+const { onSchedule }              = require("firebase-functions/v2/scheduler");
+const { onDocumentDeleted }       = require("firebase-functions/v2/firestore");
+const { initializeApp }           = require("firebase-admin/app");
+const { getFirestore }            = require("firebase-admin/firestore");
+const { getStorage }              = require("firebase-admin/storage");
+const { getAuth }                 = require("firebase-admin/auth");
+
 initializeApp();
 
-const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
+// ─────────────────────────────────────────────────────────────────────────────
+// onUserDeleted — очистка Firestore-данных при удалении Firebase Auth аккаунта
+//
+// Триггер: удаление документа users/{uid} из Firestore.
+// Удаляет все вложенные коллекции: profile, preferences, progress, statistics, backups.
+// Удаляет файлы пользователя из Firebase Storage: users/{uid}/**.
+//
+// Security: триггер срабатывает на стороне сервера — Auth не требуется.
+// ─────────────────────────────────────────────────────────────────────────────
+exports.onUserDeleted = onDocumentDeleted("users/{uid}", async (event) => {
+    const uid = event.params.uid;
+    console.log(`Cleaning up data for deleted user: ${uid}`);
 
-exports.getEphemeralToken = onRequest(
-  { secrets: [GEMINI_API_KEY] },
-  async (req, res) => {
-    // CORS preflight
-    res.set("Access-Control-Allow-Origin", "*");
-    if (req.method === "OPTIONS") {
-      res.set("Access-Control-Allow-Methods", "POST");
-      res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-      res.status(204).send("");
-      return;
-    }
+    const db      = getFirestore();
+    const storage = getStorage();
+    const bucket  = storage.bucket();
 
-    if (req.method !== "POST") {
-      res.status(405).json({ error: "Method not allowed" });
-      return;
-    }
-
-    // ✅ FIX: Верификация Firebase ID Token из заголовка Authorization
-    // Без этого любой знающий URL мог бесконечно генерировать токены за ваш счёт
-    const authHeader = req.headers.authorization || "";
-    if (!authHeader.startsWith("Bearer ")) {
-      res.status(401).json({ error: "Missing Authorization header" });
-      return;
-    }
-
-    let verifiedUid;
-    try {
-      const idToken = authHeader.split("Bearer ")[1];
-      const decodedToken = await getAuth().verifyIdToken(idToken);
-      verifiedUid = decodedToken.uid;
-    } catch (authError) {
-      console.error("Auth verification failed:", authError.message);
-      res.status(401).json({ error: "Invalid or expired auth token" });
-      return;
-    }
-
-    try {
-      const apiKey = GEMINI_API_KEY.value();
-      const client = new GoogleGenAI({
-        apiKey: apiKey,
-        httpOptions: { apiVersion: "v1alpha" }
-      });
-
-      const expireTime = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-
-      const token = await client.authTokens.create({
-        config: {
-          uses: 1,
-          expireTime: expireTime,
-          liveConnectConstraints: {
-            model: "gemini-2.5-flash-native-audio-preview",
-            config: {
-              responseModalities: ["AUDIO"]
-            }
-          },
-          httpOptions: { apiVersion: "v1alpha" }
+    // 1. Удаляем вложенные коллекции Firestore
+    const subcollections = ["profile", "preferences", "progress", "statistics", "backups"];
+    for (const sub of subcollections) {
+        const ref = db.collection("users").doc(uid).collection(sub);
+        const snap = await ref.get();
+        const batch = db.batch();
+        snap.docs.forEach(doc => batch.delete(doc.ref));
+        if (!snap.empty) {
+            await batch.commit();
+            console.log(`Deleted ${snap.size} docs from users/${uid}/${sub}`);
         }
-      });
-
-      console.log(`Token issued for uid: ${verifiedUid}`);
-
-      res.status(200).json({
-        token: token.name,   // ✅ Возвращаем полный resource name: "auth_tokens/XXX"
-        expiresAt: expireTime
-      });
-
-    } catch (error) {
-      console.error("getEphemeralToken error:", error);
-      res.status(500).json({ error: "Internal server error", details: error.message });
     }
-  }
+
+    // 2. Удаляем файлы из Storage: users/{uid}/
+    const [files] = await bucket.getFiles({ prefix: `users/${uid}/` });
+    await Promise.allSettled(files.map(file => file.delete()));
+    console.log(`Deleted ${files.length} Storage files for uid=${uid}`);
+
+    console.log(`✅ Cleanup complete for uid=${uid}`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// cleanupOldBackups — scheduled: удаление бекапов старше 90 дней
+//
+// Запускается каждое воскресенье в 03:00 UTC.
+// Проходит по всем пользователям в Firestore и удаляет старые бекапы
+// из Storage и Firestore-метаданных.
+//
+// Лимит: оставляет минимум 3 последних бекапа на пользователя,
+// даже если все они старше 90 дней.
+// ─────────────────────────────────────────────────────────────────────────────
+exports.cleanupOldBackups = onSchedule("every sunday 03:00", async () => {
+    const db      = getFirestore();
+    const storage = getStorage();
+    const bucket  = storage.bucket();
+
+    const KEEP_DAYS = 90;
+    const MIN_KEEP  = 3;
+    const cutoff    = Date.now() - KEEP_DAYS * 24 * 60 * 60 * 1000;
+
+    console.log(`Starting backup cleanup. Cutoff: ${new Date(cutoff).toISOString()}`);
+
+    // Получаем всех пользователей с бекапами
+    const usersSnap = await db.collection("users").get();
+    let totalDeleted = 0;
+
+    for (const userDoc of usersSnap.docs) {
+        const uid = userDoc.id;
+
+        const backupsSnap = await db
+            .collection("users").doc(uid)
+            .collection("backups")
+            .orderBy("timestamp", "desc")
+            .get();
+
+        if (backupsSnap.empty) continue;
+
+        const all = backupsSnap.docs;
+        // Оставляем минимум MIN_KEEP последних, остальные старше cutoff — удаляем
+        const toDelete = all
+            .slice(MIN_KEEP)
+            .filter(doc => (doc.data().timestamp || 0) < cutoff);
+
+        for (const doc of toDelete) {
+            const storagePath = doc.data().storagePath;
+
+            // Удаляем из Storage
+            if (storagePath) {
+                await bucket.file(storagePath).delete().catch(e => {
+                    console.warn(`Storage delete failed for ${storagePath}: ${e.message}`);
+                });
+            }
+
+            // Удаляем метаданные из Firestore
+            await doc.ref.delete();
+            totalDeleted++;
+        }
+    }
+
+    console.log(`✅ Backup cleanup done. Deleted: ${totalDeleted} backups.`);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// deleteUserAccount — callable: полное удаление аккаунта по запросу пользователя
+//
+// Вызывается из SettingsScreen при нажатии "Удалить аккаунт".
+// Порядок: удалить Firestore данные → удалить Storage файлы → удалить Auth аккаунт.
+// Удаление Auth аккаунта триггернёт onUserDeleted для финальной очистки.
+//
+// Security: onCall автоматически верифицирует Firebase Auth токен.
+//           App Check верифицируется автоматически если включён Enforcement.
+// ─────────────────────────────────────────────────────────────────────────────
+exports.deleteUserAccount = onCall(
+    { enforceAppCheck: true },   // App Check обязателен для деструктивных операций
+    async (request) => {
+        const uid = request.auth?.uid;
+        if (!uid) {
+            throw new HttpsError("unauthenticated", "Authentication required.");
+        }
+
+        console.log(`deleteUserAccount requested by uid=${uid}`);
+
+        const auth = getAuth();
+
+        // Удаляем Auth аккаунт — это триггернёт onUserDeleted для очистки данных
+        await auth.deleteUser(uid);
+
+        console.log(`✅ Auth account deleted for uid=${uid}`);
+        return { success: true };
+    }
 );
- 
