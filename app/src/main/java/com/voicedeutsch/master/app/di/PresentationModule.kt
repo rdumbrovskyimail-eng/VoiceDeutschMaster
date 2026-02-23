@@ -13,10 +13,10 @@ import org.koin.dsl.module
 val presentationModule = module {
     viewModel {
         SessionViewModel(
-            voiceCoreEngine      = get(),
-            userRepository       = get(),
-            preferencesDataStore = get(),
-            securityRepository   = get(),
+            voiceCoreEngine       = get(),
+            userRepository        = get(),
+            preferencesDataStore  = get(),
+            ephemeralTokenService = get(),
         )
     }
     viewModel {
