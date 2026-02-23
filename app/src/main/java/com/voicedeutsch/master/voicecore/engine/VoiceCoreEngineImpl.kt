@@ -66,12 +66,8 @@ class VoiceCoreEngineImpl(
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var sessionJob: Job? = null
 
-    // Forwards raw PCM chunks from AudioPipeline to GeminiClient in real time.
-    // Runs in parallel with sessionJob. Cancelled when recording stops or session ends.
     private var audioForwardJob: Job? = null
 
-    // Serialises lifecycle transitions; never held across suspension points
-    // that call external code (to avoid deadlock).
     private val lifecycleMutex = Mutex()
 
     // ── State ─────────────────────────────────────────────────────────────────
@@ -85,9 +81,8 @@ class VoiceCoreEngineImpl(
     private val _audioState = MutableStateFlow(AudioState.IDLE)
     override val audioState: StateFlow<AudioState> = _audioState.asStateFlow()
 
-    // Mutable runtime fields (only accessed under lifecycleMutex or from sessionJob)
     @Volatile private var config: GeminiConfig? = null
-    @Volatile private var geminiClient: GeminiClient? = null // Создаем вручную
+    @Volatile private var geminiClient: GeminiClient? = null
     @Volatile private var activeSessionId: String? = null
     @Volatile private var activeUserId: String? = null
     private val reconnectAttempts = java.util.concurrent.atomic.AtomicInteger(0)
@@ -175,8 +170,7 @@ class VoiceCoreEngineImpl(
         // 3. Choose strategy
         val strategy = strategySelector.selectStrategy(snapshot)
 
-        // 4. Build full Gemini context (systemPrompt + userContext + bookContext +
-        //    strategyPrompt + functionDeclarations from FunctionRouter)
+        // 4. Build full Gemini context
         val sessionContext = withContext(Dispatchers.IO) {
             contextBuilder.buildSessionContext(
                 userId = userId,
@@ -187,12 +181,11 @@ class VoiceCoreEngineImpl(
             )
         }
 
-        // 5. Открыть WebSocket и отправить BidiGenerateContentSetup.
-        //    GeminiClient блокирует до получения setupComplete от сервера.
+        // 5. Получить эфемерный токен и открыть WebSocket
         transitionEngine(VoiceEngineState.CONNECTING)
         transitionConnection(ConnectionState.CONNECTING)
         val token = withContext(Dispatchers.IO) {
-            ephemeralTokenService.getToken()
+            ephemeralTokenService.fetchToken(userId)
         }
         withContext(Dispatchers.IO) {
             requireNotNull(geminiClient).connect(cfg, sessionContext, token)
@@ -216,7 +209,7 @@ class VoiceCoreEngineImpl(
         sessionJob = engineScope.launch {
             runSessionLoop()
         }
-        startListening()  // ← микрофон должен работать сразу после connect
+        startListening()
 
         _sessionState.value
     }
@@ -230,7 +223,6 @@ class VoiceCoreEngineImpl(
             transitionEngine(VoiceEngineState.SESSION_ENDING)
         }
 
-        // Отменяем оба job-а вне mutex — избегаем дедлока с их suspend-точками
         audioForwardJob?.cancel()
         audioForwardJob = null
         sessionJob?.cancel()
@@ -282,11 +274,6 @@ class VoiceCoreEngineImpl(
 
     // ── VoiceCoreEngine: audio control ────────────────────────────────────────
 
-    /**
-     * Начинает запись микрофона и запускает [audioForwardJob] —
-     * корутину которая читает PCM-чанки из AudioPipeline и стримит
-     * их в GeminiClient.sendAudioChunk() в реальном времени.
-     */
     override fun startListening() {
         if (_sessionState.value.isSessionActive && !_sessionState.value.isListening) {
             runCatching {
@@ -361,21 +348,11 @@ class VoiceCoreEngineImpl(
 
     // ── Main session loop ─────────────────────────────────────────────────────
 
-    /**
-     * Непрерывно читает ответы из GeminiClient и диспатчит их:
-     *   - аудио      → AudioPipeline.enqueueAudio()
-     *   - функция    → FunctionRouter.route() → geminiClient.sendFunctionResult()
-     *   - транскрипт → обновляет UI state
-     *
-     * null из receiveNextResponse() означает закрытие канала (disconnect/goAway)
-     * → выходим из цикла → handleSessionError инициирует переподключение.
-     */
     private suspend fun runSessionLoop() {
         try {
             while (currentCoroutineContext().isActive) {
                 val response = requireNotNull(geminiClient).receiveNextResponse()
 
-                // null = канал закрыт (goAway или disconnect)
                 if (response == null) {
                     if (currentCoroutineContext().isActive) {
                         handleSessionError(IllegalStateException("Gemini connection closed unexpectedly"))
@@ -385,11 +362,10 @@ class VoiceCoreEngineImpl(
 
                 when {
                     response.isInterrupted -> {
-                        // 🟢 ПОЛЬЗОВАТЕЛЬ ПЕРЕБИЛ ИИ: Сбрасываем звук мгновенно
                         android.util.Log.d("VoiceCoreEngine", "ИИ перебит пользователем! Очистка аудио-очереди.")
-                        audioPipeline.flushPlayback() // Вызываем метод сброса (добавим его в шаге 4)
+                        audioPipeline.flushPlayback()
                         transitionAudio(AudioState.IDLE)
-                        transitionEngine(VoiceEngineState.LISTENING) // Возвращаемся в режим слушания
+                        transitionEngine(VoiceEngineState.LISTENING)
                         updateState { copy(isSpeaking = false, isProcessing = false) }
                     }
 
