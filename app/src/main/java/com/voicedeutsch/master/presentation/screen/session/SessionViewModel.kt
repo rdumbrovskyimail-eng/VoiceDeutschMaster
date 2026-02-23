@@ -3,7 +3,8 @@ package com.voicedeutsch.master.presentation.screen.session
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.voicedeutsch.master.data.local.datastore.UserPreferencesDataStore
-import com.voicedeutsch.master.domain.repository.SecurityRepository
+import com.voicedeutsch.master.data.remote.gemini.EphemeralTokenException
+import com.voicedeutsch.master.data.remote.gemini.EphemeralTokenService
 import com.voicedeutsch.master.domain.repository.UserRepository
 import com.voicedeutsch.master.voicecore.engine.GeminiConfig
 import com.voicedeutsch.master.voicecore.engine.VoiceCoreEngine
@@ -26,15 +27,16 @@ import kotlin.coroutines.cancellation.CancellationException
  *
  * Manages voice session lifecycle via [VoiceCoreEngine].
  *
- * @param voiceCoreEngine  The voice engine (injected as singleton by Koin).
- * @param userRepository   Provides the active user ID.
- * @param preferencesDataStore  Provides Gemini API key and onboarding state.
+ * Production Standard 2026:
+ * API ключ больше не хранится на устройстве и не передаётся напрямую.
+ * [EphemeralTokenService] запрашивает временный токен у Firebase Function.
+ * Токен живёт ~1 час и кэшируется в памяти.
  */
 class SessionViewModel(
     private val voiceCoreEngine: VoiceCoreEngine,
     private val userRepository: UserRepository,
     private val preferencesDataStore: UserPreferencesDataStore,
-    private val securityRepository: SecurityRepository,
+    private val ephemeralTokenService: EphemeralTokenService, // ← заменили securityRepository
 ) : ViewModel() {
 
     val voiceState: StateFlow<VoiceSessionState> = voiceCoreEngine.sessionState
@@ -44,16 +46,16 @@ class SessionViewModel(
 
     fun onEvent(event: SessionEvent) {
         when (event) {
-            is SessionEvent.StartSession    -> startSession()
-            is SessionEvent.EndSession      -> endSession()
-            is SessionEvent.PauseResume     -> togglePause()
-            is SessionEvent.ToggleMic       -> toggleMic()
-            is SessionEvent.SendTextMessage -> sendText(event.text)
-            is SessionEvent.DismissError    -> _uiState.update { it.copy(errorMessage = null) }
-            is SessionEvent.DismissResult   -> _uiState.update { it.copy(sessionResult = null) }
-            is SessionEvent.ToggleTextInput -> _uiState.update { it.copy(showTextInput = !it.showTextInput) }
-            is SessionEvent.DismissHint     -> _uiState.update { it.copy(showHint = false) }
-            is SessionEvent.ConsumeSnackbar -> _uiState.update { it.copy(snackbarMessage = null) }
+            is SessionEvent.StartSession     -> startSession()
+            is SessionEvent.EndSession       -> endSession()
+            is SessionEvent.PauseResume      -> togglePause()
+            is SessionEvent.ToggleMic        -> toggleMic()
+            is SessionEvent.SendTextMessage  -> sendText(event.text)
+            is SessionEvent.DismissError     -> _uiState.update { it.copy(errorMessage = null) }
+            is SessionEvent.DismissResult    -> _uiState.update { it.copy(sessionResult = null) }
+            is SessionEvent.ToggleTextInput  -> _uiState.update { it.copy(showTextInput = !it.showTextInput) }
+            is SessionEvent.DismissHint      -> _uiState.update { it.copy(showHint = false) }
+            is SessionEvent.ConsumeSnackbar  -> _uiState.update { it.copy(snackbarMessage = null) }
             is SessionEvent.PermissionDenied -> handlePermissionDenied()
         }
     }
@@ -65,16 +67,34 @@ class SessionViewModel(
             try {
                 val userId = userRepository.getActiveUserId()
                     ?: error("No active user found. Please complete onboarding.")
-                val apiKey = securityRepository.getGeminiApiKey()
-                if (apiKey.isBlank()) error("Gemini API key not configured. Go to Settings.")
-                val geminiConfig = GeminiConfig(apiKey = apiKey)
+
+                // ✅ Production Standard 2026:
+                // Запрашиваем временный токен у Firebase Function.
+                // Настоящий API ключ никогда не касается Android.
+                val ephemeralToken = ephemeralTokenService.fetchToken(userId)
+
+                val geminiConfig = GeminiConfig(apiKey = ephemeralToken)
                 voiceCoreEngine.initialize(geminiConfig)
                 voiceCoreEngine.startSession(userId)
-                _uiState.update { it.copy(isLoading = false, isSessionActive = true, showHint = false) }
+
+                _uiState.update {
+                    it.copy(isLoading = false, isSessionActive = true, showHint = false)
+                }
+
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: EphemeralTokenException) {
+                // Отдельная обработка ошибки получения токена — понятное сообщение пользователю
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = "Не удалось подключиться к серверу. Проверьте интернет и попробуйте снова."
+                    )
+                }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, errorMessage = e.message ?: "Unknown error starting session") }
+                _uiState.update {
+                    it.copy(isLoading = false, errorMessage = e.message ?: "Unknown error starting session")
+                }
             }
         }
     }
@@ -99,11 +119,8 @@ class SessionViewModel(
 
     private fun togglePause() {
         val current = voiceState.value
-        if (current.isListening) {
-            voiceCoreEngine.stopListening()
-        } else if (current.isSessionActive) {
-            voiceCoreEngine.startListening()
-        }
+        if (current.isListening) voiceCoreEngine.stopListening()
+        else if (current.isSessionActive) voiceCoreEngine.startListening()
     }
 
     private fun toggleMic() {
