@@ -5,7 +5,6 @@ package com.voicedeutsch.master.voicecore.engine
  * Architecture lines 562-580 (GeminiConfig).
  */
 data class GeminiConfig(
-    val apiKey: String,
     val modelName: String = MODEL_GEMINI_LIVE,
     val audioInputFormat: AudioFormat = AudioFormat.PCM_16KHZ_16BIT_MONO,
     val audioOutputFormat: AudioFormat = AudioFormat.PCM_24KHZ_16BIT_MONO,
@@ -19,7 +18,6 @@ data class GeminiConfig(
     val voiceName: String = DEFAULT_VOICE,
 ) {
     init {
-        require(apiKey.isNotBlank()) { "API key must not be blank" }
         require(temperature in 0f..2f) { "temperature must be in [0, 2]" }
         require(topP in 0f..1f) { "topP must be in [0, 1]" }
         require(topK > 0) { "topK must be positive" }
