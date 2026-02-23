@@ -18,20 +18,8 @@ object AudioConfig {
     /** Audio encoding = PCM 16-bit (AudioFormat.ENCODING_PCM_16BIT). */
     const val ENCODING_PCM_16BIT = 2 // android.media.AudioFormat.ENCODING_PCM_16BIT
 
-    /** Size of each audio chunk sent to Gemini (in bytes). ~100ms of audio. */
-    const val CHUNK_SIZE_BYTES = SAMPLE_RATE * 2 / 10  // 3200 bytes = 100ms
-
-    /** VAD — energy threshold for speech detection (in dB). */
-    const val VAD_ENERGY_THRESHOLD_DB = -35f
-
-    /** VAD — minimum speech duration to consider as valid utterance (ms). */
-    const val VAD_MIN_SPEECH_MS = 300
-
-    /** VAD — silence duration after speech to trigger end-of-utterance (ms). */
-    const val VAD_SILENCE_TIMEOUT_MS = 1500
-
-    /** Max recording duration per utterance to prevent runaway recordings (ms). */
-    const val MAX_UTTERANCE_DURATION_MS = 60_000
+    /** Size of each audio chunk sent to Gemini (in bytes). ~20ms of audio. */
+    const val CHUNK_SIZE_BYTES = 640  // 20ms при 16kHz
 
     /** Playback sample rate. Gemini may return 24 kHz audio. */
     const val PLAYBACK_SAMPLE_RATE = 24_000
