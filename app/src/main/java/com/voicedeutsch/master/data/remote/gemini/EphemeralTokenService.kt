@@ -19,7 +19,7 @@ import kotlinx.serialization.json.put
  * Сервис получения Ephemeral Token для Gemini Live API.
  *
  * Production Standard 2026: API ключ не хранится в APK.
- * Android запрашивает временный токен (TTL ~1 час) у Firebase Function.
+ * Android запрашивает временный токен (TTL ~30 мин) у Firebase Function.
  * Firebase Function хранит настоящий ключ в Secret Manager.
  *
  * Схема:
@@ -35,17 +35,12 @@ class EphemeralTokenService(
     companion object {
         private const val TAG = "EphemeralTokenService"
 
-        // URL твоей Firebase Function
-        // Замени <region> и <project-id> на реальные значения после деплоя
         private const val FUNCTION_URL =
-    "https://us-central1-voicedeutschmaster.cloudfunctions.net/getEphemeralToken"
+            "https://us-central1-voicedeutschmaster.cloudfunctions.net/getEphemeralToken"
 
-        // Кэшируем токен — не запрашиваем каждый раз
-        // Обновляем за 5 минут до истечения
         private const val REFRESH_BEFORE_EXPIRY_MS = 5 * 60 * 1000L
     }
 
-    // Кэш токена в памяти (живёт пока приложение активно)
     @Volatile private var cachedToken: CachedToken? = null
 
     /**
@@ -57,7 +52,6 @@ class EphemeralTokenService(
      * @throws EphemeralTokenException если не удалось получить токен
      */
     suspend fun fetchToken(userId: String): String {
-        // Проверяем кэш
         cachedToken?.let { cached ->
             if (!cached.isExpiredSoon()) {
                 Log.d(TAG, "Returning cached token, expires in ${cached.minutesLeft()} min")
@@ -65,7 +59,6 @@ class EphemeralTokenService(
             }
         }
 
-        // Запрашиваем новый токен
         return refreshToken(userId)
     }
 
@@ -91,14 +84,16 @@ class EphemeralTokenService(
 
             val tokenResponse = response.body<EphemeralTokenResponse>()
 
-            // Кэшируем
+            // Убираем префикс "auth_tokens/" — нужен только сам токен
+            val cleanToken = tokenResponse.token.removePrefix("auth_tokens/")
+
             cachedToken = CachedToken(
-                token = tokenResponse.token,
+                token = cleanToken,
                 expiresAt = parseExpiresAt(tokenResponse.expiresAt),
             )
 
             Log.d(TAG, "New token received, expires at: ${tokenResponse.expiresAt}")
-            return tokenResponse.token
+            return cleanToken
 
         } catch (e: EphemeralTokenException) {
             throw e
@@ -114,11 +109,11 @@ class EphemeralTokenService(
     }
 
     private fun parseExpiresAt(expiresAt: String?): Long {
-        if (expiresAt == null) return System.currentTimeMillis() + 55 * 60 * 1000L
+        if (expiresAt == null) return System.currentTimeMillis() + 25 * 60 * 1000L
         return try {
             java.time.Instant.parse(expiresAt).toEpochMilli()
         } catch (e: Exception) {
-            System.currentTimeMillis() + 55 * 60 * 1000L
+            System.currentTimeMillis() + 25 * 60 * 1000L
         }
     }
 
