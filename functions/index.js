@@ -2,7 +2,6 @@ const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const fetch = require("node-fetch");
 
-// Ключ хранится в Firebase Secret Manager — никогда не попадает в APK
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 
 /**
@@ -10,14 +9,12 @@ const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
  *
  * Android вызывает: POST https://<region>-<project>.cloudfunctions.net/getEphemeralToken
  * Body: { "userId": "..." }
- * Response: { "token": "...", "expiresAt": 1234567890 }
- *
- * Токен живёт ~1 час. Настоящий API ключ остаётся только здесь.
+ * Response: { "token": "...", "expiresAt": "..." }
  */
 exports.getEphemeralToken = onRequest(
   { secrets: [GEMINI_API_KEY] },
   async (req, res) => {
-    // CORS для мобильных клиентов
+    // CORS
     res.set("Access-Control-Allow-Origin", "*");
     if (req.method === "OPTIONS") {
       res.set("Access-Control-Allow-Methods", "POST");
@@ -35,17 +32,13 @@ exports.getEphemeralToken = onRequest(
       const apiKey = GEMINI_API_KEY.value();
       const model = "models/gemini-2.5-flash-native-audio-preview";
 
-      // Запрос временного токена у Google
       const googleResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/${model}:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/${model}:generateEphemeralToken?key=${apiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            // Запрашиваем ephemeral token через специальный endpoint
-            ephemeralTokenRequest: {
-              expireTime: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // +1 час
-            },
+            ttl: "3600s",
           }),
         }
       );
@@ -58,8 +51,8 @@ exports.getEphemeralToken = onRequest(
       }
 
       const data = await googleResponse.json();
-      const token = data.ephemeralToken?.token;
-      const expiresAt = data.ephemeralToken?.expireTime;
+      const token = data.token;
+      const expiresAt = data.expireTime;
 
       if (!token) {
         console.error("No token in response:", JSON.stringify(data));
@@ -68,6 +61,7 @@ exports.getEphemeralToken = onRequest(
       }
 
       res.status(200).json({ token, expiresAt });
+
     } catch (error) {
       console.error("getEphemeralToken error:", error);
       res.status(500).json({ error: "Internal server error" });
