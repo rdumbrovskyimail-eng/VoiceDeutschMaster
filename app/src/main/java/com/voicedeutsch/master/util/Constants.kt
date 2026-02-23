@@ -77,7 +77,9 @@ object Constants {
     // ==========================================
     // GEMINI API
     // ==========================================
-    const val GEMINI_MODEL_NAME = "gemini-2.0-flash-live"
+    // ✅ FIX: обновлена модель — старая "gemini-2.0-flash-live" retire 31.03.2026.
+    // Актуальная модель совпадает с GeminiConfig.MODEL_GEMINI_LIVE
+    const val GEMINI_MODEL_NAME = "gemini-2.5-flash-native-audio-preview"
     const val GEMINI_MAX_CONTEXT_TOKENS = 2_000_000
     const val GEMINI_DEFAULT_TEMPERATURE = 0.5f
     const val GEMINI_EXERCISE_TEMPERATURE = 0.3f
