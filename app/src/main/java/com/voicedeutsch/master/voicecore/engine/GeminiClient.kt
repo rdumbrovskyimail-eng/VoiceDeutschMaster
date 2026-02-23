@@ -99,12 +99,13 @@ class GeminiClient(
     suspend fun connect(
         config: GeminiConfig,
         context: ContextBuilder.SessionContext,
+        ephemeralToken: String,
     ) {
         setupComplete = false
         setupDeferred = kotlinx.coroutines.CompletableDeferred()
         connectionJob = clientScope.launch {
             try {
-                val urlString = "wss://$WS_HOST$WS_PATH?key=${config.apiKey}"
+                val urlString = "wss://$WS_HOST$WS_PATH?key=$ephemeralToken"
                 httpClient.webSocket(
                     urlString = urlString,
                     request = {
