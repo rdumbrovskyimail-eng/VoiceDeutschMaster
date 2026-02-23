@@ -1,6 +1,6 @@
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
-const fetch = require("node-fetch");
+const { GoogleGenAI } = require("@google/genai");
 
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 
@@ -22,41 +22,35 @@ exports.getEphemeralToken = onRequest(
 
     try {
       const apiKey = GEMINI_API_KEY.value();
-      const model = "models/gemini-2.5-flash-native-audio-preview";
+      const client = new GoogleGenAI({
+        apiKey: apiKey,
+        httpOptions: { apiVersion: "v1alpha" }
+      });
 
-      const googleResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/${model}:generateEphemeralToken?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ttl: "3600s",
-          }),
+      const expireTime = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+
+      const token = await client.authTokens.create({
+        config: {
+          uses: 1,
+          expireTime: expireTime,
+          liveConnectConstraints: {
+            model: "gemini-2.5-flash-native-audio-preview",
+            config: {
+              responseModalities: ["AUDIO"]
+            }
+          },
+          httpOptions: { apiVersion: "v1alpha" }
         }
-      );
+      });
 
-      if (!googleResponse.ok) {
-        const errorBody = await googleResponse.text();
-        console.error("Google API error:", googleResponse.status, errorBody);
-        res.status(502).json({ error: "Failed to get token from Google" });
-        return;
-      }
-
-      const data = await googleResponse.json();
-      const token = data.token;
-      const expiresAt = data.expireTime;
-
-      if (!token) {
-        console.error("No token in response:", JSON.stringify(data));
-        res.status(502).json({ error: "Invalid response from Google" });
-        return;
-      }
-
-      res.status(200).json({ token, expiresAt });
+      res.status(200).json({
+        token: token.name,
+        expiresAt: expireTime
+      });
 
     } catch (error) {
       console.error("getEphemeralToken error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({ error: "Internal server error", details: error.message });
     }
   }
 );
