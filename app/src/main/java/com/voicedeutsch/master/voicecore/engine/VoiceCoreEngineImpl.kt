@@ -212,6 +212,7 @@ class VoiceCoreEngineImpl(
         sessionJob = engineScope.launch {
             runSessionLoop()
         }
+        startListening()  // ← микрофон должен работать сразу после connect
 
         _sessionState.value
     }
@@ -350,8 +351,8 @@ class VoiceCoreEngineImpl(
         requireNotNull(geminiClient).sendText("Перейди к главе $chapter, уроку $lesson.")
     }
 
-    override suspend fun submitFunctionResult(callId: String, resultJson: String) {
-        requireNotNull(geminiClient).sendFunctionResult(callId, resultJson)
+    override suspend fun submitFunctionResult(callId: String, name: String, resultJson: String) {
+        requireNotNull(geminiClient).sendFunctionResult(callId, name, resultJson)
     }
 
     // ── Main session loop ─────────────────────────────────────────────────────
@@ -425,7 +426,11 @@ class VoiceCoreEngineImpl(
                         }
 
                         applyFunctionSideEffects(call.name, result)
-                        requireNotNull(geminiClient).sendFunctionResult(call.id, result.resultJson)
+                        requireNotNull(geminiClient).sendFunctionResult(
+                            callId = call.id,
+                            name = result.functionName,
+                            resultJson = result.resultJson
+                        )
                         updateState { copy(isProcessing = false) }
                     }
 
