@@ -176,6 +176,7 @@ val dataModule = module {
 
     // ─── Remote Services ─────────────────────────────────────────────────────
     single { CloudSyncService() }
+    single { EphemeralTokenService(get(), get()) }
 }
 
 // ── Migration constants ───────────────────────────────────────────────────────
