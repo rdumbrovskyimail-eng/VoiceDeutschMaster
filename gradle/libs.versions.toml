@@ -87,6 +87,7 @@ kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+kotlinx-coroutines-play-services = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-play-services", version.ref = "coroutines" }  # ✅ ДОБАВЛЕНО
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 
 # AndroidX Core
@@ -149,14 +150,13 @@ ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
 ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }
 
 # Firebase AI Logic (replaces deprecated google-ai generativeai)
-# ⚠️ Add firebase-ai to your firebase-bom import block in build.gradle
 firebase-ai = { module = "com.google.firebase:firebase-ai" }
+firebase-auth = { module = "com.google.firebase:firebase-auth" }  # ✅ ДОБАВЛЕНО
 
 # Security
 security-crypto = { module = "androidx.security:security-crypto", version.ref = "security-crypto" }
 
 # Firebase
-# ⚠️ KTX suffix removed in BOM 34.x — use base module names
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebase-bom" }
 firebase-analytics = { module = "com.google.firebase:firebase-analytics" }
 firebase-crashlytics = { module = "com.google.firebase:firebase-crashlytics" }
