@@ -179,54 +179,15 @@ ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
 ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }
 
 # ─── Firebase ────────────────────────────────────
-# Все Firebase зависимости объявляются БЕЗ версий — версии управляются BoM.
-# НЕ используйте -ktx суффиксы (удалены с BoM 34.0.0).
-
-# BoM — платформа управления версиями Firebase.
-# Объявляется через platform() в build.gradle.kts, НЕ как обычная зависимость.
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebase-bom" }
-
-# Firebase AI Logic: заменяет устаревший com.google.ai.client.generativeai.
-# Включает: Gemini 2.5 Flash/Pro, Live API (реал-тайм голос + аудио),
-# Thinking Levels, Server Prompt Templates, Transcripts, URL context tool.
-# App Check авторизация встроена — EphemeralTokenService больше не нужен.
 firebase-ai = { module = "com.google.firebase:firebase-ai" }
-
-# Firebase Authentication: анонимный вход, Google Sign-In, Email/Password.
-# Kotlin suspend extensions включены в базовый модуль (не нужен -ktx).
 firebase-auth = { module = "com.google.firebase:firebase-auth" }
-
-# Firebase Analytics: автоматический сбор событий, пользовательские события.
 firebase-analytics = { module = "com.google.firebase:firebase-analytics" }
-
-# Firebase Crashlytics: автоматический сбор крэшей, кастомные ключи/логи.
 firebase-crashlytics = { module = "com.google.firebase:firebase-crashlytics" }
-
-# Firebase Performance Monitoring: автотрейсинг HTTP, кастомные трейсы.
 firebase-performance = { module = "com.google.firebase:firebase-perf" }
-
-# Firebase Cloud Firestore: облачное хранилище документов с real-time sync.
-# Используется для CloudSyncService / BackupManager вместо кастомного решения.
 firebase-firestore = { module = "com.google.firebase:firebase-firestore" }
-
-# Firebase Cloud Storage: хранение файлов (аудио-записи, экспорт/импорт).
 firebase-storage = { module = "com.google.firebase:firebase-storage" }
-
-# Firebase Remote Config: управление конфигурацией без перевыпуска приложения.
-# Полезно для A/B тестов настроек модели Gemini (temperature, tokens и т.д.).
 firebase-remote-config = { module = "com.google.firebase:firebase-config" }
-
-# Firebase App Check: защита бекенда от несанкционированных клиентов.
-# Автоматически интегрирован с firebase-ai для защиты Gemini endpoints.
-#
-# ВАЖНО: два разных провайдера для разных buildType:
-#   releaseImplementation(libs.firebase.appcheck.playintegrity)
-#   debugImplementation(libs.firebase.appcheck.debug)
-#
-# PlayIntegrity: работает только с подписанным APK, опубликованным в Google Play.
-#   SHA-256 keystore fingerprint обязательно добавить в Firebase Console.
-# Debug: генерирует временный UUID-токен, логируемый в Logcat.
-#   Токен нужно зарегистрировать в Firebase Console → App Check → Debug tokens.
 firebase-appcheck-playintegrity = { module = "com.google.firebase:firebase-appcheck-playintegrity" }
 firebase-appcheck-debug = { module = "com.google.firebase:firebase-appcheck-debug" }
 # ─────────────────────────────────────────────────
@@ -320,4 +281,15 @@ testing = [
     "truth",
     "kotlinx-coroutines-test"
 ]
+
 # ─────────────────────────────────────────────────
+
+[plugins]
+android-application      = { id = "com.android.application",                  version.ref = "agp"                        }
+kotlin-android           = { id = "org.jetbrains.kotlin.android",              version.ref = "kotlin"                     }
+kotlin-compose           = { id = "org.jetbrains.kotlin.plugin.compose",       version.ref = "kotlin"                     }
+kotlin-serialization     = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin"                     }
+ksp                      = { id = "com.google.devtools.ksp",                   version.ref = "ksp"                        }
+room                     = { id = "androidx.room",                             version.ref = "room"                       }
+google-services          = { id = "com.google.gms.google-services",            version.ref = "google-services"            }
+firebase-crashlytics     = { id = "com.google.firebase.crashlytics",           version.ref = "firebase-crashlytics-plugin" }
