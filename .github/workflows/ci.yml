@@ -61,6 +61,14 @@ jobs:
     - name: Create local.properties
       run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
+    - name: Run Unit Tests
+      run: |
+        ./gradlew testDebugUnitTest \
+          --parallel \
+          --build-cache \
+          --no-daemon \
+          -Dlint.baselines.continue=true
+
     - name: Build Release APK
       run: |
         ./gradlew assembleRelease \
