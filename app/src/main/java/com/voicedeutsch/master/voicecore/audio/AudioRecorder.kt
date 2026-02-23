@@ -37,8 +37,8 @@ class AudioRecorder {
         /** Input sample rate required by Gemini Live API. */
         const val SAMPLE_RATE = Constants.AUDIO_INPUT_SAMPLE_RATE   // 16 000 Hz
 
-        /** 10 ms frame duration at 16 kHz = 160 samples */
-        const val FRAME_SIZE_SAMPLES = 160
+        /** 20 ms frame duration at 16 kHz = 320 samples */
+        const val FRAME_SIZE_SAMPLES = 320
 
         /** Minimum buffer size in bytes for AudioRecord. */
         private val MIN_BUFFER_SIZE: Int = AudioRecord.getMinBufferSize(
