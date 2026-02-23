@@ -33,8 +33,9 @@ object GeminiMapper {
         val json = Json { encodeDefaults = true }
         val msg = mapOf(
             "realtimeInput" to mapOf(
-                "mediaChunks" to listOf(
-                    mapOf("mimeType" to "audio/pcm;rate=16000", "data" to pcmBase64)
+                "audio" to mapOf(
+                    "mimeType" to "audio/pcm;rate=16000",
+                    "data" to pcmBase64
                 )
             )
         )
