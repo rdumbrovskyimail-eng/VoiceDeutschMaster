@@ -38,7 +38,7 @@ class EphemeralTokenService(
         // URL твоей Firebase Function
         // Замени <region> и <project-id> на реальные значения после деплоя
         private const val FUNCTION_URL =
-            "https://<region>-<project-id>.cloudfunctions.net/getEphemeralToken"
+    "https://us-central1-voicedeutschmaster.cloudfunctions.net/getEphemeralToken"
 
         // Кэшируем токен — не запрашиваем каждый раз
         // Обновляем за 5 минут до истечения
