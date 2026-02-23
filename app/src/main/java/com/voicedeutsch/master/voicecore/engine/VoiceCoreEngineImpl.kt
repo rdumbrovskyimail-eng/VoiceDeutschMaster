@@ -379,6 +379,15 @@ class VoiceCoreEngineImpl(
                 }
 
                 when {
+                    response.isInterrupted -> {
+                        // 🟢 ПОЛЬЗОВАТЕЛЬ ПЕРЕБИЛ ИИ: Сбрасываем звук мгновенно
+                        android.util.Log.d("VoiceCoreEngine", "ИИ перебит пользователем! Очистка аудио-очереди.")
+                        audioPipeline.flushPlayback() // Вызываем метод сброса (добавим его в шаге 4)
+                        transitionAudio(AudioState.IDLE)
+                        transitionEngine(VoiceEngineState.LISTENING) // Возвращаемся в режим слушания
+                        updateState { copy(isSpeaking = false, isProcessing = false) }
+                    }
+
                     response.hasAudio() -> {
                         transitionAudio(AudioState.PLAYING)
                         updateState {
