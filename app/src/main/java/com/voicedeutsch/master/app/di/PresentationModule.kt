@@ -16,7 +16,6 @@ val presentationModule = module {
             voiceCoreEngine      = get(),
             userRepository       = get(),
             preferencesDataStore = get(),
-            ephemeralTokenService = get(),
         )
     }
     viewModel {
