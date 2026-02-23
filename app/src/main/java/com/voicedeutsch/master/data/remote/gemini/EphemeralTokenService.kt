@@ -3,7 +3,6 @@ package com.voicedeutsch.master.data.remote.gemini
 import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
 import io.ktor.client.HttpClient
-import io.ktor.client.call.body
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -27,6 +26,19 @@ import kotlinx.serialization.json.put
  * Android → POST /getEphemeralToken + Bearer ID Token → Firebase Function
  * Firebase Function → verifyIdToken → Google API → ephemeral token
  * Android → WSS с ephemeral token вместо API key
+ *
+ * ✅ FIX: response.body<EphemeralTokenResponse>() заменён на ручной парсинг
+ * через bodyAsText() + json.decodeFromString().
+ *
+ * ПРИЧИНА ОШИБКИ:
+ * Ktor's response.body<T>() использует Kotlin Reflection для десериализации.
+ * Когда класс private и вложенный — R8/ProGuard удаляет reflection-метаданные,
+ * и Ktor бросает "Kotlin reflection is not available" даже при статусе 200.
+ *
+ * РЕШЕНИЕ:
+ * 1. EphemeralTokenResponse переведён из private в internal (R8 не стрипает)
+ * 2. Парсинг через json.decodeFromString() — использует kotlinx.serialization
+ *    (compile-time кодогенерация), а не рефлексию. Работает всегда.
  */
 class EphemeralTokenService(
     private val httpClient: HttpClient,
@@ -63,13 +75,11 @@ class EphemeralTokenService(
     private suspend fun refreshToken(userId: String): String {
         Log.d(TAG, "Fetching new ephemeral token for user: $userId")
 
-        // ✅ Получаем Firebase ID Token (анонимный вход если нужно)
         val firebaseIdToken = getFirebaseIdToken()
 
         try {
             val response = httpClient.post(FUNCTION_URL) {
                 contentType(ContentType.Application.Json)
-                // ✅ Firebase ID Token в заголовке Authorization
                 header(HttpHeaders.Authorization, "Bearer $firebaseIdToken")
                 setBody(
                     json.encodeToString(
@@ -79,15 +89,23 @@ class EphemeralTokenService(
                 )
             }
 
+            // Читаем тело ВСЕГДА как текст — это безопасно при любом статусе
+            val bodyText = response.bodyAsText()
+
             if (!response.status.isSuccess()) {
-                val body = response.bodyAsText()
-                Log.e(TAG, "Firebase Function error ${response.status}: $body")
-                throw EphemeralTokenException("Server returned ${response.status}: $body")
+                Log.e(TAG, "Firebase Function error ${response.status}: $bodyText")
+                throw EphemeralTokenException("Server returned ${response.status}: $bodyText")
             }
 
-            val tokenResponse = response.body<EphemeralTokenResponse>()
+            // ✅ FIX: json.decodeFromString() вместо response.body<T>()
+            // kotlinx.serialization использует compile-time кодогенерацию — не требует рефлексии
+            val tokenResponse = try {
+                json.decodeFromString<EphemeralTokenResponse>(bodyText)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to parse token response: $bodyText", e)
+                throw EphemeralTokenException("Invalid response format: ${e.message}", e)
+            }
 
-            // ✅ Полный resource name токена — НЕ стрипаем "auth_tokens/"
             val fullToken = tokenResponse.token
             Log.d(TAG, "Token received: ${fullToken.take(30)}...")
 
@@ -134,8 +152,11 @@ class EphemeralTokenService(
         }
     }
 
+    // ✅ FIX: было `private` — стало `internal`.
+    // R8/ProGuard стрипает reflection-метаданные для private вложенных классов.
+    // kotlinx.serialization кодогенерация требует как минимум internal видимости.
     @Serializable
-    private data class EphemeralTokenResponse(
+    internal data class EphemeralTokenResponse(
         @SerialName("token") val token: String,
         @SerialName("expiresAt") val expiresAt: String? = null,
     )
