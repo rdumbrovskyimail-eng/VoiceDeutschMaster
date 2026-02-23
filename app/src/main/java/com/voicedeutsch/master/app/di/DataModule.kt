@@ -19,16 +19,14 @@ import com.voicedeutsch.master.domain.repository.SecurityRepository
 import com.voicedeutsch.master.domain.repository.SessionRepository
 import com.voicedeutsch.master.domain.repository.UserRepository
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
+import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
-import java.security.KeyStore
-import javax.net.ssl.TrustManagerFactory
-import javax.net.ssl.X509TrustManager
+import java.util.concurrent.TimeUnit
 
 import com.voicedeutsch.master.data.local.file.AudioCacheManager
 import com.voicedeutsch.master.data.local.file.ExportImportManager
@@ -53,27 +51,22 @@ val dataModule = module {
     // Shared single — используется в GeminiClient для WebSocket-соединения.
     // WebSockets plugin обязателен для Gemini Live API.
     single {
-        // Получаем системный TrustManager Android
-        val trustManagerFactory = TrustManagerFactory.getInstance(
-            TrustManagerFactory.getDefaultAlgorithm()
-        )
-        trustManagerFactory.init(null as KeyStore?)
-        val systemTrustManager = trustManagerFactory.trustManagers
-            .filterIsInstance<X509TrustManager>()
-            .first()
-
-        HttpClient(CIO) {
+        // ✅ Используем OkHttp. Он нативно работает с сертификатами Android.
+        HttpClient(OkHttp) {
             engine {
-                requestTimeout = 0
-                https {
-                    trustManager = systemTrustManager
+                config {
+                    pingInterval(20, TimeUnit.SECONDS)
+                    connectTimeout(15, TimeUnit.SECONDS)
+                    readTimeout(30, TimeUnit.SECONDS)
+                    writeTimeout(30, TimeUnit.SECONDS)
                 }
             }
-            install(WebSockets) {
+            install(io.ktor.client.plugins.websocket.WebSockets) {
                 pingIntervalMillis = 20_000L
+                maxFrameSize = Long.MAX_VALUE // Важно для длинных Setup-сообщений
             }
-            install(Logging) {
-                level = LogLevel.ALL
+            install(io.ktor.client.plugins.logging.Logging) {
+                level = io.ktor.client.plugins.logging.LogLevel.INFO
                 logger = object : io.ktor.client.plugins.logging.Logger {
                     override fun log(message: String) {
                         android.util.Log.d("KtorNetwork", message)
