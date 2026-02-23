@@ -23,24 +23,27 @@
 -keep @androidx.room.Entity class *
 -dontwarn androidx.room.paging.**
 
-# ── Ktor ──────────────────────────────────────────────────────────────────────
+# ── Ktor (вспомогательные REST-запросы) ───────────────────────────────────────
+# Основной AI-транспорт — firebase-ai SDK, не Ktor.
+# Если Ktor полностью удалён из проекта — удалите этот блок тоже.
 -keep class io.ktor.** { *; }
 -dontwarn io.ktor.**
--keep class kotlinx.coroutines.** { *; }
--dontwarn kotlinx.coroutines.**
+# Примечание: kotlinx.coroutines правила не нужны здесь —
+# библиотека публикует собственные consumer-rules.pro, R8 подхватывает автоматически.
 
 # ── Firebase AI Logic (Gemini Live API) ───────────────────────────────────────
-# Заменяет устаревший блок com.google.ai.client.generativeai (SDK deprecated)
+# Заменяет устаревший com.google.ai.client.generativeai (SDK deprecated).
+# Покрывается нижним блоком com.google.firebase.**, оставлен явно для читаемости.
 -keep class com.google.firebase.ai.** { *; }
 -dontwarn com.google.firebase.ai.**
-
-# ── Koin ──────────────────────────────────────────────────────────────────────
--keep class org.koin.** { *; }
--dontwarn org.koin.**
 
 # ── Firebase ──────────────────────────────────────────────────────────────────
 -keep class com.google.firebase.** { *; }
 -dontwarn com.google.firebase.**
+
+# ── Koin ──────────────────────────────────────────────────────────────────────
+-keep class org.koin.** { *; }
+-dontwarn org.koin.**
 
 # ── Domain models (used by Gemini function calls via JSON) ────────────────────
 -keep class com.voicedeutsch.master.domain.model.** { *; }
