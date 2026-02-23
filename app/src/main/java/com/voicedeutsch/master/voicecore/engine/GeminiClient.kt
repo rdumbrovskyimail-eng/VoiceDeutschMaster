@@ -112,7 +112,8 @@ class GeminiClient(
                     receiveLoop()
                 }
             } catch (e: Exception) {
-                val errorMsg = "Ошибка сети: ${e::class.java.simpleName} - ${e.message}"
+                val cause = e.cause?.let { " | Причина: ${it::class.java.simpleName}: ${it.message}" } ?: ""
+                val errorMsg = "Ошибка сети: ${e::class.java.simpleName}: ${e.message}$cause"
                 android.util.Log.e(TAG, errorMsg, e)
                 setupComplete = false
                 setupDeferred.completeExceptionally(IllegalStateException(errorMsg, e))
@@ -385,10 +386,11 @@ class GeminiClient(
                 setupDeferred.await()
             }
         } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            val sessionActive = wsSession?.isActive ?: false
             throw IllegalStateException(
-                "Превышено время ожидания ответа от сервера Gemini (30 сек). " +
-                "Возможные причины: неверный API ключ, недоступен endpoint, " +
-                "или региональные ограничения. Проверьте Logcat тег 'KtorNetwork'."
+                "Timeout 30s. WS session active=$sessionActive. " +
+                "Setup отправлен но setupComplete не получен. " +
+                "Смотри ошибки выше."
             )
         }
     }
