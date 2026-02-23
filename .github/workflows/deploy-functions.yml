@@ -5,6 +5,7 @@ on:
     branches: [ main ]
     paths:
       - 'functions/**'
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -34,7 +35,7 @@ jobs:
 
     - name: Deploy Firebase Functions
       run: |
-        echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > /tmp/sa.json
+        printf '%s' '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > /tmp/sa.json
         GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json \
         firebase deploy --only functions \
           --project ${{ secrets.FIREBASE_PROJECT_ID }} \
