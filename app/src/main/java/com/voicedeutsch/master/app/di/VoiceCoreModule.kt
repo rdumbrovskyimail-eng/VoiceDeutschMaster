@@ -57,9 +57,10 @@ val voiceCoreModule = module {
             buildKnowledgeSummary = get(),
             startLearningSession  = get(),
             endLearningSession    = get(),
-            httpClient            = get(), // Передаем Ktor клиент
-            json                  = get(), // Передаем Json парсер
+            httpClient            = get(),
+            json                  = get(),
             networkMonitor        = get(),
+            ephemeralTokenService = get(),
         )
     }
 }
