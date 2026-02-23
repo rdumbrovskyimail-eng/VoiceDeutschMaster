@@ -1,10 +1,12 @@
 package com.voicedeutsch.master.app.worker
 
 import android.content.Context
+import android.util.Log
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
 
@@ -13,6 +15,8 @@ import java.util.concurrent.TimeUnit
  * Called from VoiceDeutschApp.onCreate().
  */
 object WorkManagerInitializer {
+
+    private const val TAG = "WorkManagerInitializer"
 
     fun initialize(context: Context) {
         val wm = WorkManager.getInstance(context)
@@ -58,6 +62,7 @@ object WorkManagerInitializer {
             Constraints.Builder()
                 .setRequiresBatteryNotLow(true)
                 .setRequiresStorageNotLow(true)
+                .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
         ).build()
         wm.enqueueUniquePeriodicWork(
@@ -65,5 +70,41 @@ object WorkManagerInitializer {
             ExistingPeriodicWorkPolicy.KEEP,
             backupWork
         )
+
+        // Наблюдаем за результатом BackupWorker — парсим outputData
+        // после каждого завершённого запуска (SUCCEEDED / FAILED).
+        observeBackupWorker(context)
+    }
+
+    /**
+     * Подписывается на WorkInfo BackupWorker'а и логирует результат.
+     * KEY_LOCAL_PATH  — путь к локальному staging-файлу бекапа
+     * KEY_CLOUD_PATH  — путь в Firebase Storage (gs://bucket/users/uid/backups/...)
+     * KEY_ERROR       — сообщение об ошибке если worker завершился с FAILED
+     *
+     * Используйте эти данные для отображения статуса в SettingsScreen
+     * или для аналитики через Firebase Crashlytics.
+     */
+    private fun observeBackupWorker(context: Context) {
+        WorkManager.getInstance(context)
+            .getWorkInfosForUniqueWorkLiveData(BackupWorker.WORK_NAME)
+            .observeForever { workInfoList ->
+                val info = workInfoList?.firstOrNull() ?: return@observeForever
+
+                when (info.state) {
+                    WorkInfo.State.SUCCEEDED -> {
+                        val localPath  = info.outputData.getString(BackupWorker.KEY_LOCAL_PATH)
+                        val cloudPath  = info.outputData.getString(BackupWorker.KEY_CLOUD_PATH)
+                        Log.d(TAG, "Backup succeeded — local=$localPath, cloud=$cloudPath")
+                    }
+                    WorkInfo.State.FAILED -> {
+                        val error      = info.outputData.getString(BackupWorker.KEY_ERROR)
+                        val localPath  = info.outputData.getString(BackupWorker.KEY_LOCAL_PATH)
+                        // Локальный бекап мог сохраниться даже при облачной ошибке
+                        Log.e(TAG, "Backup failed — error=$error, localFallback=$localPath")
+                    }
+                    else -> Unit // RUNNING / ENQUEUED / BLOCKED — ничего не делаем
+                }
+            }
     }
 }
