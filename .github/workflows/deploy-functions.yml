@@ -1,10 +1,14 @@
-name: Deploy Firebase Functions
+name: Deploy Firebase Functions & Rules
 
 on:
   push:
     branches: [ main ]
     paths:
       - 'functions/**'
+      - 'firestore.rules'
+      - 'firestore.indexes.json'
+      - 'storage.rules'
+      - 'firebase.json'
   workflow_dispatch:
 
 jobs:
@@ -33,11 +37,12 @@ jobs:
       working-directory: functions
       run: npm install --package-lock-if-needed
 
-    - name: Deploy Firebase Functions
+    - name: Deploy Functions, Firestore rules & Storage rules
       run: |
         printf '%s' '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > /tmp/sa.json
         GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json \
-        firebase deploy --only functions \
+        firebase deploy \
+          --only functions,firestore,storage \
           --project ${{ secrets.FIREBASE_PROJECT_ID }} \
           --non-interactive
 
