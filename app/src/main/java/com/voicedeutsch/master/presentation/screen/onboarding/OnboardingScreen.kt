@@ -5,9 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,8 +14,6 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -29,14 +24,13 @@ import com.voicedeutsch.master.presentation.theme.Secondary
 import org.koin.androidx.compose.koinViewModel
 
 /**
- * Onboarding flow — 5-step wizard:
+ * Onboarding flow — 4-step wizard:
  *
  *  1. WELCOME    – Splash + tagline
  *  2. NAME       – Enter user name
  *  3. LEVEL      – Choose starting CEFR level
- *  4. API_KEY    – Enter Gemini API key
- *  5. BOOK_LOAD  – Load book assets
- *  6. DONE       – Completion confirmation
+ *  4. BOOK_LOAD  – Load book assets
+ *  5. DONE       – Completion confirmation
  */
 @Composable
 fun OnboardingScreen(
@@ -45,7 +39,6 @@ fun OnboardingScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
 
-    // Navigate away when completed
     LaunchedEffect(state.step) {
         if (state.step == OnboardingStep.DONE) {
             onOnboardingComplete()
@@ -74,8 +67,8 @@ fun OnboardingScreen(
 
             // ── Step indicator ────────────────────────────────────────────────
             StepIndicator(
-                totalSteps   = OnboardingStep.entries.size - 1, // exclude DONE
-                currentStep  = state.step.ordinal,
+                totalSteps  = OnboardingStep.entries.size - 1, // exclude DONE
+                currentStep = state.step.ordinal,
             )
 
             Spacer(Modifier.height(32.dp))
@@ -93,22 +86,14 @@ fun OnboardingScreen(
                 when (step) {
                     OnboardingStep.WELCOME   -> WelcomeStep()
                     OnboardingStep.NAME      -> NameStep(
-                        name          = state.name,
-                        error         = state.errorMessage,
-                        onNameChange  = { viewModel.onEvent(OnboardingEvent.UpdateName(it)) },
-                        onDone        = { focusManager.clearFocus(); viewModel.onEvent(OnboardingEvent.Next) },
+                        name         = state.name,
+                        error        = state.errorMessage,
+                        onNameChange = { viewModel.onEvent(OnboardingEvent.UpdateName(it)) },
+                        onDone       = { focusManager.clearFocus(); viewModel.onEvent(OnboardingEvent.Next) },
                     )
                     OnboardingStep.LEVEL     -> LevelStep(
-                        selected  = state.selectedLevel,
-                        onSelect  = { viewModel.onEvent(OnboardingEvent.SelectLevel(it)) },
-                    )
-                    OnboardingStep.API_KEY   -> ApiKeyStep(
-                        apiKey    = state.apiKey,
-                        visible   = state.apiKeyVisible,
-                        error     = state.errorMessage,
-                        onChange  = { viewModel.onEvent(OnboardingEvent.UpdateApiKey(it)) },
-                        onToggle  = { viewModel.onEvent(OnboardingEvent.ToggleApiKeyVisibility) },
-                        onDone    = { focusManager.clearFocus() },
+                        selected = state.selectedLevel,
+                        onSelect = { viewModel.onEvent(OnboardingEvent.SelectLevel(it)) },
                     )
                     OnboardingStep.BOOK_LOAD -> BookLoadStep(
                         isLoading = state.isLoadingBook,
@@ -125,11 +110,11 @@ fun OnboardingScreen(
             // ── Navigation buttons ────────────────────────────────────────────
             if (state.step != OnboardingStep.DONE) {
                 OnboardingNavRow(
-                    step        = state.step,
-                    isLoading   = state.isLoadingBook,
-                    onBack      = { viewModel.onEvent(OnboardingEvent.Back) },
-                    onNext      = { viewModel.onEvent(OnboardingEvent.Next) },
-                    onLoadBook  = { viewModel.onEvent(OnboardingEvent.LoadBook) },
+                    step       = state.step,
+                    isLoading  = state.isLoadingBook,
+                    onBack     = { viewModel.onEvent(OnboardingEvent.Back) },
+                    onNext     = { viewModel.onEvent(OnboardingEvent.Next) },
+                    onLoadBook = { viewModel.onEvent(OnboardingEvent.LoadBook) },
                 )
             } else {
                 Button(
@@ -191,12 +176,12 @@ private fun NameStep(
         Text("Репетитор будет обращаться к вам по имени", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
         Spacer(Modifier.height(32.dp))
         OutlinedTextField(
-            value         = name,
-            onValueChange = onNameChange,
-            label         = { Text("Имя") },
-            placeholder   = { Text("Например: Алекс") },
-            singleLine    = true,
-            isError       = error != null,
+            value          = name,
+            onValueChange  = onNameChange,
+            label          = { Text("Имя") },
+            placeholder    = { Text("Например: Алекс") },
+            singleLine     = true,
+            isError        = error != null,
             supportingText = error?.let { { Text(it, color = MaterialTheme.colorScheme.error) } },
             modifier       = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(
@@ -230,15 +215,15 @@ private fun LevelStep(selected: CefrLevel, onSelect: (CefrLevel) -> Unit) {
 
         CefrLevel.entries.forEach { level ->
             Card(
-                onClick   = { onSelect(level) },
-                colors    = CardDefaults.cardColors(
+                onClick = { onSelect(level) },
+                colors  = CardDefaults.cardColors(
                     containerColor = if (selected == level)
                         MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                     else MaterialTheme.colorScheme.surface,
                 ),
-                border    = if (selected == level)
+                border   = if (selected == level)
                     androidx.compose.foundation.BorderStroke(2.dp, Primary) else null,
-                modifier  = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
             ) {
                 Row(
                     Modifier.padding(16.dp),
@@ -259,56 +244,6 @@ private fun LevelStep(selected: CefrLevel, onSelect: (CefrLevel) -> Unit) {
 }
 
 @Composable
-private fun ApiKeyStep(
-    apiKey: String,
-    visible: Boolean,
-    error: String?,
-    onChange: (String) -> Unit,
-    onToggle: () -> Unit,
-    onDone: () -> Unit,
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-        modifier            = Modifier.fillMaxSize(),
-    ) {
-        Text("Gemini API Key", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text      = "Приложение использует Gemini Live API для голосового общения. Ключ хранится только на вашем устройстве.",
-            style     = MaterialTheme.typography.bodySmall,
-            color     = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-            textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.height(32.dp))
-        OutlinedTextField(
-            value                = apiKey,
-            onValueChange        = onChange,
-            label                = { Text("API Key") },
-            placeholder          = { Text("AIzaSy...") },
-            singleLine           = true,
-            isError              = error != null,
-            supportingText       = error?.let { { Text(it, color = MaterialTheme.colorScheme.error) } },
-            visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
-            trailingIcon         = {
-                IconButton(onClick = onToggle) {
-                    Icon(if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, contentDescription = null)
-                }
-            },
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { onDone() }),
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text  = "Получите бесплатно на aistudio.google.com",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.primary,
-        )
-    }
-}
-
-@Composable
 private fun BookLoadStep(
     isLoading: Boolean,
     loaded: Boolean,
@@ -320,7 +255,13 @@ private fun BookLoadStep(
         verticalArrangement = Arrangement.Center,
         modifier            = Modifier.fillMaxSize(),
     ) {
-        Text(if (loaded) "📚 Книга загружена!" else "📚 Загрузка учебника", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground, textAlign = TextAlign.Center)
+        Text(
+            text       = if (loaded) "📚 Книга загружена!" else "📚 Загрузка учебника",
+            style      = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            color      = MaterialTheme.colorScheme.onBackground,
+            textAlign  = TextAlign.Center,
+        )
         Spacer(Modifier.height(8.dp))
         Text(
             text      = "Слова, грамматика и упражнения из учебника будут доступны во время занятий",
@@ -356,9 +297,20 @@ private fun DoneStep(name: String) {
     ) {
         Text("🎉", fontSize = 64.sp)
         Spacer(Modifier.height(24.dp))
-        Text("Добро пожаловать,\n$name!", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground, textAlign = TextAlign.Center)
+        Text(
+            text       = "Добро пожаловать,\n$name!",
+            style      = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            color      = MaterialTheme.colorScheme.onBackground,
+            textAlign  = TextAlign.Center,
+        )
         Spacer(Modifier.height(16.dp))
-        Text("Всё готово! Нажмите кнопку ниже и начните говорить по-немецки.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f), textAlign = TextAlign.Center)
+        Text(
+            text      = "Всё готово! Нажмите кнопку ниже и начните говорить по-немецки.",
+            style     = MaterialTheme.typography.bodyLarge,
+            color     = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+            textAlign = TextAlign.Center,
+        )
     }
 }
 
@@ -390,8 +342,8 @@ private fun OnboardingNavRow(
         ) {
             if (isLoading) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    color    = MaterialTheme.colorScheme.onPrimary,
+                    modifier    = Modifier.size(20.dp),
+                    color       = MaterialTheme.colorScheme.onPrimary,
                     strokeWidth = 2.dp,
                 )
             } else {
