@@ -126,7 +126,7 @@ class GeminiClient(
 
                 // 🟢 ГЛАВНОЕ: Моментально отменяем ожидание setupComplete!
                 setupDeferred.completeExceptionally(IllegalStateException(errorMsg, e))
-                responseChannel.close(IllegalStateException(errorMsg, e))
+                if (!responseChannel.isClosedForSend) responseChannel.close(IllegalStateException(errorMsg, e))
             } finally {
                 wsSession = null
                 responseChannel.close()
@@ -186,13 +186,13 @@ class GeminiClient(
      * Возвращает результат выполнения function call обратно в Gemini.
      * Формат: toolResponse с массивом functionResponses.
      */
-    suspend fun sendFunctionResult(callId: String, resultJson: String) {
+    suspend fun sendFunctionResult(callId: String, name: String, resultJson: String) {
         val frame = buildJsonObject {
             putJsonObject("toolResponse") {
                 put("functionResponses", JsonArray(listOf(
                     buildJsonObject {
                         put("id", callId)
-                        put("name", "") // сервер идентифицирует по id
+                        put("name", name)
                         put("response", json.parseToJsonElement(resultJson))
                     }
                 )))
@@ -236,8 +236,7 @@ class GeminiClient(
                     putJsonObject("speechConfig") {
                         putJsonObject("voiceConfig") {
                             putJsonObject("prebuiltVoiceConfig") {
-                                // Puck — дефолтный голос, подходит для учебного ассистента
-                                put("voiceName", "Puck")
+                                put("voiceName", config.voiceName)
                             }
                         }
                     }
@@ -245,6 +244,7 @@ class GeminiClient(
 
                 // Системный промпт из ContextBuilder
                 putJsonObject("systemInstruction") {
+                    put("role", "user")
                     put("parts", JsonArray(listOf(
                         buildJsonObject { put("text", context.systemPrompt) }
                     )))
@@ -326,9 +326,9 @@ class GeminiClient(
 
     private fun parseServerContent(serverContent: JsonObject) {
         val modelTurn = serverContent["modelTurn"]?.jsonObject
-        val turnComplete = serverContent["turnComplete"]?.jsonPrimitive?.contentOrNull == "true"
+        val turnComplete = serverContent["turnComplete"]?.jsonPrimitive?.booleanOrNull == true
         // 🟢 Читаем флаг перебивания от сервера
-        val interrupted = serverContent["interrupted"]?.jsonPrimitive?.contentOrNull == "true"
+        val interrupted = serverContent["interrupted"]?.jsonPrimitive?.booleanOrNull == true
 
         val outputTranscript = serverContent["outputTranscription"]?.jsonObject?.get("text")?.jsonPrimitive?.contentOrNull
         val inputTranscript = serverContent["inputTranscription"]?.jsonObject?.get("text")?.jsonPrimitive?.contentOrNull
