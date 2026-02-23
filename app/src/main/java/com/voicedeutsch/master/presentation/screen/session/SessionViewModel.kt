@@ -1,11 +1,14 @@
 package com.voicedeutsch.master.presentation.screen.session
 
+import android.content.Context
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.voicedeutsch.master.data.local.datastore.UserPreferencesDataStore
 import com.voicedeutsch.master.domain.repository.UserRepository
 import com.voicedeutsch.master.voicecore.engine.GeminiConfig
 import com.voicedeutsch.master.voicecore.engine.VoiceCoreEngine
+import com.voicedeutsch.master.voicecore.service.VoiceSessionService
 import com.voicedeutsch.master.voicecore.session.VoiceSessionState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -15,9 +18,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
@@ -28,11 +30,19 @@ import kotlin.coroutines.cancellation.CancellationException
  * Production Standard 2026:
  * API ключ не хранится на устройстве.
  * EphemeralTokenService вызывается внутри VoiceCoreEngineImpl.startSession().
+ *
+ * ✅ FIX 1: Убран runBlocking из onCleared().
+ * runBlocking блокировал Main Thread на 5.5 сек → ANR (Android убивает через 5 сек).
+ * Заменён на fire-and-forget корутину с NonCancellable + таймаутом.
+ *
+ * ✅ FIX 2: VoiceSessionService теперь стартует при начале сессии и останавливается при конце.
+ * Без foreground service Android убивает микрофон когда приложение уходит в фон.
  */
 class SessionViewModel(
     private val voiceCoreEngine: VoiceCoreEngine,
     private val userRepository: UserRepository,
     private val preferencesDataStore: UserPreferencesDataStore,
+    private val context: Context,
 ) : ViewModel() {
 
     val voiceState: StateFlow<VoiceSessionState> = voiceCoreEngine.sessionState
@@ -64,9 +74,15 @@ class SessionViewModel(
                 val userId = userRepository.getActiveUserId()
                     ?: error("No active user found. Please complete onboarding.")
 
-                // VoiceCoreEngineImpl сам запросит эфемерный токен внутри startSession()
                 voiceCoreEngine.initialize(GeminiConfig())
                 voiceCoreEngine.startSession(userId)
+
+                // ✅ FIX 2: Стартуем foreground service — удерживает микрофон в фоне.
+                // Без него Android 14+ убивает AudioRecord когда экран гаснет.
+                ContextCompat.startForegroundService(
+                    context,
+                    VoiceSessionService.startIntent(context),
+                )
 
                 _uiState.update {
                     it.copy(isLoading = false, isSessionActive = true, showHint = false)
@@ -89,6 +105,9 @@ class SessionViewModel(
             val result = runCatching {
                 voiceCoreEngine.endSession()
             }.getOrNull()
+
+            // ✅ FIX 2: Останавливаем foreground service вместе с сессией.
+            context.startService(VoiceSessionService.stopIntent(context))
 
             _uiState.update {
                 it.copy(
@@ -136,15 +155,21 @@ class SessionViewModel(
 
     override fun onCleared() {
         super.onCleared()
-        val cleanupJob = CoroutineScope(Dispatchers.IO + NonCancellable).launch {
+
+        // ✅ FIX 1: Убран runBlocking → был ANR (блокировал Main Thread на 5.5 сек).
+        // Теперь: fire-and-forget корутина на Dispatchers.IO.
+        // NonCancellable гарантирует что cleanup выполнится даже после cancel ViewModel.
+        // Timeout 5 сек — защита от зависания endSession().
+        CoroutineScope(Dispatchers.IO + NonCancellable).launch {
             runCatching {
                 withTimeout(5_000L) { voiceCoreEngine.endSession() }
             }.onFailure { e ->
                 android.util.Log.e("SessionViewModel", "cleanup endSession failed", e)
             }
-        }
-        runBlocking {
-            withTimeoutOrNull(5_500L) { cleanupJob.join() }
+            // Сервис останавливаем в любом случае — даже если endSession упал
+            runCatching {
+                context.startService(VoiceSessionService.stopIntent(context))
+            }
         }
     }
 }
