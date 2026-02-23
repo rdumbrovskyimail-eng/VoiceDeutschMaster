@@ -220,6 +220,15 @@ class AudioPipeline(
         player.resume()
     }
 
+    /**
+     * Прерывает текущее воспроизведение голоса ИИ.
+     * Вызывается из VoiceCoreEngineImpl при получении флага "interrupted: true".
+     */
+    fun flushPlayback() {
+        android.util.Log.d("AudioPipeline", "Экстренный сброс воспроизведения (Interruption)")
+        player.flush()
+    }
+
     /** Clears the playback queue and stops the speaker immediately. */
     fun stopPlayback() {
         pipelineScope.launch {
