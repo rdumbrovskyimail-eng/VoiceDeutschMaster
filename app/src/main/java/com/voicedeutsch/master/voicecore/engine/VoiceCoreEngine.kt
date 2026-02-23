@@ -74,5 +74,5 @@ interface VoiceCoreEngine {
      * continue the generation stream. Called by [FunctionRouter] internally,
      * but exposed here to allow manual result injection in tests.
      */
-    suspend fun submitFunctionResult(callId: String, resultJson: String)
+    suspend fun submitFunctionResult(callId: String, name: String, resultJson: String)
 }
