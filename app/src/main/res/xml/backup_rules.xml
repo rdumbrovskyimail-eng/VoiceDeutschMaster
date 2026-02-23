@@ -3,4 +3,9 @@
     <!-- Не бэкапим зашифрованные преференсы — ключи Android Keystore
          не переносятся между устройствами, данные станут нечитаемыми -->
     <exclude domain="sharedpref" path="voice_deutsch_secure_prefs.xml" />
+
+    <!-- Не бэкапим локальные бекапы — они дублируются в Firebase Storage
+         через BackupManager/BackupWorker. Android Auto Backup для них
+         избыточен и увеличивает размер облачного бекапа Google. -->
+    <exclude domain="file" path="backups/" />
 </full-backup-content>
