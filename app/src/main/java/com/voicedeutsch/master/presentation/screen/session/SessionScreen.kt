@@ -31,7 +31,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Settings
@@ -690,7 +690,7 @@ private fun TextInputField(
                 },
                 enabled = text.isNotBlank(),
             ) {
-                Icon(Icons.Filled.Send, contentDescription = "Отправить")
+                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Отправить")
             }
         },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
