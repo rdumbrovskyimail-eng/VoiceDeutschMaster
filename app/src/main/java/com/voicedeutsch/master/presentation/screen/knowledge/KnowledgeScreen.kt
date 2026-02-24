@@ -91,7 +91,7 @@ fun KnowledgeScreen(
 
             // ── Tab row ───────────────────────────────────────────────────────
             val tabs = KnowledgeTab.entries
-            ScrollableTabRow(
+            PrimaryScrollableTabRow(
                 selectedTabIndex = state.selectedTab.ordinal,
                 containerColor   = Color.Transparent,
                 edgePadding      = 16.dp,
