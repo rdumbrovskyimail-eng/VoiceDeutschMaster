@@ -9,9 +9,12 @@ import com.google.firebase.ai.type.AudioTranscriptionConfig
 import com.google.firebase.ai.type.FunctionCallPart
 import com.google.firebase.ai.type.FunctionDeclaration
 import com.google.firebase.ai.type.FunctionResponsePart
-import com.google.firebase.ai.type.LiveContentResponse
 import com.google.firebase.ai.type.LiveGenerativeModel
+import com.google.firebase.ai.type.LiveServerContent
+import com.google.firebase.ai.type.LiveServerMessage
+import com.google.firebase.ai.type.LiveServerToolCall
 import com.google.firebase.ai.type.LiveSession
+import com.google.firebase.ai.type.PublicPreviewAPI
 import com.google.firebase.ai.type.ResponseModality
 import com.google.firebase.ai.type.Schema
 import com.google.firebase.ai.type.SpeechConfig
@@ -29,7 +32,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -43,58 +45,23 @@ import kotlinx.serialization.json.buildJsonObject
  * МИГРАЦИЯ: Ktor WebSocket → firebase-ai LiveSession
  * ════════════════════════════════════════════════════════════════════════════
  *
- * БЫЛО (кастомный WebSocket):
- *   wss://generativelanguage.googleapis.com/ws/...BidiGenerateContent?key=<ephemeral_token>
- *   - Ручной парсинг JSON фреймов (BidiGenerateContentSetup, serverContent, toolCall…)
- *   - Ручной Base64 encode/decode аудио
- *   - Ручное управление setupComplete deferred
- *   - EphemeralTokenService для получения ключа
- *   - Ktor HttpClient + WebSocketSession
- *
- * СТАЛО (firebase-ai SDK):
- *   Firebase.ai(backend = GenerativeBackend.googleAI()).liveModel(...)
- *   - SDK управляет WebSocket соединением, хэндшейком, переподключением
- *   - SDK управляет App Check токенами (прозрачно, без EphemeralTokenService)
- *   - SDK парсит все типы серверных сообщений
- *   - SDK управляет аудио-буферизацией и форматом PCM
- *   - startAudioConversation() — встроенная петля запись→отправка→приём→воспроизведение
- *   - receive() Flow — ручное управление аудио-данными, если нужен полный контроль
- *
- * ════════════════════════════════════════════════════════════════════════════
- * МОДЕЛЬ (актуально на февраль 2026):
- * ════════════════════════════════════════════════════════════════════════════
- *
- *   gemini-2.5-flash-native-audio-preview-12-2025
- *   ├── Native Audio: голос генерируется напрямую, без TTS постобработки
- *   ├── Thinking Levels: поддержка budgetTokens для reasoning
- *   ├── Input/Output transcription: встроенные субтитры
- *   ├── Voice activity detection: автоматическое определение конца фразы
- *   └── Function calling: синхронный в рамках LiveSession
- *
- * ════════════════════════════════════════════════════════════════════════════
  * АУДИО ФОРМАТ:
- * ════════════════════════════════════════════════════════════════════════════
- *
  *   Вход:  PCM 16-bit, 16 kHz, mono  → sendRealtimeInput(audioData, mimeType)
- *   Выход: PCM 16-bit, 24 kHz, mono  ← LiveContentResponse.data (ByteArray)
+ *   Выход: PCM 16-bit, 24 kHz, mono  ← LiveServerContent.modelTurn.parts
  *
  * ════════════════════════════════════════════════════════════════════════════
- * THREAD SAFETY:
+ * BREAKING CHANGE (firebase-ai SDK, апрель 2025):
  * ════════════════════════════════════════════════════════════════════════════
  *
- *   connect() / disconnect()   — последовательно, под lifecycleMutex в Engine
- *   sendAudioChunk()           — thread-safe, suspend
- *   sendText()                 — thread-safe, suspend
- *   receiveFlow()              — cold Flow, один подписчик за раз
- *   functionCallHandler        — вызывается из SDK потока, должен быть быстрым
+ *   LiveContentResponse УДАЛЁН → заменён на LiveServerMessage с subclasses:
+ *   - LiveServerMessage с payload: LiveServerContent (аудио/текст/turnComplete)
+ *   - LiveServerMessage с payload: LiveServerToolCall (function calls)
+ *   - LiveServerMessage с payload: LiveServerToolCallCancellation
  *
  * @param config  конфигурация модели (model name, voice, sample rates и т.д.)
  * @param json    экземпляр Json для сериализации function declarations из FunctionRouter
  */
-// ✅ ИСПРАВЛЕНО: PublicPreviewAPI — правильная аннотация для firebase-ai Live API.
-// InternalFirebaseAiAPI не существует в SDK — это был неверный пакет.
-// Также добавлен в freeCompilerArgs в build.gradle.kts для глобального opt-in.
-@OptIn(com.google.firebase.ai.type.PublicPreviewAPI::class)
+@OptIn(PublicPreviewAPI::class)
 class GeminiClient(
     private val config: GeminiConfig,
     private val json: Json,
@@ -116,27 +83,12 @@ class GeminiClient(
     @Volatile private var liveSession: LiveSession? = null
     private var audioConversationJob: Job? = null
 
-    // Канал для передачи GeminiResponse в VoiceCoreEngineImpl.
-    // Заполняется либо через receiveFlow() (ручной режим),
-    // либо через transcriptHandler из startAudioConversation() (автоматический режим).
     private val responseChannel = Channel<GeminiResponse>(Channel.UNLIMITED)
 
     // ── Инициализация модели ──────────────────────────────────────────────────
 
-    /**
-     * Создаёт LiveGenerativeModel из firebase-ai SDK.
-     *
-     * Вызывается при каждом connect() — позволяет передавать актуальный
-     * SessionContext (systemInstruction + functionDeclarations) без пересоздания
-     * всего DI-графа.
-     *
-     * systemInstruction = context.fullContext:
-     *   MasterPrompt + userContext + bookContext + strategyPrompt
-     *   (объединён и оптимизирован в ContextBuilder)
-     */
     private fun buildLiveModel(context: ContextBuilder.SessionContext): LiveGenerativeModel {
 
-        // Function declarations: парсим из JSON-строк FunctionRouter → SDK-тип
         val functionDeclarations: List<FunctionDeclaration> = context.functionDeclarations
             .mapNotNull { declarationJson ->
                 runCatching { parseFunctionDeclaration(declarationJson) }
@@ -152,6 +104,7 @@ class GeminiClient(
             text(context.fullContext)
         }
 
+        // ✅ GenerativeBackend — из com.google.firebase.ai (не .type)
         return Firebase.ai(backend = GenerativeBackend.googleAI()).liveModel(
             modelName = config.modelName.ifBlank { DEFAULT_MODEL },
             generationConfig = liveGenerationConfig {
@@ -161,9 +114,6 @@ class GeminiClient(
                     voice = Voice(config.voiceName)
                 )
 
-                // ✅ Встроенные транскрипции — не нужно парсить serverContent вручную.
-                // input: что сказал пользователь (STT)
-                // output: что ответил Gemini (TTS → text)
                 inputAudioTranscription  = AudioTranscriptionConfig()
                 outputAudioTranscription = AudioTranscriptionConfig()
             },
@@ -174,22 +124,6 @@ class GeminiClient(
 
     // ── Public API ────────────────────────────────────────────────────────────
 
-    /**
-     * Устанавливает соединение с Gemini Live API через firebase-ai SDK.
-     *
-     * После connect() можно выбрать один из двух режимов работы:
-     *
-     *   A) [startManagedAudioConversation] — SDK сам захватывает микрофон,
-     *      отправляет аудио и воспроизводит ответ. Функции обрабатываются через
-     *      functionCallHandler. Подходит для простых сценариев.
-     *
-     *   B) [sendAudioChunk] + [receiveFlow] — ручное управление аудио-потоком.
-     *      AudioPipeline сам управляет записью/воспроизведением через AudioRecorder
-     *      и AudioPlayer. Функции обрабатываются в VoiceCoreEngineImpl.
-     *      Используется в текущей архитектуре проекта.
-     *
-     * VoiceDeutschMaster использует режим B — полный контроль над аудио-пайплайном.
-     */
     suspend fun connect(context: ContextBuilder.SessionContext) {
         try {
             Log.d(TAG, "Connecting to Gemini Live API [model=${config.modelName}]")
@@ -202,10 +136,6 @@ class GeminiClient(
         }
     }
 
-    /**
-     * Закрывает LiveSession и освобождает ресурсы.
-     * SDK автоматически закрывает WebSocket соединение.
-     */
     suspend fun disconnect() {
         try {
             audioConversationJob?.cancel()
@@ -221,11 +151,7 @@ class GeminiClient(
 
     /**
      * Отправляет chunk PCM-аудио в Gemini Live API.
-     *
-     * Формат: PCM 16-bit signed, 16 kHz, mono (совпадает с AudioRecorder.kt)
-     * SDK сам кодирует в Base64 и формирует realtimeInput сообщение.
-     *
-     * Вызывается из AudioPipeline при каждом заполнении аудио-буфера.
+     * Формат: PCM 16-bit signed, 16 kHz, mono
      */
     suspend fun sendAudioChunk(pcmBytes: ByteArray) {
         val session = liveSession ?: run {
@@ -241,11 +167,6 @@ class GeminiClient(
 
     /**
      * Отправляет текстовое сообщение в Gemini Live API.
-     *
-     * Используется для:
-     *   - Передачи команд смены стратегии из VoiceCoreEngine
-     *   - Текстового ввода в гибридных сценариях (текст + голос)
-     *   - Инициализации нового упражнения без аудио-ввода
      */
     suspend fun sendText(text: String, turnComplete: Boolean = true) {
         val session = liveSession ?: run {
@@ -260,32 +181,48 @@ class GeminiClient(
     }
 
     /**
+     * Отправляет результат выполнения функции обратно в Gemini.
+     *
+     * ✅ ИСПРАВЛЕНО: session.sendFunctionResponse(List<FunctionResponsePart>)
+     * Создаём FunctionResponsePart из id + name + resultJson.
+     */
+    suspend fun sendFunctionResult(callId: String, name: String, resultJson: String) {
+        val session = liveSession ?: run {
+            Log.w(TAG, "sendFunctionResult: no active session")
+            return
+        }
+        runCatching {
+            val responseJson = try {
+                json.parseToJsonElement(resultJson) as? JsonObject
+                    ?: buildJsonObject { put("result", JsonPrimitive(resultJson)) }
+            } catch (e: Exception) {
+                buildJsonObject { put("result", JsonPrimitive(resultJson)) }
+            }
+
+            val functionResponse = FunctionResponsePart(
+                name     = name,
+                response = responseJson,
+                id       = callId,
+            )
+            session.sendFunctionResponse(listOf(functionResponse))
+        }.onFailure { e ->
+            Log.e(TAG, "sendFunctionResult error: ${e.message}", e)
+        }
+    }
+
+    /**
      * Cold Flow входящих ответов от Gemini.
      *
-     * Собирает LiveContentResponse из session.receive() и маппит в GeminiResponse.
-     * Flow завершается когда сессия закрывается или вызывается disconnect().
-     *
-     * Используется в VoiceCoreEngineImpl для обработки аудио и транскрипций
-     * в рамках существующего пайплайна.
-     *
-     * Пример сбора в Engine:
-     * ```kotlin
-     * geminiClient.receiveFlow().collect { response ->
-     *     when {
-     *         response.hasAudio()        -> audioPlayer.enqueue(response.audioData!!)
-     *         response.hasFunctionCall() -> functionRouter.handle(response.functionCall!!)
-     *         response.isTurnComplete    -> onTurnComplete()
-     *     }
-     * }
-     * ```
+     * ✅ ИСПРАВЛЕНО: session.receive() теперь возвращает Flow<LiveServerMessage>
+     * (не Flow<LiveContentResponse>). Маппим через mapLiveServerMessage().
      */
     fun receiveFlow(): Flow<GeminiResponse> = flow {
         val session = liveSession
             ?: throw GeminiConnectionException("receiveFlow: no active session")
 
         try {
-            session.receive().collect { liveResponse ->
-                mapLiveResponse(liveResponse)?.let { emit(it) }
+            session.receive().collect { serverMessage ->
+                mapLiveServerMessage(serverMessage)?.let { emit(it) }
             }
         } catch (e: Exception) {
             Log.e(TAG, "receiveFlow error: ${e.message}", e)
@@ -295,17 +232,7 @@ class GeminiClient(
 
     /**
      * Режим A: SDK управляет захватом микрофона и воспроизведением аудио.
-     *
-     * Используется если нужен минимальный код без ручного AudioPipeline.
-     * В текущей архитектуре VoiceDeutschMaster НЕ используется — проект
-     * использует режим B (sendAudioChunk + receiveFlow) для полного контроля.
-     *
-     * functionCallHandler: (FunctionCallPart) → FunctionResponsePart
-     *   Вызывается из SDK потока синхронно — должен быть быстрым.
-     *   Для тяжёлых операций используйте runBlocking { } или Channel.
-     *
-     * transcriptHandler: (input: Transcription?, output: Transcription?) → Unit
-     *   Вызывается при получении транскрипций (input STT + output TTS→text).
+     * В текущей архитектуре НЕ используется — проект использует режим B.
      */
     @RequiresPermission(android.Manifest.permission.RECORD_AUDIO)
     fun startManagedAudioConversation(
@@ -328,10 +255,6 @@ class GeminiClient(
         }
     }
 
-    /**
-     * Останавливает управляемую аудио-сессию (Режим A).
-     * После остановки можно возобновить через startManagedAudioConversation().
-     */
     fun stopManagedAudioConversation() {
         runCatching { liveSession?.stopAudioConversation() }
             .onFailure { Log.w(TAG, "stopAudioConversation warning: ${it.message}") }
@@ -339,7 +262,6 @@ class GeminiClient(
         audioConversationJob = null
     }
 
-    /** Освобождает CoroutineScope. Вызывается из VoiceCoreEngine.release(). */
     fun release() {
         clientScope.cancel()
         responseChannel.close()
@@ -348,87 +270,125 @@ class GeminiClient(
     // ── Маппинг ответов ───────────────────────────────────────────────────────
 
     /**
-     * Маппит LiveContentResponse → GeminiResponse.
+     * Маппит LiveServerMessage → GeminiResponse.
      *
-     * LiveContentResponse содержит:
-     *   .data               — ByteArray PCM аудио (24 kHz, 16-bit, mono)
-     *   .text               — текстовый контент (если responseModality = TEXT)
-     *   .functionCalls      — список FunctionCallPart (function calling)
-     *   .inputTranscription — Transcription? (что сказал пользователь)
-     *   .outputTranscription — Transcription? (что ответил Gemini текстом)
-     *   .isTurnComplete     — флаг завершения хода
-     *   .isInterrupted      — пользователь перебил модель
+     * ✅ ИСПРАВЛЕНО: LiveContentResponse УДАЛЁН из SDK.
+     * Новый API — LiveServerMessage с payload:
+     *
+     *   message.serverContent → LiveServerContent (аудио/текст/isTurnComplete/isInterrupted)
+     *   message.toolCall      → LiveServerToolCall (function calls)
+     *
+     * Доступ к аудио: serverContent.modelTurn?.parts → InlineDataPart (mimeType=audio/pcm)
+     * Доступ к тексту: serverContent.modelTurn?.parts → TextPart
+     * Транскрипции: serverContent.inputTranscription / outputTranscription
      */
-    private fun mapLiveResponse(response: LiveContentResponse): GeminiResponse? {
-        val audioData     = response.data?.takeIf { it.isNotEmpty() }
-        val functionCalls = response.functionCalls
-
-        // Транскрипция: выход приоритетнее входа для отображения в UI
-        val transcript = response.outputTranscription?.text
-            ?: response.inputTranscription?.text
-            ?: response.text
-
-        // Если ответ полностью пустой — не эмитируем
-        if (audioData == null && functionCalls.isEmpty() &&
-            transcript.isNullOrEmpty() && !response.isTurnComplete && !response.isInterrupted) {
-            return null
-        }
-
-        // Function calls: маппим первый (обычно один за раз в Live API)
-        val functionCall = functionCalls.firstOrNull()?.let { call ->
-            GeminiFunctionCall(
-                id      = call.id ?: call.name, // Live API может не возвращать id
-                name    = call.name,
+    @OptIn(PublicPreviewAPI::class)
+    private fun mapLiveServerMessage(message: LiveServerMessage): GeminiResponse? {
+        // Проверяем toolCall (function calling)
+        val toolCall = message.toolCall
+        if (toolCall != null && toolCall.functionCalls.isNotEmpty()) {
+            val call = toolCall.functionCalls.first()
+            val functionCall = GeminiFunctionCall(
+                id       = call.id ?: call.name,
+                name     = call.name,
                 argsJson = json.encodeToString(
                     JsonObject.serializer(),
                     call.args?.let { JsonObject(it) } ?: buildJsonObject {}
                 ),
             )
+            return GeminiResponse(
+                audioData      = null,
+                transcript     = null,
+                functionCall   = functionCall,
+                isTurnComplete = false,
+                isInterrupted  = false,
+            )
+        }
+
+        // Проверяем serverContent (аудио, текст, транскрипции, turnComplete, interrupted)
+        val serverContent = message.serverContent ?: return null
+
+        val isTurnComplete = serverContent.turnComplete
+        val isInterrupted  = serverContent.interrupted
+
+        // Собираем аудио из modelTurn.parts (InlineDataPart с mimeType audio/pcm)
+        val audioData: ByteArray? = serverContent.modelTurn?.parts
+            ?.filterIsInstance<com.google.firebase.ai.type.InlineDataPart>()
+            ?.firstOrNull { it.mimeType.startsWith("audio/pcm") }
+            ?.data
+            ?.takeIf { it.isNotEmpty() }
+
+        // Текстовый контент из modelTurn.parts (TextPart)
+        val textContent: String? = serverContent.modelTurn?.parts
+            ?.filterIsInstance<com.google.firebase.ai.type.TextPart>()
+            ?.joinToString("") { it.text }
+            ?.takeIf { it.isNotEmpty() }
+
+        // Транскрипции
+        val inputTranscript  = serverContent.inputTranscription?.text
+        val outputTranscript = serverContent.outputTranscription?.text
+
+        val transcript = outputTranscript ?: inputTranscript ?: textContent
+
+        // Если ответ полностью пустой — не эмитируем
+        if (audioData == null && transcript.isNullOrEmpty() &&
+            !isTurnComplete && !isInterrupted) {
+            return null
         }
 
         return GeminiResponse(
-            audioData      = audioData,
-            transcript     = transcript,
-            functionCall   = functionCall,
-            isTurnComplete = response.isTurnComplete,
-            isInterrupted  = response.isInterrupted,
-            inputTranscript  = response.inputTranscription?.text,
-            outputTranscript = response.outputTranscription?.text,
+            audioData        = audioData,
+            transcript       = transcript,
+            functionCall     = null,
+            isTurnComplete   = isTurnComplete,
+            isInterrupted    = isInterrupted,
+            inputTranscript  = inputTranscript,
+            outputTranscript = outputTranscript,
         )
     }
 
     /**
      * Парсит JSON-строку объявления функции из FunctionRouter в FunctionDeclaration SDK.
      *
-     * FunctionRouter хранит declarations в виде JSON:
-     * {
-     *   "name": "setStrategy",
-     *   "description": "Меняет стратегию обучения",
-     *   "parameters": { "type": "object", "properties": { ... } }
-     * }
-     *
-     * Firebase AI SDK ожидает FunctionDeclaration(name, description, parameters: Schema?)
+     * ✅ ИСПРАВЛЕНО: FunctionDeclaration(name, description, parameters: Map<String, Schema>)
+     * Старый API принимал Schema? напрямую — новый принимает Map<String, Schema> для properties.
      */
     private fun parseFunctionDeclaration(declarationJson: String): FunctionDeclaration {
         val obj = json.parseToJsonElement(declarationJson) as JsonObject
 
         val name        = (obj["name"]        as? JsonPrimitive)?.content ?: error("Missing 'name'")
         val description = (obj["description"] as? JsonPrimitive)?.content ?: ""
-        val parameters  = obj["parameters"]?.let { parseSchema(it as JsonObject) }
+        val parametersObj = obj["parameters"] as? JsonObject
 
-        return FunctionDeclaration(
-            name        = name,
-            description = description,
-            parameters  = parameters,
-        )
+        return if (parametersObj == null) {
+            FunctionDeclaration(
+                name        = name,
+                description = description,
+            )
+        } else {
+            val propertiesJson = parametersObj["properties"] as? JsonObject ?: JsonObject(emptyMap())
+            val required = (parametersObj["required"] as? kotlinx.serialization.json.JsonArray)
+                ?.mapNotNull { (it as? JsonPrimitive)?.content }
+                ?: emptyList()
+
+            val properties: Map<String, Schema> = propertiesJson.mapValues { (_, v) ->
+                parseSchema(v as JsonObject)
+            }
+
+            FunctionDeclaration(
+                name        = name,
+                description = description,
+                parameters  = properties,
+                optionalParameters = properties.keys.filter { it !in required }.toList(),
+            )
+        }
     }
 
     /**
      * Парсит JSON Schema объект в Schema SDK.
-     * Поддерживает type=object с properties (достаточно для всех функций FunctionRouter).
      */
     private fun parseSchema(schemaJson: JsonObject): Schema {
-        val type = (schemaJson["type"] as? JsonPrimitive)?.content?.uppercase() ?: "OBJECT"
+        val type = (schemaJson["type"] as? JsonPrimitive)?.content?.uppercase() ?: "STRING"
         val description = (schemaJson["description"] as? JsonPrimitive)?.content
 
         return when (type) {
@@ -443,9 +403,9 @@ class GeminiClient(
                 }
 
                 Schema.obj(
-                    properties  = properties,
+                    properties         = properties,
                     optionalProperties = properties.keys.filter { it !in required }.toList(),
-                    description = description,
+                    description        = description,
                 )
             }
             "STRING"  -> Schema.string(description = description)
@@ -464,20 +424,6 @@ class GeminiClient(
 
 // ── Response models ───────────────────────────────────────────────────────────
 
-/**
- * Результат одного ответного события от Gemini Live API.
- *
- * Одно событие может содержать только один тип payload:
- *   - audioData: chunk PCM 24kHz аудио для воспроизведения
- *   - functionCall: запрос на вызов функции из FunctionRouter
- *   - transcript: текстовая транскрипция (input STT или output TTS→text)
- *   - isTurnComplete: модель завершила свой ход
- *   - isInterrupted: пользователь перебил модель
- *
- * Отдельно хранятся inputTranscript и outputTranscript для UI:
- *   inputTranscript  → что сказал пользователь (жёлтый subtitle)
- *   outputTranscript → что ответил Gemini (белый subtitle)
- */
 data class GeminiResponse(
     val audioData: ByteArray?,
     val transcript: String?,
@@ -494,10 +440,10 @@ data class GeminiResponse(
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is GeminiResponse) return false
-        return transcript     == other.transcript &&
-               functionCall   == other.functionCall &&
-               isTurnComplete == other.isTurnComplete &&
-               isInterrupted  == other.isInterrupted &&
+        return transcript       == other.transcript &&
+               functionCall     == other.functionCall &&
+               isTurnComplete   == other.isTurnComplete &&
+               isInterrupted    == other.isInterrupted &&
                inputTranscript  == other.inputTranscript &&
                outputTranscript == other.outputTranscript &&
                (audioData?.contentEquals(other.audioData) == true ||
@@ -513,21 +459,12 @@ data class GeminiResponse(
     }
 }
 
-/**
- * Описание вызова функции от Gemini.
- *
- * id: уникальный идентификатор вызова (используется в FunctionResponsePart).
- *     В Live API может отсутствовать — тогда используем name как fallback.
- * name: имя функции из FunctionRegistry (напр. "setStrategy", "markWordKnown")
- * argsJson: аргументы в виде JSON-строки для FunctionRouter.dispatch()
- */
 data class GeminiFunctionCall(
     val id: String,
     val name: String,
     val argsJson: String,
 )
 
-/** Исключение при проблемах с соединением к Gemini Live API. */
 class GeminiConnectionException(
     message: String,
     cause: Throwable? = null,
