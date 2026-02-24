@@ -91,7 +91,8 @@ import kotlinx.serialization.json.buildJsonObject
  * @param config  конфигурация модели (model name, voice, sample rates и т.д.)
  * @param json    экземпляр Json для сериализации function declarations из FunctionRouter
  */
-@OptIn(com.google.firebase.vertexai.type.internal.InternalFirebaseVertexAiAPI::class)
+// ✅ ИСПРАВЛЕНО: правильный пакет firebase-ai (был vertexai — старый пакет)
+@OptIn(com.google.firebase.ai.type.internal.InternalFirebaseAiAPI::class)
 class GeminiClient(
     private val config: GeminiConfig,
     private val json: Json,
