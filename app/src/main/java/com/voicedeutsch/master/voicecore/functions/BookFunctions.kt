@@ -1,6 +1,7 @@
 package com.voicedeutsch.master.voicecore.functions
 
-import com.voicedeutsch.master.data.remote.gemini.GeminiFunctionDeclaration
+// ✅ ИСПРАВЛЕНО: удалён неверный импорт из com.voicedeutsch.master.data.remote.gemini.
+// GeminiFunctionDeclaration находится в том же пакете (voicecore.functions).
 
 /**
  * Function declarations for book/lesson operations.
