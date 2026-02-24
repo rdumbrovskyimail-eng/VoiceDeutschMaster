@@ -61,7 +61,12 @@ class AudioPipeline(
 
     // ── Outgoing audio (mic → Gemini) ─────────────────────────────────────────
 
-    private val outgoingChannel = Channel<ByteArray>(capacity = Channel.BUFFERED)
+    // Drop oldest: если сеть тупит, мы выбрасываем старые фреймы микрофона.
+    // ИИ должен слышать только то, что происходит "сейчас".
+    private val outgoingChannel = Channel<ByteArray>(
+        capacity = 10, // ~200 мс буфера
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
 
     /**
      * Flow of raw PCM frames captured from the microphone after VAD filtering.
