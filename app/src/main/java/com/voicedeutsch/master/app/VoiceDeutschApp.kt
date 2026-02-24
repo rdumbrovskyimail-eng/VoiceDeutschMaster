@@ -8,7 +8,6 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.analytics.analytics
 import com.google.firebase.appcheck.FirebaseAppCheck
-import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
 import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.firebase.crashlytics.crashlytics
@@ -128,16 +127,17 @@ class VoiceDeutschApp : Application() {
     private fun initAppCheck() {
         try {
             val providerFactory = if (BuildConfig.DEBUG) {
-                // Debug: UUID-токен генерируется автоматически и выводится в Logcat.
-                // Ищите строку: "DebugAppCheckProvider: Enter this debug secret into the
-                // allow list in the Firebase Console for your project: <UUID>"
-                DebugAppCheckProviderFactory.getInstance()
+                // Используем Reflection, чтобы не ломать сборку assembleRelease
+                try {
+                    val debugClass = Class.forName("com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory")
+                    val getInstanceMethod = debugClass.getMethod("getInstance")
+                    getInstanceMethod.invoke(null) as com.google.firebase.appcheck.AppCheckProviderFactory
+                } catch (e: Exception) {
+                    Log.w(TAG, "DebugAppCheckProviderFactory not found. Fallback to PlayIntegrity.")
+                    PlayIntegrityAppCheckProviderFactory.getInstance()
+                }
             } else {
-                // Release: Play Integrity API — верификация через Google Play.
-                // Требования:
-                //   • APK подписан release-ключом
-                //   • SHA-256 fingerprint добавлен в Firebase Console
-                //   • Google Play Integrity API включён в Google Cloud Console
+                // Release: Play Integrity API
                 PlayIntegrityAppCheckProviderFactory.getInstance()
             }
 
@@ -145,8 +145,6 @@ class VoiceDeutschApp : Application() {
             Log.d(TAG, "✅ App Check initialized [${if (BuildConfig.DEBUG) "DEBUG" else "PLAY_INTEGRITY"}]")
 
         } catch (e: Exception) {
-            // App Check не инициализирован — Firebase-запросы пойдут без токена.
-            // В режиме enforcement это приведёт к отклонению запросов сервером.
             Log.e(TAG, "❌ App Check init failed: ${e.message}", e)
         }
     }
