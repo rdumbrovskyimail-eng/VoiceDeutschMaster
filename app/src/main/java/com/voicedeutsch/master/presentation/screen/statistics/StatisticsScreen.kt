@@ -64,7 +64,7 @@ fun StatisticsScreen(
         Column(Modifier.fillMaxSize().padding(padding)) {
 
             // ── Tab row ───────────────────────────────────────────────────────
-            ScrollableTabRow(
+            PrimaryScrollableTabRow(
                 selectedTabIndex = state.selectedTab.ordinal,
                 containerColor   = Color.Transparent,
                 edgePadding      = 16.dp,
