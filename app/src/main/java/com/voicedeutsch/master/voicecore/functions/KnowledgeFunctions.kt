@@ -1,6 +1,7 @@
 package com.voicedeutsch.master.voicecore.functions
 
-import com.voicedeutsch.master.data.remote.gemini.GeminiFunctionDeclaration
+// ✅ ИСПРАВЛЕНО: удалён неверный импорт из com.voicedeutsch.master.data.remote.gemini.
+// GeminiFunctionDeclaration находится в том же пакете (voicecore.functions).
 
 /**
  * Function declarations for knowledge-base operations.
@@ -13,12 +14,12 @@ object KnowledgeFunctions {
             name = "save_word_knowledge",
             description = "Сохранить оценку знания слова пользователем. Вызывай после каждого взаимодействия со словом.",
             params = mapOf(
-                "word" to ("string" to "Немецкое слово"),
-                "translation" to ("string" to "Перевод на русский"),
-                "level" to ("integer" to "Уровень знания 0-5"),
-                "quality" to ("integer" to "Качество ответа 0-5 (SM-2)"),
+                "word"               to ("string"  to "Немецкое слово"),
+                "translation"        to ("string"  to "Перевод на русский"),
+                "level"              to ("integer" to "Уровень знания 0-5"),
+                "quality"            to ("integer" to "Качество ответа 0-5 (SM-2)"),
                 "pronunciation_score" to ("number" to "Оценка произношения 0.0-1.0"),
-                "context" to ("string" to "Контекст использования"),
+                "context"            to ("string"  to "Контекст использования"),
             ),
             required = listOf("word", "translation", "level", "quality"),
         ),
@@ -26,8 +27,8 @@ object KnowledgeFunctions {
             name = "save_rule_knowledge",
             description = "Сохранить оценку знания грамматического правила.",
             params = mapOf(
-                "rule_id" to ("string" to "ID правила"),
-                "level" to ("integer" to "Уровень знания 0-5"),
+                "rule_id" to ("string"  to "ID правила"),
+                "level"   to ("integer" to "Уровень знания 0-5"),
                 "quality" to ("integer" to "Качество ответа 0-5 (SM-2)"),
             ),
             required = listOf("rule_id", "quality"),
@@ -37,10 +38,10 @@ object KnowledgeFunctions {
             description = "Зафиксировать ошибку пользователя для анализа слабых мест.",
             params = mapOf(
                 "mistake_type" to ("string" to "Тип: grammar, vocabulary, pronunciation, phrase"),
-                "user_input" to ("string" to "Что сказал/написал пользователь"),
+                "user_input"   to ("string" to "Что сказал/написал пользователь"),
                 "correct_form" to ("string" to "Правильный вариант"),
-                "explanation" to ("string" to "Объяснение ошибки"),
-                "context" to ("string" to "Контекст"),
+                "explanation"  to ("string" to "Объяснение ошибки"),
+                "context"      to ("string" to "Контекст"),
             ),
             required = listOf("mistake_type", "user_input", "correct_form"),
         ),
