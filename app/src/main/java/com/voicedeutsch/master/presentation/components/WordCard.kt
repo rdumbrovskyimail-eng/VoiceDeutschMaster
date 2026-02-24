@@ -4,7 +4,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.VolumeUp
+import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -89,7 +89,7 @@ fun WordCard(
                 onPlayAudio?.let {
                     IconButton(onClick = it, modifier = Modifier.size(32.dp)) {
                         Icon(
-                            Icons.Outlined.VolumeUp,
+                            Icons.AutoMirrored.Outlined.VolumeUp,
                             contentDescription = "Произношение",
                             tint     = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp),
