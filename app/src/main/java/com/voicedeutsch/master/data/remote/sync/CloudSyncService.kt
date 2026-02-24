@@ -203,8 +203,7 @@ class CloudSyncService(
                 .await()
 
             snapshot.documents.mapNotNull { doc ->
-                @Suppress("UNCHECKED_CAST")
-                doc.data as? Map<String, Any>
+                doc.data
             }.also {
                 Log.d(TAG, "✅ pullKnowledgeProgress: ${it.size} items pulled")
             }
@@ -239,8 +238,7 @@ class CloudSyncService(
                 .await()
 
             snapshot.documents.mapNotNull { doc ->
-                @Suppress("UNCHECKED_CAST")
-                doc.data as? Map<String, Any>
+                doc.data
             }.also {
                 Log.d(TAG, "✅ pullStatistics: ${it.size} days pulled")
             }
@@ -292,8 +290,7 @@ class CloudSyncService(
                 }
 
                 val items = snapshot?.documents?.mapNotNull { doc ->
-                    @Suppress("UNCHECKED_CAST")
-                    doc.data as? Map<String, Any>
+                    doc.data
                 } ?: emptyList()
 
                 trySend(items)
@@ -328,8 +325,7 @@ class CloudSyncService(
                     return@addSnapshotListener
                 }
 
-                @Suppress("UNCHECKED_CAST")
-                trySend(snapshot?.data as? Map<String, Any>)
+                trySend(snapshot?.data)
             }
 
         awaitClose { registration.remove() }
