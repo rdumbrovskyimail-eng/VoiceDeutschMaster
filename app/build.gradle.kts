@@ -1,12 +1,7 @@
-
 import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
-    // ✅ AGP 9.0: kotlin-android УБРАН — встроенная Kotlin-поддержка AGP.
-    // Применять kotlin-android здесь НЕЛЬЗЯ — вызовет конфликт с built-in Kotlin.
-    // Если нужно временно откатиться: добавьте android.builtInKotlin=false
-    // в gradle.properties (сломается в AGP 10.0, mid-2026).
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
@@ -44,19 +39,12 @@ android {
                 keyAlias = props["KEY_ALIAS"] as String
                 keyPassword = props["KEY_PASSWORD"] as String
             }
-            // ⚠️ App Check (PlayIntegrity) требует, чтобы SHA-256 fingerprint
-            // release-ключа был добавлен в Firebase Console → Project Settings →
-            // Your apps → SHA certificate fingerprints.
         }
     }
 
     buildTypes {
         debug {
             isMinifyEnabled = false
-            // App Check: DebugAppCheckProviderFactory активируется в Application классе
-            // при BuildConfig.DEBUG == true. Debug-токен генерируется автоматически
-            // и логируется в Logcat: DebugAppCheckProvider: Enter this debug secret...
-            // Добавьте этот токен в Firebase Console → App Check → Apps → Debug tokens.
             buildConfigField("Boolean", "DEBUG_MODE", "true")
         }
         release {
@@ -67,8 +55,6 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // App Check: PlayIntegrityAppCheckProviderFactory активируется в
-            // Application классе при BuildConfig.DEBUG == false.
             buildConfigField("Boolean", "DEBUG_MODE", "false")
         }
     }
@@ -79,18 +65,13 @@ android {
     }
 
     kotlin {
-        // ✅ AGP 9.0: kotlinOptions {} блок DEPRECATED.
-        // Используем compilerOptions {} (новый API, стабилен с AGP 8.1+).
         compilerOptions {
             jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
             freeCompilerArgs.addAll(
-                // Coroutines API: нужен для StateFlow.flatMapLatest и др.
                 "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
-                // Serialization: нужен для @ExperimentalSerializationApi аннотаций.
                 "-opt-in=kotlinx.serialization.ExperimentalSerializationApi",
-                // Firebase AI (Live API): нужен для LiveSession, AudioConversation.
-                // Убрать, когда firebase-ai выйдет из Beta.
-                "-opt-in=com.google.firebase.vertexai.type.internal.InternalFirebaseVertexAiAPI",
+                // ✅ ИСПРАВЛЕНО: правильный пакет firebase-ai (не vertexai)
+                "-opt-in=com.google.firebase.ai.type.internal.InternalFirebaseAiAPI",
             )
         }
     }
@@ -108,7 +89,6 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
             excludes += "/META-INF/INDEX.LIST"
-            // Netty-артефакты попадают через Ktor/OkHttp транзитивно.
             excludes += "/META-INF/io.netty.*"
         }
     }
@@ -148,9 +128,6 @@ dependencies {
     implementation(libs.bundles.koin)
 
     // ── Ktor (вспомогательные HTTP-запросы) ──────────────────────────────────
-    // ℹ️ Основная коммуникация с Gemini — через firebase-ai (Live API).
-    // Ktor остаётся для любых других REST-вызовов (не Gemini).
-    // После полной миграции на firebase-ai — пересмотрите необходимость Ktor.
     implementation(libs.bundles.ktor)
     implementation(libs.ktor.client.cio)
 
@@ -161,33 +138,28 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     // ── Security ─────────────────────────────────────────────────────────────
-    // ⚠️ security-crypto 1.1.0-alpha07 — нестабильный релиз. См. libs.versions.toml.
     implementation(libs.security.crypto)
 
     // ── WorkManager ──────────────────────────────────────────────────────────
     implementation(libs.work.runtime.ktx)
 
     // ── Firebase ─────────────────────────────────────────────────────────────
-    // platform() BoM управляет версиями ВСЕХ firebase-* зависимостей ниже.
-    // НЕ указывайте версии для firebase-* явно — только через BoM.
     implementation(platform(libs.firebase.bom))
     implementation(libs.bundles.firebase)
 
-    // App Check: разные провайдеры для debug и release.
-    // PlayIntegrity — требует подписанный APK + SHA-256 в Firebase Console.
-    // Debug — генерирует временный токен, логируемый в Logcat.
-    releaseImplementation(libs.firebase.appcheck.playintegrity)
+    // ✅ ИСПРАВЛЕНО: implementation (не releaseImplementation) —
+    // PlayIntegrityAppCheckProviderFactory должен быть доступен в обоих
+    // buildType, так как импорт в VoiceDeutschApp.kt не условный.
+    // Фактически используется только в release (через if (BuildConfig.DEBUG)),
+    // но класс должен компилироваться в debug.
+    implementation(libs.firebase.appcheck.playintegrity)
     debugImplementation(libs.firebase.appcheck.debug)
 
-    // coroutines-play-services: .await() для Firebase Tasks в suspend-функциях.
-    // Нужен для: auth.signInAnonymously().await(), firestore.get().await() и т.д.
+    // coroutines-play-services: .await() для Firebase Tasks
     implementation(libs.kotlinx.coroutines.play.services)
 
     // ── UI Polish ─────────────────────────────────────────────────────────────
-    // TODO: Перенести в libs.versions.toml при следующей ревизии зависимостей.
-    // core-splashscreen 1.0.1 — последний стабильный (2023), нет 1.1.x stable.
     implementation("androidx.core:core-splashscreen:1.0.1")
-    // ui-text-google-fonts: управляется через Compose BoM — версия не нужна.
     implementation("androidx.compose.ui:ui-text-google-fonts")
 
     // ── Unit Testing ─────────────────────────────────────────────────────────
