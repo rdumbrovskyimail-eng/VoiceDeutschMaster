@@ -1,6 +1,7 @@
 package com.voicedeutsch.master.voicecore.functions
 
-import com.voicedeutsch.master.data.remote.gemini.GeminiFunctionDeclaration
+// ✅ ИСПРАВЛЕНО: удалён неверный импорт из com.voicedeutsch.master.data.remote.gemini.
+// GeminiFunctionDeclaration находится в том же пакете (voicecore.functions).
 
 /**
  * Function declarations for core learning interactions.
@@ -13,9 +14,9 @@ object LearningFunctions {
             name = "save_pronunciation_result",
             description = "Сохранить результат оценки произношения.",
             params = mapOf(
-                "word" to ("string" to "Слово, которое произносил пользователь"),
-                "score" to ("number" to "Общая оценка 0.0-1.0"),
-                "problem_sounds" to ("string" to "JSON-массив проблемных звуков, например [\"ü\",\"ö\"]"),
+                "word"           to ("string"  to "Слово, которое произносил пользователь"),
+                "score"          to ("number"  to "Общая оценка 0.0-1.0"),
+                "problem_sounds" to ("string"  to "JSON-массив проблемных звуков, например [\"ü\",\"ö\"]"),
                 "attempt_number" to ("integer" to "Номер попытки"),
             ),
             required = listOf("word", "score"),
