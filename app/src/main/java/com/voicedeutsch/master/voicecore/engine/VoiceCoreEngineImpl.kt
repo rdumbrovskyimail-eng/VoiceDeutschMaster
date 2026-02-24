@@ -466,49 +466,31 @@ class VoiceCoreEngineImpl(
                 updateState { copy(isProcessing = true) }
                 val call = response.functionCall!!
 
-                // ⚠️ userId null в активной сессии — аномалия.
-                // Отвечаем Gemini ошибкой немедленно, иначе ~15 сек таймаут разорвёт сессию.
                 val userId    = activeUserId
                 val sessionId = activeSessionId
 
-                val result = if (userId == null) {
-                    Log.e(TAG, "hasFunctionCall: activeUserId == null, returning error to Gemini")
-                    FunctionRouter.FunctionCallResult(
-                        functionName = call.name,
-                        success      = false,
-                        resultJson   = """{"error":"no active user session"}""",
-                    )
-                } else {
-                    // Таймаут 12 сек — буфер до ~15-секундного таймаута Gemini Live API.
-                    try {
-                        withTimeout(FUNCTION_CALL_TIMEOUT_MS) {
-                            withContext(Dispatchers.IO) {
-                                functionRouter.route(
-                                    functionName = call.name,
-                                    argsJson     = call.argsJson,
-                                    userId       = userId,
-                                    sessionId    = sessionId,
-                                )
+                // ✅ ИСПРАВЛЕНИЕ: Запускаем выполнение в отдельной корутине.
+                // receiveFlow мгновенно продолжит читать WebSocket-фреймы!
+                engineScope.launch {
+                    val result = if (userId == null) {
+                        Log.e(TAG, "hasFunctionCall: activeUserId == null")
+                        FunctionRouter.FunctionCallResult(call.name, false, """{"error":"no active user session"}""")
+                    } else {
+                        try {
+                            withTimeout(FUNCTION_CALL_TIMEOUT_MS) {
+                                withContext(Dispatchers.IO) {
+                                    functionRouter.route(call.name, call.argsJson, userId, sessionId)
+                                }
                             }
+                        } catch (e: TimeoutCancellationException) {
+                            FunctionRouter.FunctionCallResult(call.name, false, """{"error":"function execution timed out"}""")
                         }
-                    } catch (e: TimeoutCancellationException) {
-                        Log.e(TAG, "Function '${call.name}' timed out after ${FUNCTION_CALL_TIMEOUT_MS}ms")
-                        FunctionRouter.FunctionCallResult(
-                            functionName = call.name,
-                            success      = false,
-                            resultJson   = """{"error":"function execution timed out"}""",
-                        )
                     }
-                }
 
-                // toolResponse уходит к Gemini в любом случае (success или error)
-                applyFunctionSideEffects(call.name, result)
-                geminiClient.sendFunctionResult(
-                    callId    = call.id,
-                    name      = result.functionName,
-                    resultJson = result.resultJson,
-                )
-                updateState { copy(isProcessing = false) }
+                    applyFunctionSideEffects(call.name, result)
+                    geminiClient.sendFunctionResult(call.id, result.functionName, result.resultJson)
+                    updateState { copy(isProcessing = false) }
+                }
             }
 
             // ── Транскрипция ─────────────────────────────────────────────────
