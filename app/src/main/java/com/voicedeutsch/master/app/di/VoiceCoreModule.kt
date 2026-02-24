@@ -76,10 +76,12 @@ val voiceCoreModule = module {
             temperature = 0.8f,
             topP        = 0.95f,
             topK        = 40,
+            // ✅ ИСПРАВЛЕНО: используем enum AudioFormat из GeminiConfig,
+            // а не AudioConfig object (который содержит только константы).
             // Аудио вход: PCM 16-bit, 16 kHz, mono (совпадает с AudioRecorder)
             // Аудио выход: PCM 16-bit, 24 kHz, mono (AudioPlayer ресемплирует при необходимости)
-            audioInputFormat  = com.voicedeutsch.master.voicecore.audio.AudioConfig(sampleRateHz = 16_000),
-            audioOutputFormat = com.voicedeutsch.master.voicecore.audio.AudioConfig(sampleRateHz = 24_000),
+            audioInputFormat  = GeminiConfig.AudioFormat.PCM_16KHZ_16BIT_MONO,
+            audioOutputFormat = GeminiConfig.AudioFormat.PCM_24KHZ_16BIT_MONO,
         )
     }
 
