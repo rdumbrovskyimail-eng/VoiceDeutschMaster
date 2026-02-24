@@ -1,9 +1,5 @@
 package com.voicedeutsch.master.voicecore.functions
 
-import com.voicedeutsch.master.data.remote.gemini.GeminiFunctionDeclaration
-import com.voicedeutsch.master.data.remote.gemini.GeminiParameters
-import com.voicedeutsch.master.data.remote.gemini.GeminiProperty
-
 /**
  * Central registry of all function declarations sent to Gemini.
  *
