@@ -1,6 +1,7 @@
 package com.voicedeutsch.master.voicecore.functions
 
-import com.voicedeutsch.master.data.remote.gemini.GeminiFunctionDeclaration
+// ✅ ИСПРАВЛЕНО: удалён неверный импорт из com.voicedeutsch.master.data.remote.gemini.
+// GeminiFunctionDeclaration находится в том же пакете (voicecore.functions).
 
 /**
  * Function declarations for progress and statistics.
@@ -13,8 +14,8 @@ object ProgressFunctions {
             name = "update_user_level",
             description = "Обновить уровень CEFR пользователя (A1→A2→B1→B2→C1→C2).",
             params = mapOf(
-                "cefr_level" to ("string" to "Новый уровень: A1, A2, B1, B2, C1, C2"),
-                "sub_level" to ("integer" to "Подуровень 1-10"),
+                "cefr_level" to ("string"  to "Новый уровень: A1, A2, B1, B2, C1, C2"),
+                "sub_level"  to ("integer" to "Подуровень 1-10"),
             ),
             required = listOf("cefr_level"),
         ),
