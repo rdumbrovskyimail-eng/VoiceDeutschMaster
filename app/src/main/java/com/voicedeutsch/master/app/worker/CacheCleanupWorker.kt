@@ -23,7 +23,8 @@ class CacheCleanupWorker(
     override suspend fun doWork(): Result {
         return runCatching {
             audioCacheManager.evictOlderThan(days = 30)
-            backupManager.cleanOldBackups(keepDays = 30)
+            // ✅ ИСПРАВЛЕНО: cleanOldBackups → cleanOldLocalBackups (реальный метод BackupManager)
+            backupManager.cleanOldLocalBackups(keepDays = 30)
             Result.success()
         }.getOrElse { Result.retry() }
     }
