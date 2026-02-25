@@ -1,3 +1,4 @@
+
 package com.voicedeutsch.master.voicecore.engine
 
 import android.util.Log
@@ -21,7 +22,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,7 +30,6 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -78,6 +77,19 @@ import java.util.concurrent.atomic.AtomicInteger
  *   [_sessionState]  — пишется только через [updateState] / [transitionXxx]
  *   [sessionJob]     — Flow-подписка на receiveFlow(), отменяется в endSession/destroy
  *   [audioForwardJob]— форвардит AudioPipeline chunks → GeminiClient параллельно
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * ИЗМЕНЕНИЯ (Модуль 5):
+ * ════════════════════════════════════════════════════════════════════════════
+ *
+ *   1. FIX: Job leak — startSession() отменяет старые sessionJob/audioForwardJob
+ *      перед созданием новых. Без этого повторный startSession() плодит зомби-корутины.
+ *   2. FIX: runCatching на geminiClient.connect() — сеть может упасть в момент коннекта.
+ *      Раньше исключение пробивалось наверх и крашило UI.
+ *   3. FIX: reconnect deadlock — handleSessionError() вызывал startSession() который
+ *      берёт lifecycleMutex → deadlock. Заменён на reconnectInternal() без mutex.
+ *   4. FIX: endSession() — disconnect() обёрнут в отдельный runCatching.
+ *      Ошибка сети при disconnect не должна ломать сохранение сессии.
  */
 class VoiceCoreEngineImpl(
     private val contextBuilder: ContextBuilder,
@@ -194,6 +206,9 @@ class VoiceCoreEngineImpl(
      * ✅ ИЗМЕНЕНИЕ: sessionJob теперь подписывается на receiveFlow() (cold Flow)
      * вместо цикла while { receiveNextResponse() }.
      * Flow автоматически завершается при закрытии LiveSession.
+     *
+     * ✅ FIX (Модуль 5): Job leak — отменяем старые job'ы перед созданием новых.
+     * ✅ FIX (Модуль 5): runCatching на connect() — сеть может упасть.
      */
     override suspend fun startSession(userId: String): VoiceSessionState =
         lifecycleMutex.withLock {
@@ -208,6 +223,9 @@ class VoiceCoreEngineImpl(
                 updateState { copy(errorMessage = "Нет подключения к интернету. Проверьте сеть.") }
                 return@withLock _sessionState.value
             }
+
+            // ✅ FIX: Job leak — отменяем зомби-job'ы от предыдущей сессии
+            cancelActiveJobs()
 
             transitionEngine(VoiceEngineState.CONTEXT_LOADING)
             reconnectAttempts.set(0)
@@ -240,12 +258,23 @@ class VoiceCoreEngineImpl(
             }
 
             // 5. ✅ Подключиться к Gemini Live API через firebase-ai
-            // App Check токен прикрепляется SDK автоматически — ephemeralTokenService не нужен.
+            // ✅ FIX: runCatching — сеть может упасть в момент коннекта
             transitionEngine(VoiceEngineState.CONNECTING)
             transitionConnection(ConnectionState.CONNECTING)
 
-            withContext(Dispatchers.IO) {
-                geminiClient.connect(sessionContext)
+            val connectResult = runCatching {
+                withContext(Dispatchers.IO) {
+                    geminiClient.connect(sessionContext)
+                }
+            }
+
+            if (connectResult.isFailure) {
+                val error = connectResult.exceptionOrNull()!!
+                Log.e(TAG, "❌ connect() failed: ${error.message}", error)
+                transitionEngine(VoiceEngineState.ERROR)
+                transitionConnection(ConnectionState.FAILED)
+                updateState { copy(errorMessage = "Ошибка подключения: ${error.message}") }
+                return@withLock _sessionState.value
             }
 
             // 6. Активировать состояние сессии
@@ -286,10 +315,8 @@ class VoiceCoreEngineImpl(
             transitionEngine(VoiceEngineState.SESSION_ENDING)
         }
 
-        audioForwardJob?.cancel()
-        audioForwardJob = null
-        sessionJob?.cancel()
-        sessionJob = null
+        // ✅ FIX: используем cancelActiveJobs() для единообразия
+        cancelActiveJobs()
 
         return lifecycleMutex.withLock {
             transitionEngine(VoiceEngineState.SAVING)
@@ -299,7 +326,12 @@ class VoiceCoreEngineImpl(
                     audioPipeline.stopAll()
                     transitionAudio(AudioState.IDLE)
                     transitionConnection(ConnectionState.DISCONNECTED)
-                    geminiClient.disconnect()
+
+                    // ✅ FIX: disconnect() обёрнут отдельно — ошибка сети
+                    // не должна ломать сохранение сессии в Room
+                    runCatching { geminiClient.disconnect() }
+                        .onFailure { Log.w(TAG, "disconnect() warning: ${it.message}") }
+
                     endLearningSession(sessionId)
                 }.onFailure { error ->
                     Log.e(TAG, "Session save failed: ${error.message}", error)
@@ -469,7 +501,7 @@ class VoiceCoreEngineImpl(
                 val userId    = activeUserId
                 val sessionId = activeSessionId
 
-                // ✅ ИСПРАВЛЕНИЕ: Запускаем выполнение в отдельной корутине.
+                // ✅ Запускаем выполнение в отдельной корутине.
                 // receiveFlow мгновенно продолжит читать WebSocket-фреймы!
                 engineScope.launch {
                     val result = if (userId == null) {
@@ -510,6 +542,17 @@ class VoiceCoreEngineImpl(
 
     // ── Вспомогательные методы ────────────────────────────────────────────────
 
+    /**
+     * ✅ FIX (Модуль 5): Централизованная отмена активных job'ов.
+     * Предотвращает job leak при повторном startSession() и при endSession().
+     */
+    private fun cancelActiveJobs() {
+        audioForwardJob?.cancel()
+        audioForwardJob = null
+        sessionJob?.cancel()
+        sessionJob = null
+    }
+
     private fun applyFunctionSideEffects(
         functionName: String,
         result: FunctionRouter.FunctionCallResult,
@@ -523,6 +566,17 @@ class VoiceCoreEngineImpl(
         }
     }
 
+    /**
+     * ✅ FIX (Модуль 5): Reconnect без deadlock.
+     *
+     * БЫЛО: handleSessionError() вызывал startSession(uid), который берёт
+     * lifecycleMutex → deadlock, т.к. handleSessionError вызывается из
+     * .catch{} внутри engineScope, а startSession() тоже берёт тот же mutex.
+     *
+     * СТАЛО: reconnectInternal() выполняет reconnect напрямую, без mutex.
+     * Он вызывается только из handleSessionError(), который уже запущен
+     * в отдельной корутине engineScope.launch{}.
+     */
     private fun handleSessionError(error: Throwable) {
         val maxAttempts = config?.reconnectMaxAttempts ?: GeminiConfig.DEFAULT_RECONNECT_ATTEMPTS
         Log.e(TAG, "Session error [attempts=${reconnectAttempts.get()}/$maxAttempts]: ${error.message}", error)
@@ -541,8 +595,7 @@ class VoiceCoreEngineImpl(
                 delay(delayMs)
 
                 runCatching {
-                    val uid = activeUserId ?: return@launch
-                    startSession(uid)
+                    reconnectInternal()
                 }.onFailure { handleSessionError(it) }
 
             } else {
@@ -551,6 +604,53 @@ class VoiceCoreEngineImpl(
                 transitionEngine(VoiceEngineState.IDLE)
             }
         }
+    }
+
+    /**
+     * ✅ FIX (Модуль 5): Внутренний reconnect без lifecycleMutex.
+     *
+     * Переподключается к Gemini, перезапускает receiveFlow и микрофон.
+     * Контекст не перестраивается — используем тот же userId/sessionId.
+     */
+    private suspend fun reconnectInternal() {
+        val uid = activeUserId ?: error("reconnectInternal: no activeUserId")
+        val cfg = config ?: error("reconnectInternal: no config")
+
+        // Остановить старые потоки
+        cancelActiveJobs()
+        audioPipeline.stopAll()
+        runCatching { geminiClient.disconnect() }
+
+        // Пересобрать контекст и подключиться
+        val snapshot = withContext(Dispatchers.IO) { buildKnowledgeSummary(uid) }
+        val strategy = strategySelector.selectStrategy(snapshot)
+        val sessionContext = withContext(Dispatchers.IO) {
+            contextBuilder.buildSessionContext(
+                userId            = uid,
+                knowledgeSnapshot = snapshot,
+                currentStrategy   = strategy,
+                currentChapter    = 1, // TODO: сохранять текущую главу/урок в state
+                currentLesson     = 1,
+            )
+        }
+
+        transitionConnection(ConnectionState.CONNECTING)
+        withContext(Dispatchers.IO) { geminiClient.connect(sessionContext) }
+
+        transitionEngine(VoiceEngineState.SESSION_ACTIVE)
+        transitionConnection(ConnectionState.CONNECTED)
+        reconnectAttempts.set(0)
+        updateState { copy(errorMessage = null, currentStrategy = strategy) }
+
+        // Перезапустить receive flow и микрофон
+        sessionJob = geminiClient
+            .receiveFlow()
+            .onEach  { response -> handleGeminiResponse(response) }
+            .catch   { err      -> handleSessionError(err) }
+            .launchIn(engineScope)
+
+        startListening()
+        Log.d(TAG, "✅ Reconnected successfully")
     }
 
     private fun buildStrategyChangeMessage(strategy: LearningStrategy): String =
