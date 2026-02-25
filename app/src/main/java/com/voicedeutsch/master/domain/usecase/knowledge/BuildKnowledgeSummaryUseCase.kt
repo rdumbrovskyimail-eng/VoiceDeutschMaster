@@ -88,7 +88,9 @@ class BuildKnowledgeSummaryUseCase(
             .take(10)
             .mapNotNull { wk -> wordMap[wk.wordId]?.german }
 
-        val problemWordsList = knowledgeRepository.getProblemWords(userId, 10)
+        // ✅ FIX (Баг #4): ограничиваем проблемные слова до 5 самых критичных.
+        // ИИ не нужен полный словарь — только топ ошибок для фокуса в сессии.
+        val problemWordsList = knowledgeRepository.getProblemWords(userId, 5)
         val problemWords = problemWordsList.map { (word, knowledge) ->
             ProblemWordInfo(
                 word = word.german,
@@ -116,8 +118,12 @@ class BuildKnowledgeSummaryUseCase(
             .groupBy { it.knowledgeLevel }
             .mapValues { it.value.size }
 
+        // ✅ FIX (Баг #4): ограничиваем известные правила до 10 последних свежих.
+        // ИИ понимает уровень пользователя по срезу, но не тонет в полном списке.
         val knownRules = allRuleKnowledge
             .filter { it.knowledgeLevel > 0 }
+            .sortedByDescending { it.lastPracticed } // берём только свежие
+            .take(10)
             .mapNotNull { rk ->
                 val rule = ruleMap[rk.ruleId]
                 rule?.let { KnownRuleInfo(it.nameRu, rk.knowledgeLevel) }
