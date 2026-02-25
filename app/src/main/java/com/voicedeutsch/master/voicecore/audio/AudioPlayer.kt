@@ -3,14 +3,11 @@ package com.voicedeutsch.master.voicecore.audio
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
-import com.voicedeutsch.master.util.Constants
 import java.util.concurrent.atomic.AtomicBoolean
 
 class AudioPlayer {
-
     companion object {
-        const val SAMPLE_RATE = Constants.AUDIO_OUTPUT_SAMPLE_RATE // 24 000 Hz
-
+        const val SAMPLE_RATE = 24_000 // Строго 24kHz для вывода Gemini!
         private val MIN_BUFFER_SIZE = AudioTrack.getMinBufferSize(
             SAMPLE_RATE,
             AudioFormat.CHANNEL_OUT_MONO,
@@ -21,12 +18,10 @@ class AudioPlayer {
     private var audioTrack: AudioTrack? = null
     private val _isPlaying = AtomicBoolean(false)
     private val _isPaused  = AtomicBoolean(false)
-
     val isPlaying: Boolean get() = _isPlaying.get()
 
     fun start() {
         if (_isPlaying.getAndSet(true)) return
-
         val track = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -44,21 +39,13 @@ class AudioPlayer {
             .setBufferSizeInBytes(MIN_BUFFER_SIZE * 4)
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
-
         audioTrack = track
         track.play()
         _isPaused.set(false)
     }
 
-    // ИЗМЕНЕНО: добавлена проверка STATE_UNINITIALIZED.
-    // После 50+ flush() AudioTrack может умереть — пересоздаём.
     fun write(pcmBytes: ByteArray): Int {
         val track = audioTrack ?: return -1
-        if (track.state == AudioTrack.STATE_UNINITIALIZED) {
-            release()
-            start()
-            return 0
-        }
         if (pcmBytes.isEmpty() || _isPaused.get()) return 0
         return track.write(pcmBytes, 0, pcmBytes.size)
     }
@@ -77,10 +64,8 @@ class AudioPlayer {
         runCatching {
             _isPaused.set(false)
             audioTrack?.pause()
-            audioTrack?.flush()
-            audioTrack?.play()
-        }.onFailure { e ->
-            android.util.Log.e("AudioPlayer", "flush error: ${e.message}")
+            audioTrack?.flush() // Аппаратный сброс буфера
+            audioTrack?.play()  // Сразу готовы к новому потоку
         }
     }
 
