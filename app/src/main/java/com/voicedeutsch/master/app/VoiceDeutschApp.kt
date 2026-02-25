@@ -92,58 +92,53 @@ class VoiceDeutschApp : Application() {
      *    Storage, firebase-ai и т.д. App Check токен автоматически прикрепляется ко всем
      *    Firebase-запросам — но только если провайдер установлен до первого запроса.
      *
-     *    Debug-сборка: [DebugAppCheckProviderFactory] — генерирует UUID-токен в Logcat.
-     *      → Токен нужно вручную добавить в Firebase Console → App Check → Debug tokens.
-     *    Release-сборка: [PlayIntegrityAppCheckProviderFactory] — валидирует через Google Play.
-     *      → SHA-256 fingerprint release-ключа обязателен в Firebase Console → Project settings.
-     *
      * 3. [FirebaseCrashlytics] — настройка кастомных ключей до первого крэша.
-     *    В debug-сборках сбор крэшей отключён (не засоряем production дашборд).
      *
-     * 4. [FirebaseAnalytics] — аналогично, в debug отключаем сбор.
+     * 4. [FirebaseAnalytics] — в debug отключаем сбор.
      */
     private fun initFirebase() {
         try {
-            // 1. Инициализация FirebaseApp
             FirebaseApp.initializeApp(this)
             Log.d(TAG, "✅ FirebaseApp initialized")
 
-            // 2. App Check — устанавливаем провайдер ДО первого Firebase-запроса
             initAppCheck()
-
-            // 3. Crashlytics
             initCrashlytics()
-
-            // 4. Analytics
             initAnalytics()
 
         } catch (e: Exception) {
-            // Firebase не обязателен для базовой работы приложения.
-            // Логируем ошибку, но не крашим приложение.
             Log.e(TAG, "❌ Firebase init failed: ${e.message}", e)
         }
     }
 
+    /**
+     * App Check без Reflection.
+     *
+     * ✅ FIX: Старый код использовал Class.forName() для DebugAppCheckProviderFactory.
+     * R8/ProGuard в релизных сборках вырезает debug-классы → Reflection падает
+     * с ClassNotFoundException и спамит логи даже в продакшене.
+     *
+     * РЕШЕНИЕ: прямой условный импорт через BuildConfig.DEBUG.
+     * R8 видит условие на этапе компиляции и выбрасывает недостижимую ветку целиком.
+     *
+     * Зависимости в build.gradle.kts:
+     *   implementation(libs.firebase.appcheck.playintegrity)   // всегда
+     *   debugImplementation(libs.firebase.appcheck.debug)      // только debug APK
+     *
+     * Debug-сборка:  DebugAppCheckProviderFactory → UUID-токен в Logcat.
+     *   → Добавьте токен в Firebase Console → App Check → Debug tokens.
+     * Release-сборка: PlayIntegrityAppCheckProviderFactory → Google Play Integrity API.
+     *   → SHA-256 fingerprint release-ключа обязателен в Firebase Console → Project settings.
+     */
     private fun initAppCheck() {
         try {
-            val providerFactory = if (BuildConfig.DEBUG) {
-                // Используем Reflection, чтобы не ломать сборку assembleRelease
-                try {
-                    val debugClass = Class.forName("com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory")
-                    val getInstanceMethod = debugClass.getMethod("getInstance")
-                    getInstanceMethod.invoke(null) as com.google.firebase.appcheck.AppCheckProviderFactory
-                } catch (e: Exception) {
-                    Log.w(TAG, "DebugAppCheckProviderFactory not found. Fallback to PlayIntegrity.")
+            Firebase.appCheck.installAppCheckProviderFactory(
+                if (BuildConfig.DEBUG) {
+                    com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory.getInstance()
+                } else {
                     PlayIntegrityAppCheckProviderFactory.getInstance()
                 }
-            } else {
-                // Release: Play Integrity API
-                PlayIntegrityAppCheckProviderFactory.getInstance()
-            }
-
-            FirebaseAppCheck.getInstance().installAppCheckProviderFactory(providerFactory)
+            )
             Log.d(TAG, "✅ App Check initialized [${if (BuildConfig.DEBUG) "DEBUG" else "PLAY_INTEGRITY"}]")
-
         } catch (e: Exception) {
             Log.e(TAG, "❌ App Check init failed: ${e.message}", e)
         }
@@ -153,15 +148,11 @@ class VoiceDeutschApp : Application() {
         try {
             Firebase.crashlytics.apply {
                 // В debug-сборках отключаем отправку крэшей — не засоряем дашборд.
-                // Локальные крэши всё равно пишутся в CrashLogger (файловый лог).
                 setCrashlyticsCollectionEnabled(!BuildConfig.DEBUG)
-
-                // Кастомные ключи: помогают фильтровать крэши в Firebase Console.
                 setCustomKey("build_type", if (BuildConfig.DEBUG) "debug" else "release")
                 setCustomKey("app_version", BuildConfig.VERSION_NAME)
             }
             Log.d(TAG, "✅ Crashlytics initialized [collection=${!BuildConfig.DEBUG}]")
-
         } catch (e: Exception) {
             Log.e(TAG, "❌ Crashlytics init failed: ${e.message}", e)
         }
@@ -171,11 +162,10 @@ class VoiceDeutschApp : Application() {
         try {
             Firebase.analytics.apply {
                 // В debug-сборках отключаем сбор — не засоряем production данные.
-                // Для отладки событий используйте: adb shell setprop debug.firebase.analytics.app <packageName>
+                // Для отладки событий: adb shell setprop debug.firebase.analytics.app <packageName>
                 setAnalyticsCollectionEnabled(!BuildConfig.DEBUG)
             }
             Log.d(TAG, "✅ Analytics initialized [collection=${!BuildConfig.DEBUG}]")
-
         } catch (e: Exception) {
             Log.e(TAG, "❌ Analytics init failed: ${e.message}", e)
         }
