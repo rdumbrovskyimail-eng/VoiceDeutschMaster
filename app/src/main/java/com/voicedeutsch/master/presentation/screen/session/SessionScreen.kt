@@ -34,7 +34,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Keyboard
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -61,7 +60,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -79,7 +77,7 @@ import androidx.compose.material3.HorizontalDivider
 import com.voicedeutsch.master.presentation.components.PulsingMicButton
 import com.voicedeutsch.master.presentation.components.SessionTimer
 import com.voicedeutsch.master.presentation.components.StatusBadge
-import com.voicedeutsch.master.presentation.components.VoiceWaveform
+import com.voicedeutsch.master.presentation.components.VirtualAvatar
 import androidx.compose.ui.text.font.FontWeight
 import com.voicedeutsch.master.presentation.theme.Background
 import com.voicedeutsch.master.presentation.theme.Secondary
@@ -93,21 +91,15 @@ import org.koin.androidx.compose.koinViewModel
  *  ┌─────────────────────────────────────────────────────┐
  *  │  TopBar: Status badge  |  Timer  |  [•••] menu      │
  *  ├─────────────────────────────────────────────────────┤
- *  │  VoiceWaveform (Canvas, 120dp)                       │
+ *  │  VirtualAvatar (центр, анимированный)               │
  *  ├─────────────────────────────────────────────────────┤
- *  │  Transcript area (scrollable):                       │
- *  │    Voice subtitle (green)                            │
- *  │    User subtitle (blue)                              │
+ *  │  Парящая карточка (surface + elevation 8dp):        │
+ *  │    Transcript area (scrollable)                     │
  *  ├─────────────────────────────────────────────────────┤
  *  │  [Optional] Text input (accessibility fallback)     │
  *  ├─────────────────────────────────────────────────────┤
  *  │  BottomBar: Pause | 🎤 PulsingMic | Stats | Settings │
  *  └─────────────────────────────────────────────────────┘
- *
- * Architecture reference: lines 1195-1220 (Session Screen design).
- *
- * @param onSessionEnd            Called when user ends the session (back navigation).
- * @param onNavigateToDashboard   Called to go to Dashboard after session summary.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -122,7 +114,6 @@ fun SessionScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // ── BackHandler — защита от случайного выхода ────────────────────────────────
     var showExitDialog by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
 
@@ -155,7 +146,6 @@ fun SessionScreen(
         )
     }
 
-    // Show snackbar messages
     LaunchedEffect(uiState.snackbarMessage) {
         uiState.snackbarMessage?.let {
             snackbarHostState.showSnackbar(it)
@@ -163,7 +153,6 @@ fun SessionScreen(
         }
     }
 
-    // Permission launcher — запрашивает микрофон, затем стартует сессию
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -274,176 +263,121 @@ fun SessionScreen(
             )
         },
     ) { paddingValues ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Background,
-                            Background.copy(red = 0.09f, green = 0.10f, blue = 0.13f),
-                        ),
-                    ),
-                ),
+                .background(Background)
+                .padding(horizontal = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
+            Spacer(Modifier.height(24.dp))
 
-                // ── Loading indicator ────────────────────────────────────────
-                if (uiState.isLoading) {
-                    Spacer(Modifier.height(32.dp))
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text  = "Подключаюсь к Voice...",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                    )
-                }
-
-                // ── Error message ────────────────────────────────────────────
-                AnimatedVisibility(
-                    visible = uiState.errorMessage != null,
-                    enter   = fadeIn() + slideInVertically { -it },
-                    exit    = fadeOut() + slideOutVertically { -it },
-                ) {
-                    ErrorCard(
-                        message = uiState.errorMessage ?: "",
-                        onDismiss = { viewModel.onEvent(SessionEvent.DismissError) },
-                        onRetry   = { viewModel.onEvent(SessionEvent.StartSession) },
-                        modifier  = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    )
-                }
-
-                // ── Voice waveform ───────────────────────────────────────────
-                VoiceWaveform(
-                    engineState = voiceState.engineState,
-                    amplitudes  = voiceState.voiceWaveformData,
-                    modifier    = Modifier
-                        .fillMaxWidth()
-                        .height(120.dp)
-                        .padding(horizontal = 16.dp),
+            // ── Loading indicator ────────────────────────────────────────────
+            if (uiState.isLoading) {
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text  = "Подключаюсь к Voice...",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                 )
+                Spacer(Modifier.height(8.dp))
+            }
 
-                Spacer(Modifier.height(16.dp))
+            // ── Error message ────────────────────────────────────────────────
+            AnimatedVisibility(
+                visible = uiState.errorMessage != null,
+                enter   = fadeIn() + slideInVertically { -it },
+                exit    = fadeOut() + slideOutVertically { -it },
+            ) {
+                ErrorCard(
+                    message   = uiState.errorMessage ?: "",
+                    onDismiss = { viewModel.onEvent(SessionEvent.DismissError) },
+                    onRetry   = { viewModel.onEvent(SessionEvent.StartSession) },
+                    modifier  = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+            }
 
-                // ── Strategy Test Canvas ─────────────────────────────────────────────────────
-                voiceState.currentStrategy?.let { strategy ->
-                    StrategyTestCanvas(
-                        strategy           = strategy,
-                        wordsLearned       = voiceState.wordsLearnedInSession,
-                        exercisesCompleted = voiceState.exercisesCompleted,
-                        modifier           = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp),
-                    )
-                    Spacer(Modifier.height(8.dp))
-                }
+            // ── VirtualAvatar (заменяет VoiceWaveform) ───────────────────────
+            VirtualAvatar(
+                engineState = voiceState.engineState,
+                amplitudes  = voiceState.voiceWaveformData,
+                modifier    = Modifier.padding(vertical = 16.dp),
+            )
 
-                // ── Transcript area ──────────────────────────────────────────
+            // ── Strategy canvas ──────────────────────────────────────────────
+            voiceState.currentStrategy?.let { strategy ->
+                StrategyTestCanvas(
+                    strategy           = strategy,
+                    wordsLearned       = voiceState.wordsLearnedInSession,
+                    exercisesCompleted = voiceState.exercisesCompleted,
+                    modifier           = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+            }
+
+            // ── Парящая карточка с транскриптом (Gemini Style) ───────────────
+            Card(
+                modifier  = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                colors    = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                shape     = RoundedCornerShape(24.dp),
+            ) {
                 TranscriptArea(
                     voiceTranscript = voiceState.voiceTranscript,
                     userTranscript  = voiceState.currentTranscript,
                     modifier        = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
+                        .fillMaxSize()
+                        .padding(16.dp),
                 )
-
-                // ── Session stats row ────────────────────────────────────────
-                if (uiState.isSessionActive) {
-                    SessionStatsRow(
-                        wordsLearned   = voiceState.wordsLearnedInSession,
-                        wordsReviewed  = voiceState.wordsReviewedInSession,
-                        exercisesDone  = voiceState.exercisesCompleted,
-                        modifier       = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 8.dp),
-                    )
-                }
-
-                // ── Hint overlay ─────────────────────────────────────────────
-                AnimatedVisibility(
-                    visible = uiState.showHint,
-                    enter = fadeIn() + slideInVertically { it },
-                    exit  = fadeOut() + slideOutVertically { it },
-                    modifier = Modifier
-                        .padding(bottom = 96.dp, start = 16.dp, end = 16.dp),
-                ) {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        ),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Icon(
-                                Icons.Filled.Mic,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(32.dp),
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    "Нажмите на микрофон",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    "или говорите — AI репетитор вас слышит",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            IconButton(
-                                onClick = { viewModel.onEvent(SessionEvent.DismissHint) },
-                                modifier = Modifier.size(24.dp),
-                            ) {
-                                Icon(
-                                    Icons.Filled.Close,
-                                    contentDescription = "Закрыть подсказку",
-                                    modifier = Modifier.size(16.dp),
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // ── Text input (accessibility fallback) ──────────────────────
-                AnimatedVisibility(
-                    visible = uiState.showTextInput,
-                    enter   = fadeIn() + slideInVertically { it },
-                    exit    = fadeOut() + slideOutVertically { it },
-                ) {
-                    TextInputField(
-                        onSend = { text ->
-                            viewModel.onEvent(SessionEvent.SendTextMessage(text))
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                            .imePadding(),
-                    )
-                }
-
-                Spacer(Modifier.height(8.dp))
             }
 
-            // ── Post-session summary overlay ─────────────────────────────────
+            // ── Session stats row ────────────────────────────────────────────
+            if (uiState.isSessionActive) {
+                SessionStatsRow(
+                    wordsLearned  = voiceState.wordsLearnedInSession,
+                    wordsReviewed = voiceState.wordsReviewedInSession,
+                    exercisesDone = voiceState.exercisesCompleted,
+                    modifier      = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                )
+            }
+
+            // ── Text input (accessibility fallback) ──────────────────────────
             AnimatedVisibility(
-                visible = uiState.sessionResult != null,
-                enter   = fadeIn(),
-                exit    = fadeOut(),
-                modifier = Modifier.align(Alignment.Center),
+                visible = uiState.showTextInput,
+                enter   = fadeIn() + slideInVertically { it },
+                exit    = fadeOut() + slideOutVertically { it },
             ) {
+                TextInputField(
+                    onSend   = { text -> viewModel.onEvent(SessionEvent.SendTextMessage(text)) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .imePadding(),
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
+        }
+
+        // ── Post-session summary overlay ─────────────────────────────────────
+        AnimatedVisibility(
+            visible  = uiState.sessionResult != null,
+            enter    = fadeIn(),
+            exit     = fadeOut(),
+            modifier = Modifier
+                .padding(paddingValues)
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.4f)),
+        ) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                 uiState.sessionResult?.let { result ->
                     SessionResultCard(
                         result            = result,
@@ -470,7 +404,6 @@ private fun TranscriptArea(
 ) {
     val listState = rememberLazyListState()
 
-    // Auto-scroll to bottom when new transcript arrives
     LaunchedEffect(voiceTranscript, userTranscript) {
         if (voiceTranscript.isNotEmpty() || userTranscript.isNotEmpty()) {
             runCatching {
@@ -481,12 +414,10 @@ private fun TranscriptArea(
     }
 
     LazyColumn(
-        state = listState,
+        state    = listState,
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(8.dp),
-        reverseLayout = false,
     ) {
-        // Voice (AI) subtitle — green
         if (voiceTranscript.isNotBlank()) {
             item(key = "voice") {
                 TranscriptBubble(
@@ -496,8 +427,6 @@ private fun TranscriptArea(
                 )
             }
         }
-
-        // User subtitle — blue
         if (userTranscript.isNotBlank()) {
             item(key = "user") {
                 TranscriptBubble(
@@ -517,34 +446,27 @@ private fun TranscriptBubble(
     alignment: Alignment.Horizontal,
     modifier: Modifier = Modifier,
 ) {
-    val bgColor = if (isVoice) {
-        Secondary.copy(alpha = 0.12f)
-    } else {
-        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-    }
-    val textColor = if (isVoice) {
-        Secondary
-    } else {
-        MaterialTheme.colorScheme.primary
-    }
+    val bgColor   = if (isVoice) Secondary.copy(alpha = 0.12f)
+                    else MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+    val textColor = if (isVoice) Secondary else MaterialTheme.colorScheme.primary
 
     Column(
-        modifier = modifier.fillMaxWidth(),
+        modifier           = modifier.fillMaxWidth(),
         horizontalAlignment = alignment,
     ) {
         Text(
-            text  = if (isVoice) "Voice" else "Вы",
-            style = MaterialTheme.typography.labelSmall,
-            color = textColor.copy(alpha = 0.6f),
+            text     = if (isVoice) "Voice" else "Вы",
+            style    = MaterialTheme.typography.labelSmall,
+            color    = textColor.copy(alpha = 0.6f),
             modifier = Modifier.padding(horizontal = 4.dp),
         )
         Surface(
             color = bgColor,
             shape = RoundedCornerShape(
-                topStart = if (isVoice) 4.dp else 12.dp,
-                topEnd = if (isVoice) 12.dp else 4.dp,
+                topStart    = if (isVoice) 4.dp else 12.dp,
+                topEnd      = if (isVoice) 12.dp else 4.dp,
                 bottomStart = 12.dp,
-                bottomEnd = 12.dp,
+                bottomEnd   = 12.dp,
             ),
         ) {
             Text(
@@ -567,7 +489,7 @@ private fun SessionStatsRow(
     modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = modifier,
+        modifier            = modifier,
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
         StatChip(value = wordsLearned,  label = "Новые")
@@ -603,12 +525,11 @@ private fun SessionBottomBar(
 ) {
     BottomAppBar(
         containerColor = Color.Transparent,
-        modifier = Modifier.navigationBarsPadding(),
+        modifier       = Modifier.navigationBarsPadding(),
     ) {
-        // Pause / Resume
         IconButton(
-            onClick = { onEvent(SessionEvent.PauseResume) },
-            enabled = uiState.isSessionActive,
+            onClick  = { onEvent(SessionEvent.PauseResume) },
+            enabled  = uiState.isSessionActive,
             modifier = Modifier.weight(1f),
         ) {
             val isPaused = voiceEngineState == VoiceEngineState.WAITING ||
@@ -620,11 +541,7 @@ private fun SessionBottomBar(
             )
         }
 
-        // ── Central pulsing mic button ──────────────────────────────────────
-        Box(
-            modifier = Modifier.weight(2f),
-            contentAlignment = Alignment.Center,
-        ) {
+        Box(modifier = Modifier.weight(2f), contentAlignment = Alignment.Center) {
             PulsingMicButton(
                 engineState = voiceEngineState,
                 onClick     = { onEvent(SessionEvent.ToggleMic) },
@@ -633,9 +550,8 @@ private fun SessionBottomBar(
             )
         }
 
-        // Statistics
         IconButton(
-            onClick = onNavigateToStats,
+            onClick  = onNavigateToStats,
             modifier = Modifier.weight(1f),
         ) {
             Icon(
@@ -645,7 +561,6 @@ private fun SessionBottomBar(
             )
         }
 
-        // Keyboard toggle
         IconButton(
             onClick  = { onEvent(SessionEvent.ToggleTextInput) },
             modifier = Modifier.weight(1f),
@@ -671,10 +586,10 @@ private fun TextInputField(
     var text by remember { mutableStateOf("") }
 
     OutlinedTextField(
-        value = text,
+        value         = text,
         onValueChange = { text = it },
-        modifier = modifier,
-        placeholder = {
+        modifier      = modifier,
+        placeholder   = {
             Text(
                 text  = "Напишите сообщение...",
                 style = MaterialTheme.typography.bodyMedium,
@@ -683,10 +598,7 @@ private fun TextInputField(
         trailingIcon = {
             IconButton(
                 onClick = {
-                    if (text.isNotBlank()) {
-                        onSend(text)
-                        text = ""
-                    }
+                    if (text.isNotBlank()) { onSend(text); text = "" }
                 },
                 enabled = text.isNotBlank(),
             ) {
@@ -695,12 +607,7 @@ private fun TextInputField(
         },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
         keyboardActions = KeyboardActions(
-            onSend = {
-                if (text.isNotBlank()) {
-                    onSend(text)
-                    text = ""
-                }
-            },
+            onSend = { if (text.isNotBlank()) { onSend(text); text = "" } },
         ),
         maxLines = 3,
         shape    = RoundedCornerShape(16.dp),
@@ -717,7 +624,7 @@ private fun ErrorCard(
     modifier: Modifier = Modifier,
 ) {
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier,
         colors   = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.errorContainer,
         ),
@@ -735,13 +642,12 @@ private fun ErrorCard(
                 color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f),
             )
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                TextButton(onClick = onDismiss) {
-                    Text("Закрыть")
-                }
-                TextButton(onClick = onRetry) {
-                    Text("Повторить")
-                }
+            Row(
+                horizontalArrangement = Arrangement.End,
+                modifier              = Modifier.fillMaxWidth(),
+            ) {
+                TextButton(onClick = onDismiss) { Text("Закрыть") }
+                TextButton(onClick = onRetry)   { Text("Повторить") }
             }
         }
     }
@@ -758,49 +664,38 @@ private fun SessionResultCard(
     modifier: Modifier = Modifier,
 ) {
     Card(
-        modifier = modifier,
-        colors   = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
+        modifier  = modifier,
+        colors    = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
     ) {
         Column(
-            modifier               = Modifier.padding(24.dp),
-            horizontalAlignment    = Alignment.CenterHorizontally,
-            verticalArrangement    = Arrangement.spacedBy(12.dp),
+            modifier            = Modifier.padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
                 text  = "Сессия завершена!",
                 style = MaterialTheme.typography.headlineSmall,
                 color = MaterialTheme.colorScheme.primary,
             )
-
             Text(
                 text  = "Слов изучено: ${result.wordsLearned}\n" +
                         "Слов повторено: ${result.wordsReviewed}\n" +
                         "Упражнений: ${result.exercisesCompleted}",
-                style = MaterialTheme.typography.bodyMedium,
+                style     = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurface,
+                color     = MaterialTheme.colorScheme.onSurface,
             )
-
             Text(
-                text = "✓ Прогресс сохранён",
-                style = MaterialTheme.typography.bodySmall,
-                color = Secondary,
+                text       = "✓ Прогресс сохранён",
+                style      = MaterialTheme.typography.bodySmall,
+                color      = Secondary,
                 fontWeight = FontWeight.Medium,
             )
-
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onDismiss) {
-                    Text("Закрыть")
-                }
-                TextButton(onClick = onGoToDashboard) {
-                    Text("Дашборд")
-                }
-                TextButton(onClick = onStartNewSession) {
-                    Text("Ещё раз")
-                }
+                TextButton(onClick = onDismiss)         { Text("Закрыть") }
+                TextButton(onClick = onGoToDashboard)   { Text("Дашборд") }
+                TextButton(onClick = onStartNewSession) { Text("Ещё раз") }
             }
         }
     }
