@@ -2,7 +2,8 @@ package com.voicedeutsch.master.voicecore.context
 
 import com.voicedeutsch.master.domain.model.LearningStrategy
 import com.voicedeutsch.master.domain.model.knowledge.KnowledgeSnapshot
-import com.voicedeutsch.master.voicecore.functions.FunctionRouter
+import com.voicedeutsch.master.voicecore.functions.FunctionRegistry
+import com.voicedeutsch.master.voicecore.functions.GeminiFunctionDeclaration
 import com.voicedeutsch.master.voicecore.prompt.MasterPrompt
 import com.voicedeutsch.master.voicecore.prompt.PromptOptimizer
 import com.voicedeutsch.master.voicecore.prompt.PromptTemplates
@@ -29,16 +30,28 @@ import kotlinx.serialization.json.Json
  * Аудио-стриминг не измеряется токенами как текст. maxOutputTokens игнорируется
  * при responseModalities=["AUDIO"].
  *
- * ✅ FIX 1: buildSessionContext() передаёт fullContext (все 4 части) в systemPrompt,
- *           который GeminiClient кладёт в systemInstruction.
- * ✅ FIX 2: PromptOptimizer реально вызывается с бюджетом 60 000 токенов.
+ * ════════════════════════════════════════════════════════════════════════════
+ * ИЗМЕНЕНИЯ (Модуль 7):
+ * ════════════════════════════════════════════════════════════════════════════
+ *
+ *   1. УДАЛЕНО: зависимость на FunctionRouter из конструктора.
+ *      FunctionRouter.getDeclarations() удалён в Модуле 6.
+ *      Декларации теперь берутся из FunctionRegistry.getAllDeclarations().
+ *
+ *   2. ИЗМЕНЕНО: SessionContext.functionDeclarations: List<String> → List<GeminiFunctionDeclaration>.
+ *      Нативные объекты вместо JSON-строк. GeminiClient.mapToFirebaseDeclaration()
+ *      маппит их в Firebase SDK объекты.
+ *
+ *   3. ИЗМЕНЕНО: totalEstimatedTokens() считает токены по нативным декларациям
+ *      (name.length + description.length + parameters) вместо JSON-строк.
+ *
+ *   4. УДАЛЕНО: json из конструктора — больше не нужен (не сериализуем декларации).
  */
 class ContextBuilder(
     private val userContextProvider: UserContextProvider,
     private val bookContextProvider: BookContextProvider,
-    private val functionRouter: FunctionRouter,
-    @Suppress("UnusedPrivateMember")
-    private val json: Json,
+    // functionRouter УДАЛЁН — декларации берутся из FunctionRegistry напрямую
+    // json           УДАЛЁН — не нужен без JSON-сериализации деклараций
 ) {
 
     /**
@@ -47,20 +60,34 @@ class ContextBuilder(
      * [systemPrompt] — полный оптимизированный контекст:
      *   MasterPrompt + userContext + bookContext + strategyPrompt.
      *   GeminiClient кладёт это поле в systemInstruction.parts[0].text.
+     *
+     * [functionDeclarations] — нативные объекты GeminiFunctionDeclaration.
+     *   GeminiClient.mapToFirebaseDeclaration() маппит их в Firebase FunctionDeclaration.
      */
     data class SessionContext(
         val systemPrompt: String,
         val userContext: String,
         val bookContext: String,
         val strategyPrompt: String,
-        val functionDeclarations: List<String>,
+        val functionDeclarations: List<GeminiFunctionDeclaration>,   // ✅ ИЗМЕНЕНО: было List<String>
     ) {
-        /** После фикса fullContext = systemPrompt (уже объединены при сборке). */
+        /** fullContext = systemPrompt (уже объединены при сборке). */
         val fullContext: String get() = systemPrompt
 
-        /** Rough token estimate: 1 token ≈ 4 characters. */
-        fun totalEstimatedTokens(functionDeclarations: List<String>): Int =
-            (systemPrompt.length + functionDeclarations.sumOf { it.length }) / TOKEN_CHAR_RATIO
+        /**
+         * Rough token estimate: 1 token ≈ 4 characters.
+         * ✅ ИЗМЕНЕНО: считает по нативным декларациям, а не JSON-строкам.
+         */
+        fun totalEstimatedTokens(): Int {
+            val promptTokens = systemPrompt.length / TOKEN_CHAR_RATIO
+            val declTokens = functionDeclarations.sumOf { decl ->
+                (decl.name.length + decl.description.length +
+                    (decl.parameters?.properties?.entries?.sumOf { (k, v) ->
+                        k.length + v.type.length + v.description.length
+                    } ?: 0)) / TOKEN_CHAR_RATIO
+            }
+            return promptTokens + declTokens
+        }
     }
 
     suspend fun buildSessionContext(
@@ -76,8 +103,10 @@ class ContextBuilder(
         val bookContext        = bookContextProvider.buildBookContext(currentChapter, currentLesson)
         val strategyPrompt     = PromptTemplates.getStrategyPrompt(currentStrategy, knowledgeSnapshot)
 
-        // 2. Декларации функций — единственный источник правды
-        val functionDeclarations = functionRouter.getDeclarations()
+        // 2. ✅ ИЗМЕНЕНО: Декларации функций — из FunctionRegistry (нативные объекты)
+        //    Было: functionRouter.getDeclarations() → List<String> (JSON)
+        //    Стало: FunctionRegistry.getAllDeclarations() → List<GeminiFunctionDeclaration>
+        val functionDeclarations = FunctionRegistry.getAllDeclarations()
 
         // 3. Объединяем всё в один блок для systemInstruction
         val rawFullContext = buildString {
@@ -106,21 +135,27 @@ class ContextBuilder(
 
         val sessionContext = SessionContext(
             systemPrompt         = optimizedContext,
-            userContext          = userContext,
-            bookContext          = bookContext,
+            userContext           = userContext,
+            bookContext           = bookContext,
             strategyPrompt       = strategyPrompt,
             functionDeclarations = functionDeclarations,
         )
 
         // 5. Диагностический лог
         val contextTokens  = optimizedContext.length / TOKEN_CHAR_RATIO
-        val functionTokens = functionDeclarations.sumOf { it.length } / TOKEN_CHAR_RATIO
+        // ✅ ИЗМЕНЕНО: оценка токенов деклараций по нативным полям
+        val functionTokens = functionDeclarations.sumOf { decl ->
+            decl.name.length + decl.description.length +
+                (decl.parameters?.properties?.entries?.sumOf { (k, v) ->
+                    k.length + v.type.length + v.description.length
+                } ?: 0)
+        } / TOKEN_CHAR_RATIO
         val totalTokens    = contextTokens + functionTokens
         val remainingForConversation = LIVE_API_TOTAL_TOKEN_LIMIT - totalTokens
 
         android.util.Log.d("ContextBuilder",
             "Контекст собран: системный ~$contextTokens токенов, " +
-            "функции ~$functionTokens токенов, " +
+            "функции ~$functionTokens токенов (${functionDeclarations.size} деклараций), " +
             "итого ~$totalTokens / $LIVE_API_TOTAL_TOKEN_LIMIT. " +
             "Буфер на разговор: ~$remainingForConversation токенов.")
 
@@ -146,15 +181,11 @@ class ContextBuilder(
         /**
          * Бюджет для системного контекста в Setup-сообщении:
          *   131 072 − 68 000 (буфер разговора) − 3 000 (функции) = 60 000
-         *
-         * По мере роста приложения (больше глав книги, больше истории)
-         * этот буфер можно пересматривать, но 60k — безопасная точка старта.
          */
         const val SAFE_CONTEXT_TOKEN_BUDGET = 60_000
 
         /**
          * Порог предупреждения — когда Setup занимает >85% от суммарного лимита.
-         * При достижении разговор может оборваться раньше времени.
          */
         private const val WARN_TOKEN_THRESHOLD = (LIVE_API_TOTAL_TOKEN_LIMIT * 0.85).toInt()
     }
