@@ -37,6 +37,12 @@ import kotlin.coroutines.cancellation.CancellationException
  *
  * ✅ FIX 2: VoiceSessionService теперь стартует при начале сессии и останавливается при конце.
  * Без foreground service Android убивает микрофон когда приложение уходит в фон.
+ *
+ * ✅ FIX 3: Убран context.startService(stopIntent) из onCleared().
+ * На Android 16 вызов startService из onCleared() (когда приложение уходит в фон)
+ * вызывает ForegroundServiceDidNotStartInTimeException или краш.
+ * Остановка сервиса привязана строго к endSession().
+ * При уничтожении процесса Android сам убьёт Foreground Service.
  */
 class SessionViewModel(
     private val voiceCoreEngine: VoiceCoreEngine,
@@ -107,6 +113,7 @@ class SessionViewModel(
             }.getOrNull()
 
             // ✅ FIX 2: Останавливаем foreground service вместе с сессией.
+            // Единственное место остановки сервиса — здесь, не в onCleared().
             context.startService(VoiceSessionService.stopIntent(context))
 
             _uiState.update {
@@ -160,15 +167,17 @@ class SessionViewModel(
         // Теперь: fire-and-forget корутина на Dispatchers.IO.
         // NonCancellable гарантирует что cleanup выполнится даже после cancel ViewModel.
         // Timeout 5 сек — защита от зависания endSession().
+        //
+        // ✅ FIX 3: context.startService(stopIntent) УДАЛЁН отсюда.
+        // На Android 16 вызов startService из onCleared() вызывает
+        // ForegroundServiceDidNotStartInTimeException когда приложение уходит в фон.
+        // Сервис останавливается строго в endSession().
+        // Если ViewModel уничтожается системой — Android сам убьёт Foreground Service.
         CoroutineScope(Dispatchers.IO + NonCancellable).launch {
             runCatching {
                 withTimeout(5_000L) { voiceCoreEngine.endSession() }
             }.onFailure { e ->
                 android.util.Log.e("SessionViewModel", "cleanup endSession failed", e)
-            }
-            // Сервис останавливаем в любом случае — даже если endSession упал
-            runCatching {
-                context.startService(VoiceSessionService.stopIntent(context))
             }
         }
     }
