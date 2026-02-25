@@ -61,7 +61,6 @@ val dataModule = module {
     // ℹ️ HttpClient остаётся для вспомогательных HTTP-запросов (не Gemini).
     // Основной AI-транспорт (Gemini Live API) — firebase-ai SDK (GeminiClient.kt).
     // WebSockets плагин УДАЛЁН — WebSocket с Gemini теперь управляет SDK.
-    // Если Ktor используется только для Gemini — можно удалить целиком.
     single {
         HttpClient(OkHttp) {
             engine {
@@ -69,9 +68,6 @@ val dataModule = module {
                     connectTimeout(15, TimeUnit.SECONDS)
                     readTimeout(30, TimeUnit.SECONDS)
                     writeTimeout(30, TimeUnit.SECONDS)
-                    // pingInterval убран: WebSocket через Ktor больше не используется.
-                    // Если вернёте WebSocket — раскомментируйте:
-                    // pingInterval(20, TimeUnit.SECONDS)
                 }
             }
 
@@ -92,27 +88,15 @@ val dataModule = module {
     }
 
     // ─── Firebase Auth ────────────────────────────────────────────────────────
-    // ✅ BoM 34.x: Firebase.auth (из com.google.firebase.auth) — без -ktx суффикса.
-    // Используется для:
-    //   • Идентификации пользователя в Firestore Security Rules (request.auth.uid)
-    //   • Анонимного входа при первом запуске
-    //   • Google Sign-In (при необходимости)
-    //
-    // ⚠️ Firebase Auth НЕ нужен для Gemini Live API — App Check обрабатывает
-    // авторизацию AI-запросов прозрачно. Auth нужен только для Firestore/Storage.
+    // ✅ BoM 34.x: Firebase.auth — без -ktx суффикса.
     single<FirebaseAuth> {
         Firebase.auth.apply {
-            // Анонимный вход: запускается при первом использовании Firebase Auth.
-            // Не блокирует — используем addOnSuccessListener.
-            // Если пользователь уже вошёл (currentUser != null) — вызов игнорируется.
             if (currentUser == null) {
                 signInAnonymously()
                     .addOnSuccessListener { result ->
                         android.util.Log.d("FirebaseAuth", "✅ Anonymous sign-in: uid=${result.user?.uid}")
                     }
                     .addOnFailureListener { e ->
-                        // Не фатально: Firestore запросы упадут с permission-denied,
-                        // но Room-локальная база продолжит работать.
                         android.util.Log.w("FirebaseAuth", "⚠️ Anonymous sign-in failed: ${e.message}")
                     }
             }
@@ -120,20 +104,12 @@ val dataModule = module {
     }
 
     // ─── Firebase Firestore ───────────────────────────────────────────────────
-    // ✅ BoM 34.x: Firebase.firestore (из com.google.firebase.firestore).
-    // Заменяет кастомный BackupManager + CloudSyncService на нативный real-time sync.
-    //
-    // Настройки кеша:
-    //   PersistentCacheSettings — офлайн-кеш на диске (до 100 MB по умолчанию).
-    //   Позволяет читать данные без сети и синхронизировать при восстановлении связи.
-    //   Это лучше чем MemoryCacheSettings (данные живут только в рамках сессии).
+    // ✅ BoM 34.x: PersistentCacheSettings — офлайн-кеш на диске.
     single<FirebaseFirestore> {
         Firebase.firestore.apply {
             firestoreSettings = FirebaseFirestoreSettings.Builder()
                 .setLocalCacheSettings(
                     PersistentCacheSettings.newBuilder()
-                        // 50 MB — разумный лимит для прогресса обучения.
-                        // Увеличьте до 104_857_600L (100 MB) если добавите аудио-метаданные.
                         .setSizeBytes(50_000_000L)
                         .build()
                 )
@@ -142,22 +118,33 @@ val dataModule = module {
     }
 
     // ─── Firebase Storage ─────────────────────────────────────────────────────
-    // ✅ BoM 34.x: Firebase.storage (из com.google.firebase.storage).
-    // Используется для:
-    //   • Хранения аудио-записей пользователя (AudioCacheManager → Cloud backup)
-    //   • Экспорта/импорта данных (ExportImportManager)
-    //   • BackupManager: загрузка/скачивание дампов базы
-    //
-    // maxDownloadRetryTime / maxUploadRetryTime: SDK автоматически ретраит
-    // при обрыве сети в пределах указанного времени.
     single<FirebaseStorage> {
         Firebase.storage.apply {
-            maxDownloadRetryTimeMillis = 60_000L  // 60 сек на retry скачивания
-            maxUploadRetryTimeMillis   = 120_000L // 120 сек на retry загрузки
+            maxDownloadRetryTimeMillis = 60_000L
+            maxUploadRetryTimeMillis   = 120_000L
         }
     }
 
     // ─── Database ────────────────────────────────────────────────────────────
+    // ✅ ПРОДАКШЕН 2026: fallbackToDestructiveMigrationFrom УДАЛЁН.
+    //
+    // Почему это критично:
+    //   fallbackToDestructiveMigration() стирает ВСЮ базу если Room не находит
+    //   нужную миграцию. Для пользователя это потеря прогресса → удаление приложения.
+    //
+    // Правило: каждый новый version в @Database требует явного MIGRATION_X_Y.
+    // Даже если схема не изменилась — пишем пустую миграцию:
+    //
+    //   val MIGRATION_2_3 = object : Migration(2, 3) {
+    //       override fun migrate(db: SupportSQLiteDatabase) {
+    //           // no-op: version bump без изменений схемы
+    //       }
+    //   }
+    //
+    // И добавляем её здесь через .addMigrations(AppDatabase.MIGRATION_2_3).
+    //
+    // Текущая версия БД: 2. Все переходы покрыты:
+    //   1 → 2: MIGRATION_1_2 (таблицы achievements + user_achievements)
     single {
         Room.databaseBuilder(
             androidContext(),
@@ -166,9 +153,8 @@ val dataModule = module {
         )
             .addMigrations(
                 AppDatabase.MIGRATION_1_2,
-            )
-            .fallbackToDestructiveMigrationFrom(
-                *(1..LAST_DESTRUCTIVE_VERSION).toList().toIntArray()
+                // При добавлении новых сущностей — добавляй MIGRATION_2_3 и т.д.
+                // НИКОГДА не используй fallbackToDestructiveMigration в продакшене.
             )
             .build()
     }
@@ -223,22 +209,9 @@ val dataModule = module {
     single { ExportImportManager(androidContext(), get()) }
 
     // ─── Remote Services (Firebase-based) ────────────────────────────────────
-    // BackupManager: принимает FirebaseFirestore + FirebaseStorage + FirebaseAuth
-    // вместо прежнего androidContext() — для полноценного облачного бекапа.
-    // Обновите конструктор BackupManager.kt при следующей итерации.
     single { BackupManager(androidContext(), get<FirebaseFirestore>(), get<FirebaseStorage>(), get<FirebaseAuth>()) }
-
-    // CloudSyncService: принимает FirebaseFirestore + FirebaseAuth.
-    // Real-time sync прогресса пользователя через Firestore snapshots().
-    // Обновите конструктор CloudSyncService.kt при следующей итерации.
     single { CloudSyncService(get<FirebaseFirestore>(), get<FirebaseAuth>()) }
 
     // ✅ EphemeralTokenService УДАЛЁН:
-    // Ручное получение ephemeral-токена для Gemini больше не нужно.
     // Firebase App Check + firebase-ai SDK управляют авторизацией прозрачно.
-    // См. EphemeralTokenService.DELETED.kt для полного объяснения.
 }
-
-// Версии базы данных до которых применяется destructive migration.
-// Увеличьте значение при добавлении новых несовместимых миграций.
-private const val LAST_DESTRUCTIVE_VERSION = 0
