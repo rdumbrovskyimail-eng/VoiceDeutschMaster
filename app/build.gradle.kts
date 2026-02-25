@@ -26,8 +26,6 @@ android {
 
     signingConfigs {
         getByName("debug") {
-            // Использует дефолтный debug keystore — конфигурация не нужна.
-            // App Check в debug-сборках использует DebugAppCheckProviderFactory.
         }
         create("release") {
             val props = Properties()
@@ -70,8 +68,6 @@ android {
             freeCompilerArgs.addAll(
                 "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
                 "-opt-in=kotlinx.serialization.ExperimentalSerializationApi",
-                // ✅ ИСПРАВЛЕНО: PublicPreviewAPI — правильная аннотация в firebase-ai SDK.
-                // InternalFirebaseAiAPI не существует в текущем SDK.
                 "-opt-in=com.google.firebase.ai.type.PublicPreviewAPI",
             )
         }
@@ -128,9 +124,8 @@ dependencies {
     // ── Koin DI ──────────────────────────────────────────────────────────────
     implementation(libs.bundles.koin)
 
-    // ── Ktor (вспомогательные HTTP-запросы) ──────────────────────────────────
+    // ── Ktor (только OkHttp для REST, CIO и WebSockets удалены) ──────────────
     implementation(libs.bundles.ktor)
-    implementation(libs.ktor.client.cio)
 
     // ── Kotlin ───────────────────────────────────────────────────────────────
     implementation(libs.kotlin.stdlib)
@@ -151,7 +146,6 @@ dependencies {
     implementation(libs.firebase.appcheck.playintegrity)
     debugImplementation(libs.firebase.appcheck.debug)
 
-    // coroutines-play-services: .await() для Firebase Tasks
     implementation(libs.kotlinx.coroutines.play.services)
 
     // ── UI Polish ─────────────────────────────────────────────────────────────
@@ -183,3 +177,4 @@ dependencies {
 tasks.withType<Test> {
     useJUnitPlatform()
 }
+```
