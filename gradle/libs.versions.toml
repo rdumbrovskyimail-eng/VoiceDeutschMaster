@@ -1,6 +1,6 @@
 # ─────────────────────────────
 # gradle/libs.versions.toml
-# Last verified: 2026-02-23
+# Last verified: 2026-02-25
 # ─────────────────────────────────────────────────
 
 [versions]
@@ -22,7 +22,7 @@ work = "2.10.0"
 # DI
 koin = "4.1.1"
 
-# Network — только OkHttp. CIO и WebSockets УДАЛЕНЫ (конфликт с firebase-ai)
+# Network — только OkHttp. CIO и WebSockets УДАЛЕНЫ
 ktor = "3.4.0"
 
 # Coroutines
@@ -34,7 +34,7 @@ serialization = "1.10.0"
 # Firebase
 firebase-bom = "34.9.0"
 firebase-crashlytics-plugin = "3.0.0"
-google-services = "4.4.3"
+google-services = "4.4.4"          # ← обновлено с 4.4.3
 
 # Android SDK
 compileSdk = "36"
@@ -114,7 +114,7 @@ koin-test = { module = "io.insert-koin:koin-test", version.ref = "koin" }
 koin-test-junit5 = { module = "io.insert-koin:koin-test-junit5", version.ref = "koin" }
 koin-androidx-workmanager = { module = "io.insert-koin:koin-androidx-workmanager", version.ref = "koin" }
 
-# Ktor — CIO и WebSockets УДАЛЕНЫ
+# Ktor — только OkHttp
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
 ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
@@ -181,7 +181,6 @@ room = [
     "room-ktx"
 ]
 
-# ИЗМЕНЕНО: Удалены websockets и cio
 ktor = [
     "ktor-client-core",
     "ktor-client-okhttp",
