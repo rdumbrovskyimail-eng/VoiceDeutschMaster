@@ -37,7 +37,10 @@ object KnowledgeFunctions {
             name = "record_mistake",
             description = "Зафиксировать ошибку пользователя для анализа слабых мест.",
             params = mapOf(
-                "mistake_type" to ("string" to "Тип: grammar, vocabulary, pronunciation, phrase"),
+                // ✅ FIX (Баг #5): явный enum в описании — ИИ не выдумывает
+                // произвольные типы ошибок (напр. "syntax", "spelling").
+                // Строгое перечисление снижает вероятность галлюцинации значения.
+                "mistake_type" to ("string" to "Тип ошибки. Строго одно из значений: grammar, vocabulary, pronunciation, phrase"),
                 "user_input"   to ("string" to "Что сказал/написал пользователь"),
                 "correct_form" to ("string" to "Правильный вариант"),
                 "explanation"  to ("string" to "Объяснение ошибки"),
