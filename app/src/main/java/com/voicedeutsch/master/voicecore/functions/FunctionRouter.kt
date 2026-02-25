@@ -20,8 +20,6 @@ import kotlinx.serialization.json.*
 /**
  * Routes function calls from Gemini Live API to the appropriate Domain Use Cases.
  *
- * Architecture lines 700-730 (FunctionRouter), 505-530 (Function Call flow).
- *
  * Function groups:
  *   1. Knowledge    : save_word_knowledge, save_rule_knowledge, record_mistake
  *   2. Book         : get_current_lesson, advance_to_next_lesson, mark_lesson_complete
@@ -35,16 +33,27 @@ import kotlinx.serialization.json.*
  * ════════════════════════════════════════════════════════════════════════════
  *
  *   1. УДАЛЕНО: getDeclarations() — 250 строк hardcoded JSON-строк.
- *      Нативные declarations уже есть в *Functions.kt файлах
- *      (KnowledgeFunctions, BookFunctions, SessionFunctions и т.д.).
- *      GeminiClient.mapToFirebaseDeclaration() маппит их в SDK-объекты.
- *
  *   2. ДОБАВЛЕНО: Type coercion helpers — intCoerced(), floatCoerced(), boolCoerced().
- *      Gemini иногда галлюцинирует типы: шлёт "2" (строку) вместо 2 (число),
- *      "true" вместо true, "0.5" вместо 0.5.
- *      Старые хелперы .int() / .float() падали с ClassCastException.
- *
  *   3. ИЗМЕНЕНО: Все handler-ы используют coerced-хелперы вместо старых.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * ИЗМЕНЕНИЯ (Баг #2 — "Слепой переход по книге"):
+ * ════════════════════════════════════════════════════════════════════════════
+ *
+ *   FIX: handleAdvanceToNextLesson() теперь возвращает полный текст нового урока
+ *   прямо в toolResponse.
+ *
+ *   БЫЛО: {"status":"advanced","next_chapter":1,"next_lesson":2}
+ *   ИИ не знал содержания нового урока → продолжал говорить о старом.
+ *
+ *   СТАЛО: ответ дополнен полями new_lesson_title, new_lesson_text, new_vocabulary.
+ *   ИИ получает текст нового урока мгновенно через WebSocket и начинает его
+ *   изучение без разрыва сессии и пересборки SystemInstruction.
+ *
+ *   Почему это решает проблему:
+ *   SystemInstruction обновляется только при новом connect(). Внутри активной
+ *   WebSocket-сессии единственный способ передать контекст ИИ — toolResponse.
+ *   Поэтому мы кладём весь нужный контент прямо в ответ функции.
  */
 class FunctionRouter(
     private val updateWordKnowledge:   UpdateWordKnowledgeUseCase,
@@ -129,9 +138,9 @@ class FunctionRouter(
             wordGerman         = args.str("word")
                 ?: return error("save_word_knowledge", "missing 'word'"),
             translation        = args.str("translation") ?: "",
-            newLevel           = args.intCoerced("level", 1),      // ✅ coerced
-            quality            = args.intCoerced("quality", 3),    // ✅ coerced
-            pronunciationScore = args.floatCoerced("pronunciation_score"),  // ✅ coerced
+            newLevel           = args.intCoerced("level", 1),
+            quality            = args.intCoerced("quality", 3),
+            pronunciationScore = args.floatCoerced("pronunciation_score"),
             context            = args.str("context"),
         )
         updateWordKnowledge(params)
@@ -151,8 +160,8 @@ class FunctionRouter(
         val params = UpdateRuleKnowledgeUseCase.Params(
             userId   = userId,
             ruleId   = ruleId,
-            newLevel = args.intCoerced("level", 1),      // ✅ coerced
-            quality  = args.intCoerced("quality", 3),    // ✅ coerced
+            newLevel = args.intCoerced("level", 1),
+            quality  = args.intCoerced("quality", 3),
         )
         updateRuleKnowledge(params)
         return FunctionCallResult(
@@ -217,12 +226,35 @@ class FunctionRouter(
         )
     }
 
+    /**
+     * ✅ FIX (Баг #2 — "Слепой переход по книге"):
+     *
+     * После advance_to_next_lesson сразу запрашиваем данные нового урока
+     * через getCurrentLesson() и кладём их в toolResponse.
+     *
+     * ИИ получает new_lesson_title + new_lesson_text + new_vocabulary прямо
+     * в WebSocket-ответе и может немедленно начать работу с новым материалом
+     * без разрыва сессии.
+     *
+     * Поля new_lesson_text и new_vocabulary должны быть описаны в системном промпте:
+     * "Если в ответе advance_to_next_lesson присутствует new_lesson_text —
+     *  прочитай его и начни работу по новому уроку."
+     */
     private suspend fun handleAdvanceToNextLesson(
         args:   JsonObject,
         userId: String,
     ): FunctionCallResult {
-        val score = args.floatCoerced("score") ?: 1.0f    // ✅ coerced
+        val score  = args.floatCoerced("score") ?: 1.0f
         val result = advanceBookProgress(userId, score)
+
+        // ✅ FIX: Сразу получаем контент нового урока из БД
+        val newLessonData = getCurrentLesson(userId)
+        val newText = newLessonData?.content?.mainContent ?: "Текст урока недоступен."
+        val newVocabulary = newLessonData?.content?.vocabulary
+            ?.take(20)  // ограничиваем до 20 слов чтобы не раздуть токены
+            ?.map { "${it.german} — ${it.russian}" }
+            ?: emptyList()
+
         return FunctionCallResult(
             functionName = "advance_to_next_lesson",
             success      = true,
@@ -232,6 +264,13 @@ class FunctionRouter(
                 put("next_lesson",         result.newLesson)
                 put("is_chapter_complete", result.isChapterComplete)
                 put("is_book_complete",    result.isBookComplete)
+                // ✅ Новые поля — контекст нового урока для ИИ
+                put("new_lesson_title",    newLessonData?.lesson?.titleDe ?: "")
+                put("new_lesson_title_ru", newLessonData?.lesson?.titleRu ?: "")
+                put("new_lesson_text",     newText)
+                put("new_vocabulary",      buildJsonArray {
+                    newVocabulary.forEach { add(it) }
+                })
             }.toString(),
         )
     }
@@ -240,7 +279,7 @@ class FunctionRouter(
         args:   JsonObject,
         userId: String,
     ): FunctionCallResult {
-        val score = args.floatCoerced("score") ?: 1.0f    // ✅ coerced
+        val score = args.floatCoerced("score") ?: 1.0f
         advanceBookProgress(userId, score)
         return FunctionCallResult(
             functionName = "mark_lesson_complete",
@@ -255,7 +294,7 @@ class FunctionRouter(
         args:   JsonObject,
         userId: String,
     ): FunctionCallResult {
-        val limit = args.intCoerced("limit", 15)    // ✅ coerced
+        val limit = args.intCoerced("limit", 15)
         val items = getWordsForRepetition(userId, limit)
         return FunctionCallResult(
             functionName = "get_words_for_repetition",
@@ -377,7 +416,7 @@ class FunctionRouter(
                 userId        = userId,
                 sessionId     = sessionId,
                 word          = args.str("word") ?: "",
-                score         = args.floatCoerced("score") ?: 0.5f,    // ✅ coerced
+                score         = args.floatCoerced("score") ?: 0.5f,
                 problemSounds = args["problem_sounds"]?.jsonArray
                     ?.map { it.jsonPrimitive.content }
                     ?: emptyList(),
@@ -411,15 +450,6 @@ class FunctionRouter(
     }
 
     // УДАЛЕНО: getDeclarations(): List<String>
-    // 250 строк hardcoded JSON-строк. Нативные declarations находятся в:
-    //   - KnowledgeFunctions.declarations
-    //   - BookFunctions.declarations
-    //   - SessionFunctions.declarations
-    //   - LearningFunctions.declarations
-    //   - ProgressFunctions.declarations
-    //   - UIFunctions.declarations
-    // FunctionRegistry.getAllDeclarations() агрегирует их.
-    // GeminiClient.mapToFirebaseDeclaration() маппит в Firebase SDK объекты.
 
     // ── UI handlers ───────────────────────────────────────────────────────────
 
@@ -432,57 +462,28 @@ class FunctionRouter(
     private fun handleTriggerCelebration(args: JsonObject) =
         FunctionCallResult("trigger_celebration", true, """{"status":"triggered"}""")
 
-    // ══════════════════════════════════════════════════════════════════════════
-    // Type-safe JSON helpers с COERCION для AI-галлюцинаций
-    // ══════════════════════════════════════════════════════════════════════════
-    //
-    // Gemini иногда возвращает:
-    //   "level": "2"  вместо  "level": 2
-    //   "score": "0.5" вместо "score": 0.5
-    //   "flag": "true" вместо "flag": true
-    //
-    // Стандартные jsonPrimitive.intOrNull / .floatOrNull возвращают null
-    // для строковых значений → функция получает default вместо реального значения.
-    // Coerced-хелперы сначала пробуют число, потом парсят строку.
-    // ══════════════════════════════════════════════════════════════════════════
+    // ── Type-safe JSON helpers с COERCION ─────────────────────────────────────
 
-    /** Извлекает строку. Работает и для числовых значений (приводит к строке). */
     private fun JsonObject.str(key: String): String? =
         this[key]?.jsonPrimitive?.contentOrNull
 
-    /**
-     * Извлекает Int с coercion: 2 → 2, "2" → 2, "abc" → default.
-     * Защищает от AI-галлюцинации типов.
-     */
     private fun JsonObject.intCoerced(key: String, default: Int): Int {
         val element = this[key]?.jsonPrimitive ?: return default
-        // Сначала пробуем как число
         element.intOrNull?.let { return it }
-        // Fallback: парсим строку "2" → 2
         element.contentOrNull?.toIntOrNull()?.let { return it }
-        // Fallback 2: "2.0" → 2 (Gemini иногда шлёт float вместо int)
         element.contentOrNull?.toFloatOrNull()?.toInt()?.let { return it }
         return default
     }
 
-    /**
-     * Извлекает Float с coercion: 0.5 → 0.5, "0.5" → 0.5, "abc" → null.
-     */
     private fun JsonObject.floatCoerced(key: String): Float? {
         val element = this[key]?.jsonPrimitive ?: return null
         element.floatOrNull?.let { return it }
         return element.contentOrNull?.toFloatOrNull()
     }
 
-    /**
-     * Извлекает Float с coercion и default.
-     */
     private fun JsonObject.floatCoerced(key: String, default: Float): Float =
         floatCoerced(key) ?: default
 
-    /**
-     * Извлекает Boolean с coercion: true → true, "true" → true, 1 → true.
-     */
     private fun JsonObject.boolCoerced(key: String, default: Boolean = false): Boolean {
         val element = this[key]?.jsonPrimitive ?: return default
         element.booleanOrNull?.let { return it }
