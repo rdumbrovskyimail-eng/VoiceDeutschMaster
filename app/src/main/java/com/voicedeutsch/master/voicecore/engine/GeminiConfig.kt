@@ -2,7 +2,6 @@ package com.voicedeutsch.master.voicecore.engine
 
 /**
  * Complete configuration for Gemini Live API connection.
- * Architecture lines 562-580 (GeminiConfig).
  */
 data class GeminiConfig(
     val modelName: String = MODEL_GEMINI_LIVE,
@@ -35,8 +34,12 @@ data class GeminiConfig(
 
     companion object {
         const val MODEL_GEMINI_LIVE = "gemini-2.5-flash-native-audio-preview"
-        // 🟢 Ограничиваем контекст для Live API, чтобы WebSocket Frame не лопнул при коннекте
-        const val MAX_CONTEXT_TOKENS = 32_768
+
+        // ⚠️ ИЗМЕНЕНО: 32_768 → 131_072
+        // Gemini 2.5 Flash Live API поддерживает 131k токенов.
+        // Старое значение 32k — ошибка из ранних preview-моделей.
+        const val MAX_CONTEXT_TOKENS = 131_072
+
         const val DEFAULT_TEMPERATURE = 0.5f
         const val DEFAULT_TOP_P = 0.95f
         const val DEFAULT_TOP_K = 40
