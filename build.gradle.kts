@@ -1,6 +1,6 @@
 plugins {
     alias(libs.plugins.android.application) apply false
-    alias(libs.plugins.kotlin.android) apply false
+    // kotlin-android УДАЛЁН: AGP 9.0 имеет встроенную поддержку Kotlin
     alias(libs.plugins.kotlin.compose) apply false
     alias(libs.plugins.kotlin.serialization) apply false
     alias(libs.plugins.ksp) apply false
@@ -8,3 +8,4 @@ plugins {
     alias(libs.plugins.google.services) apply false
     alias(libs.plugins.firebase.crashlytics) apply false
 }
+```
