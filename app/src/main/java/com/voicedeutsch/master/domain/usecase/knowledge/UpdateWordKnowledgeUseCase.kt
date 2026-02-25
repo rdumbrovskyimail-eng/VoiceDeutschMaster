@@ -1,7 +1,11 @@
 package com.voicedeutsch.master.domain.usecase.knowledge
 
 import com.voicedeutsch.master.domain.model.knowledge.MistakeRecord
+import com.voicedeutsch.master.domain.model.knowledge.PartOfSpeech
+import com.voicedeutsch.master.domain.model.knowledge.Word
 import com.voicedeutsch.master.domain.model.knowledge.WordKnowledge
+import com.voicedeutsch.master.domain.model.knowledge.WordSource
+import com.voicedeutsch.master.domain.model.user.CefrLevel
 import com.voicedeutsch.master.domain.repository.KnowledgeRepository
 import com.voicedeutsch.master.util.Constants
 import com.voicedeutsch.master.util.DateUtils
@@ -12,6 +16,21 @@ import com.voicedeutsch.master.util.generateUUID
  * Implements Modified SM-2 algorithm via [SrsCalculator].
  *
  * Called via Function Call: save_word_knowledge()
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * FIX: Баг "Слов-призраков" (Блокировка расширения словаря)
+ * ════════════════════════════════════════════════════════════════════════════
+ *
+ * БЫЛО:
+ *   val wordId = word?.id ?: return
+ *   Если слово не найдено в БД (например, ИИ использовал новое слово в FREE_PRACTICE),
+ *   юзкейс молча завершался. Прогресс терялся. База знаний не могла выйти за
+ *   пределы vocabulary.json учебника.
+ *
+ * СТАЛО:
+ *   Если слово не найдено → создаём его на лету с WordSource.CONVERSATION.
+ *   Это позволяет ИИ обогащать словарный запас пользователя за пределами книги,
+ *   сохраняя полноценный SRS-прогресс для каждого нового слова из диалога.
  */
 class UpdateWordKnowledgeUseCase(
     private val knowledgeRepository: KnowledgeRepository
@@ -34,10 +53,27 @@ class UpdateWordKnowledgeUseCase(
             params.userId, params.wordGerman
         )
 
-        val word = knowledgeRepository.getWordByGerman(params.wordGerman)
-        val wordId = word?.id ?: return
+        // ✅ FIX: Динамическое создание новых слов из диалога.
+        // БЫЛО: val wordId = word?.id ?: return  ← молча бросал прогресс
+        // СТАЛО: если слова нет в БД — создаём с пометкой CONVERSATION.
+        var word = knowledgeRepository.getWordByGerman(params.wordGerman)
+        if (word == null) {
+            word = Word(
+                id                = generateUUID(),
+                german            = params.wordGerman,
+                russian           = params.translation,
+                partOfSpeech      = PartOfSpeech.OTHER,
+                exampleSentenceDe = params.context ?: "",
+                exampleSentenceRu = "",
+                difficultyLevel   = CefrLevel.A1,
+                topic             = "Conversation",
+                source            = WordSource.CONVERSATION,
+            )
+            knowledgeRepository.insertWord(word)
+        }
+        val wordId = word.id
 
-        val now = DateUtils.nowTimestamp()
+        val now     = DateUtils.nowTimestamp()
         val quality = params.quality.coerceIn(0, 5)
 
         if (existing == null) {
@@ -53,33 +89,33 @@ class UpdateWordKnowledgeUseCase(
         now: Long,
         quality: Int
     ) {
-        val defaultEF = Constants.SRS_DEFAULT_EASE_FACTOR
+        val defaultEF  = Constants.SRS_DEFAULT_EASE_FACTOR
         val newEaseFactor = SrsCalculator.calculateEaseFactor(defaultEF, quality)
-        val newInterval = SrsCalculator.calculateInterval(0, quality, newEaseFactor, 0f)
-        val nextReview = SrsCalculator.calculateNextReview(now, 0, quality, newEaseFactor, 0f)
+        val newInterval   = SrsCalculator.calculateInterval(0, quality, newEaseFactor, 0f)
+        val nextReview    = SrsCalculator.calculateNextReview(now, 0, quality, newEaseFactor, 0f)
 
         val newKnowledge = WordKnowledge(
-            id = generateUUID(),
-            userId = params.userId,
-            wordId = wordId,
-            knowledgeLevel = params.newLevel.coerceIn(0, 7),
-            timesSeen = 1,
-            timesCorrect = if (quality >= 3) 1 else 0,
-            timesIncorrect = if (quality < 3) 1 else 0,
-            lastSeen = now,
-            lastCorrect = if (quality >= 3) now else null,
-            lastIncorrect = if (quality < 3) now else null,
-            nextReview = nextReview,
-            srsIntervalDays = newInterval,
-            srsEaseFactor = newEaseFactor,
-            pronunciationScore = params.pronunciationScore ?: 0f,
+            id                   = generateUUID(),
+            userId               = params.userId,
+            wordId               = wordId,
+            knowledgeLevel       = params.newLevel.coerceIn(0, 7),
+            timesSeen            = 1,
+            timesCorrect         = if (quality >= 3) 1 else 0,
+            timesIncorrect       = if (quality < 3) 1 else 0,
+            lastSeen             = now,
+            lastCorrect          = if (quality >= 3) now else null,
+            lastIncorrect        = if (quality < 3) now else null,
+            nextReview           = nextReview,
+            srsIntervalDays      = newInterval,
+            srsEaseFactor        = newEaseFactor,
+            pronunciationScore   = params.pronunciationScore ?: 0f,
             pronunciationAttempts = if (params.pronunciationScore != null) 1 else 0,
-            contexts = listOfNotNull(params.context),
-            mistakes = buildMistakesList(
+            contexts             = listOfNotNull(params.context),
+            mistakes             = buildMistakesList(
                 emptyList(), params.mistakeExpected, params.mistakeActual, now
             ),
-            createdAt = now,
-            updatedAt = now
+            createdAt            = now,
+            updatedAt            = now
         )
 
         knowledgeRepository.upsertWordKnowledge(newKnowledge)
@@ -96,10 +132,10 @@ class UpdateWordKnowledgeUseCase(
         )
 
         val newEaseFactor = SrsCalculator.calculateEaseFactor(existing.srsEaseFactor, quality)
-        val newInterval = SrsCalculator.calculateInterval(
+        val newInterval   = SrsCalculator.calculateInterval(
             repetitionNumber, quality, newEaseFactor, existing.srsIntervalDays
         )
-        val nextReview = SrsCalculator.calculateNextReview(
+        val nextReview    = SrsCalculator.calculateNextReview(
             now, repetitionNumber, quality, newEaseFactor, existing.srsIntervalDays
         )
 
@@ -109,7 +145,7 @@ class UpdateWordKnowledgeUseCase(
 
         val newPronScore = if (params.pronunciationScore != null) {
             val totalAttempts = existing.pronunciationAttempts + 1
-            val prevTotal = existing.pronunciationScore * existing.pronunciationAttempts
+            val prevTotal     = existing.pronunciationScore * existing.pronunciationAttempts
             (prevTotal + params.pronunciationScore) / totalAttempts
         } else {
             existing.pronunciationScore
@@ -127,21 +163,21 @@ class UpdateWordKnowledgeUseCase(
         )
 
         val updated = existing.copy(
-            knowledgeLevel = adjustedLevel,
-            timesSeen = existing.timesSeen + 1,
-            timesCorrect = existing.timesCorrect + if (quality >= 3) 1 else 0,
-            timesIncorrect = existing.timesIncorrect + if (quality < 3) 1 else 0,
-            lastSeen = now,
-            lastCorrect = if (quality >= 3) now else existing.lastCorrect,
-            lastIncorrect = if (quality < 3) now else existing.lastIncorrect,
-            nextReview = nextReview,
-            srsIntervalDays = newInterval,
-            srsEaseFactor = newEaseFactor,
-            pronunciationScore = newPronScore,
+            knowledgeLevel        = adjustedLevel,
+            timesSeen             = existing.timesSeen + 1,
+            timesCorrect          = existing.timesCorrect + if (quality >= 3) 1 else 0,
+            timesIncorrect        = existing.timesIncorrect + if (quality < 3) 1 else 0,
+            lastSeen              = now,
+            lastCorrect           = if (quality >= 3) now else existing.lastCorrect,
+            lastIncorrect         = if (quality < 3) now else existing.lastIncorrect,
+            nextReview            = nextReview,
+            srsIntervalDays       = newInterval,
+            srsEaseFactor         = newEaseFactor,
+            pronunciationScore    = newPronScore,
             pronunciationAttempts = newPronAttempts,
-            contexts = updatedContexts,
-            mistakes = updatedMistakes,
-            updatedAt = now
+            contexts              = updatedContexts,
+            mistakes              = updatedMistakes,
+            updatedAt             = now
         )
 
         knowledgeRepository.upsertWordKnowledge(updated)
@@ -155,8 +191,8 @@ class UpdateWordKnowledgeUseCase(
     ): List<MistakeRecord> {
         if (expected == null || actual == null) return existing
         val newMistake = MistakeRecord(
-            expected = expected,
-            actual = actual,
+            expected  = expected,
+            actual    = actual,
             timestamp = timestamp
         )
         return (existing + newMistake).takeLast(20)
