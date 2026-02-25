@@ -227,4 +227,3 @@ ksp                      = { id = "com.google.devtools.ksp",                   v
 room                     = { id = "androidx.room",                             version.ref = "room"                       }
 google-services          = { id = "com.google.gms.google-services",            version.ref = "google-services"            }
 firebase-crashlytics     = { id = "com.google.firebase.crashlytics",           version.ref = "firebase-crashlytics-plugin" }
-```
