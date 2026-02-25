@@ -2,6 +2,7 @@ package com.voicedeutsch.master.voicecore.context
 
 import com.voicedeutsch.master.domain.model.LearningStrategy
 import com.voicedeutsch.master.domain.model.knowledge.KnowledgeSnapshot
+import com.voicedeutsch.master.domain.repository.UserRepository
 import com.voicedeutsch.master.voicecore.functions.FunctionRegistry
 import com.voicedeutsch.master.voicecore.functions.GeminiFunctionDeclaration
 import com.voicedeutsch.master.voicecore.prompt.MasterPrompt
@@ -20,14 +21,13 @@ import com.voicedeutsch.master.voicecore.prompt.PromptTemplates
  *   │  -  38 072  — буфер на историю разговора + function calls  │
  *   │  =  90 000  — SAFE_CONTEXT_TOKEN_BUDGET (системный промпт) │
  *   └─────────────────────────────────────────────────────────────┘
- *
- * Теперь Setup-сообщение получает значительно больше места под:
- * • MasterPrompt + UserContext + BookContext + Strategy
- * Это сильно улучшит качество долгосрочной памяти и персонализации.
  */
 class ContextBuilder(
     private val userContextProvider: UserContextProvider,
     private val bookContextProvider: BookContextProvider,
+    // ✅ FIX (Баг #6): добавлен userRepository — нужен для инъекции пользовательских
+    // настроек (strictness, pace) прямо в системный промпт Gemini.
+    private val userRepository: UserRepository,
 ) {
 
     data class SessionContext(
@@ -65,8 +65,28 @@ class ContextBuilder(
 
         val functionDeclarations = FunctionRegistry.getAllDeclarations()
 
+        // ✅ FIX (Баг #6): читаем UserPreferences и формируем settingsPrompt.
+        // Это позволяет Gemini менять поведение (строгость, темп) без перезапуска сессии —
+        // достаточно изменить настройки в UI, и при следующей сессии ИИ получит новые параметры.
+        val profile = userRepository.getUserProfile(userId)
+        val strictness = profile?.preferences?.pronunciationStrictness?.name ?: "MODERATE"
+        val pace       = profile?.preferences?.learningPace?.name ?: "NORMAL"
+        val voiceSpeed = profile?.voiceSettings?.germanVoiceSpeed ?: 0.8f
+
+        val settingsPrompt = """
+            НАСТРОЙКИ ПОЛЬЗОВАТЕЛЯ:
+            - Строгость произношения: $strictness (если STRICT — придирайся к каждой фонеме, если LENIENT — игнорируй лёгкий акцент, если MODERATE — указывай на грубые ошибки).
+            - Темп обучения: $pace (если SLOW — больше объяснений и повторений, если FAST — сразу переходи к следующей теме).
+            - Скорость немецкой речи: $voiceSpeed (используй как ориентир при TTS-подборе темпа).
+        """.trimIndent()
+
         val rawFullContext = buildString {
             append(staticSystemPrompt)
+            appendLine()
+            appendLine()
+            appendLine("--- USER SETTINGS ---")
+            appendLine()
+            append(settingsPrompt)
             appendLine()
             appendLine()
             appendLine("--- USER CONTEXT ---")
@@ -82,7 +102,6 @@ class ContextBuilder(
             append(strategyPrompt)
         }
 
-        // Оптимизация под увеличенный бюджет 90 000 токенов
         val optimizedContext = PromptOptimizer.optimize(
             fullPrompt = rawFullContext,
             maxTokens  = SAFE_CONTEXT_TOKEN_BUDGET,
@@ -90,14 +109,14 @@ class ContextBuilder(
 
         val sessionContext = SessionContext(
             systemPrompt         = optimizedContext,
-            userContext           = userContext,
-            bookContext           = bookContext,
+            userContext          = userContext,
+            bookContext          = bookContext,
             strategyPrompt       = strategyPrompt,
             functionDeclarations = functionDeclarations,
         )
 
         // Диагностика
-        val contextTokens  = optimizedContext.length / TOKEN_CHAR_RATIO
+        val contextTokens = optimizedContext.length / TOKEN_CHAR_RATIO
         val functionTokens = functionDeclarations.sumOf { decl ->
             decl.name.length + decl.description.length +
                 (decl.parameters?.properties?.entries?.sumOf { (k, v) ->
