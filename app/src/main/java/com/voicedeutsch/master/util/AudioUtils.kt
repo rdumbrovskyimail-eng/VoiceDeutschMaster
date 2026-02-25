@@ -1,4 +1,3 @@
-
 package com.voicedeutsch.master.util
 
 import kotlin.math.abs
@@ -7,11 +6,17 @@ import kotlin.math.sqrt
 
 /**
  * Audio processing utilities — amplitude calculation, RMS, format conversion.
- * ИЗМЕНЕНО: detectVoiceActivity() УДАЛЁН — клиентский VAD антипаттерн,
- * Gemini сам детектирует речь на сервере.
+ *
+ * ✅ КЛИЕНТСКИЙ VAD УДАЛЁН (25.02.2026)
+ *    detectVoiceActivity() полностью удалён.
+ *    Мы отправляем сырой 16 kHz поток — Gemini сам детектирует речь на сервере.
+ *    Это устраняет все проблемы с ложными срабатываниями и задержками.
  */
 object AudioUtils {
 
+    /**
+     * Calculate Root Mean Square (RMS) amplitude.
+     */
     fun calculateRMS(samples: ShortArray): Float {
         if (samples.isEmpty()) return 0f
         var sum = 0.0
@@ -21,22 +26,31 @@ object AudioUtils {
         return sqrt(sum / samples.size).toFloat()
     }
 
+    /**
+     * Calculate RMS in decibels (dBFS).
+     */
     fun calculateRMSdB(samples: ShortArray): Float {
         val rms = calculateRMS(samples)
-        if (rms &lt;= 0f) return -100f
+        if (rms <= 0f) return -100f
         return (20 * log10(rms / Short.MAX_VALUE.toFloat())).toFloat()
     }
 
+    /**
+     * Calculate peak amplitude (0.0 — 1.0).
+     */
     fun calculatePeakAmplitude(samples: ShortArray): Float {
         if (samples.isEmpty()) return 0f
         var max = 0
         for (sample in samples) {
             val absSample = abs(sample.toInt())
-            if (absSample &gt; max) max = absSample
+            if (absSample > max) max = absSample
         }
         return max.toFloat() / Short.MAX_VALUE.toFloat()
     }
 
+    /**
+     * Normalize ShortArray for waveform visualization (downsample to target size).
+     */
     fun normalizeForVisualization(samples: ShortArray, targetSize: Int): FloatArray {
         if (samples.isEmpty()) return FloatArray(targetSize)
 
@@ -50,13 +64,16 @@ object AudioUtils {
             var maxInChunk = 0f
             for (j in startIdx until endIdx) {
                 val normalized = abs(samples[j].toFloat()) / Short.MAX_VALUE.toFloat()
-                if (normalized &gt; maxInChunk) maxInChunk = normalized
+                if (normalized > maxInChunk) maxInChunk = normalized
             }
             result[i] = maxInChunk
         }
         return result
     }
 
+    /**
+     * Convert ShortArray (16-bit PCM) to ByteArray (little-endian).
+     */
     fun shortArrayToByteArray(samples: ShortArray): ByteArray {
         val bytes = ByteArray(samples.size * 2)
         for (i in samples.indices) {
@@ -66,6 +83,9 @@ object AudioUtils {
         return bytes
     }
 
+    /**
+     * Convert ByteArray (little-endian 16-bit PCM) back to ShortArray.
+     */
     fun byteArrayToShortArray(bytes: ByteArray): ShortArray {
         val samples = ShortArray(bytes.size / 2)
         for (i in samples.indices) {
@@ -74,9 +94,4 @@ object AudioUtils {
         }
         return samples
     }
-
-    // detectVoiceActivity() УДАЛЁН.
-    // Gemini Live API сам детектирует речь на сервере (server-side VAD).
-    // Клиентский VAD — антипаттерн в 2026 году.
 }
-
