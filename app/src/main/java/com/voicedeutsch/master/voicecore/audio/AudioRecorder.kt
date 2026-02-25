@@ -15,6 +15,19 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
+/**
+ * Записывает PCM-аудио с микрофона и отдаёт фреймы через [audioFrameFlow].
+ *
+ * ✅ FIX (Kotlin 2.3 / Android 16):
+ * Thread().start() внутри корутинного приложения — утечка памяти и риск краша.
+ * Android 16 может убить неконтролируемый поток без предупреждения.
+ *
+ * БЫЛО: Thread(::recordingLoop, "AudioRecorder-Thread").start()
+ *       + fallback совместимости через scope != null
+ * СТАЛО: запись строго через корутину scope.launch(Dispatchers.IO).
+ *        recordingLoop() удалён — логика встроена в корутину.
+ *        scope обязателен — нет смысла запускать запись без контроля жизненного цикла.
+ */
 class AudioRecorder {
 
     companion object {
@@ -30,8 +43,6 @@ class AudioRecorder {
 
     private var audioRecord: AudioRecord? = null
     private val _isRecording = AtomicBoolean(false)
-
-    // ИЗМЕНЕНО: добавлен recordingJob вместо Thread
     private var recordingJob: Job? = null
 
     @Volatile
@@ -41,9 +52,13 @@ class AudioRecorder {
     private val frameChannel = Channel<ShortArray>(capacity = Channel.UNLIMITED)
     val audioFrameFlow: Flow<ShortArray> = frameChannel.receiveAsFlow()
 
-    // ИЗМЕНЕНО: принимает scope, запускает корутину вместо Thread.
-    // Kotlin 2.3 — Thread().start() внутри корутинного приложения = утечка памяти.
-    fun start(scope: CoroutineScope? = null) {
+    /**
+     * Запускает запись в переданном [scope] на [Dispatchers.IO].
+     *
+     * @param scope — корутинный scope из AudioPipeline / VoiceCoreEngineImpl.
+     *   Отмена scope автоматически останавливает запись.
+     */
+    fun start(scope: CoroutineScope) {
         if (_isRecording.getAndSet(true)) return
 
         val ar = AudioRecord(
@@ -59,16 +74,23 @@ class AudioRecorder {
         audioRecord = ar
         ar.startRecording()
 
-        // ИЗМЕНЕНО: корутина вместо raw Thread
-        if (scope != null) {
-            recordingJob = scope.launch(Dispatchers.IO) {
-                recordingLoop()
+        recordingJob = scope.launch(Dispatchers.IO) {
+            val buffer = ShortArray(FRAME_SIZE_SAMPLES)
+            while (isActive && _isRecording.get()) {
+                val read = audioRecord?.read(buffer, 0, buffer.size) ?: break
+                if (read > 0) {
+                    val frame = buffer.copyOf(read)
+                    currentAmplitude = AudioUtils.calculateRMS(frame) / Short.MAX_VALUE.toFloat()
+                    frameChannel.trySend(frame)
+                }
             }
-        } else {
-            // Fallback для обратной совместимости
-            Thread(::recordingLoop, "AudioRecorder-Thread").start()
+            audioRecord?.stop()
         }
     }
+
+    // УДАЛЕНО: Thread(::recordingLoop, "AudioRecorder-Thread").start()
+    // УДАЛЕНО: fallback scope != null / scope == null
+    // УДАЛЕНО: private fun recordingLoop()
 
     fun stop() {
         _isRecording.set(false)
@@ -86,18 +108,5 @@ class AudioRecorder {
         }
         audioRecord = null
         frameChannel.close()
-    }
-
-    private fun recordingLoop() {
-        val buffer = ShortArray(FRAME_SIZE_SAMPLES)
-        while (_isRecording.get()) {
-            val read = audioRecord?.read(buffer, 0, buffer.size) ?: break
-            if (read > 0) {
-                val frame = buffer.copyOf(read)
-                currentAmplitude = AudioUtils.calculateRMS(frame) / Short.MAX_VALUE.toFloat()
-                frameChannel.trySend(frame)
-            }
-        }
-        audioRecord?.stop()
     }
 }
