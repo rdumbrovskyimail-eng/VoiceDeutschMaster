@@ -1,122 +1,45 @@
 package com.voicedeutsch.master.presentation.theme
 
 import android.app.Activity
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
-// FIX: Added missing Color import — required for Color(0xFFEDE8F5) in LightColorScheme
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-// ── Dark colour scheme (primary) ──────────────────────────────────────────────
-private val DarkColorScheme = darkColorScheme(
-    primary            = Primary,
-    onPrimary          = OnBackground,
-    primaryContainer   = PrimaryDark,
-    onPrimaryContainer = PrimaryLight,
-
-    secondary            = Secondary,
-    onSecondary          = OnBackground,
-    secondaryContainer   = SecondaryDark,
-    onSecondaryContainer = SecondaryLight,
-
-    tertiary            = Tertiary,
-    onTertiary          = OnBackground,
-    tertiaryContainer   = Tertiary.copy(alpha = 0.3f),
-    onTertiaryContainer = TertiaryLight,
-
-    error            = Error,
-    onError          = OnBackground,
-    errorContainer   = ErrorDark,
-    onErrorContainer = Error,
-
-    background         = Background,
-    onBackground       = OnBackground,
-
-    surface            = Surface,
-    onSurface          = OnBackground,
-    surfaceVariant     = SurfaceVariant,
-    onSurfaceVariant   = OnBackgroundMuted,
-
-    outline            = Outline,
-    outlineVariant     = OutlineVariant,
-
-    inverseSurface     = OnBackground,
-    inverseOnSurface   = Background,
-    inversePrimary     = PrimaryDark,
-)
-
-// ── Light colour scheme (fallback) ────────────────────────────────────────────
 private val LightColorScheme = lightColorScheme(
     primary            = Primary,
-    onPrimary          = OnBackground,
-    primaryContainer   = PrimaryLight.copy(alpha = 0.15f),
-    onPrimaryContainer = PrimaryDark,
-
-    secondary            = Secondary,
-    onSecondary          = OnBackground,
-    secondaryContainer   = SecondaryLight.copy(alpha = 0.15f),
-    onSecondaryContainer = SecondaryDark,
-
-    tertiary            = Tertiary,
-    onTertiary          = OnBackground,
-
-    error            = Error,
-    onError          = OnBackground,
-
-    background         = BackgroundLight,
-    onBackground       = OnBackgroundLight,
-
-    surface            = SurfaceLight,
-    onSurface          = OnBackgroundLight,
-    surfaceVariant     = Color(0xFFEDE8F5),
-    onSurfaceVariant   = OnBackgroundMutedLight,
+    primaryContainer   = PrimaryContainer,
+    secondary          = Secondary,
+    secondaryContainer = SecondaryContainer,
+    tertiary           = Tertiary,
+    background         = Background,
+    surface            = Surface,
+    surfaceVariant     = SurfaceVariant,
+    onBackground       = OnBackground,
+    onSurface          = OnBackground,
+    onSurfaceVariant   = OnSurfaceVariant,
+    outline            = Outline,
+    error              = Error,
 )
 
-/**
- * Root theme composable for the entire VoiceDeutschMaster app.
- *
- * @param darkTheme     Override dark/light — defaults to system setting.
- * @param dynamicColor  Android 12+ Material You dynamic colours. Disabled by
- *                      default to preserve the Voice brand palette.
- */
 @Composable
-fun VoiceDeutschMasterTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = false,
-    content: @Composable () -> Unit,
-) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context)
-            else dynamicLightColorScheme(context)
-        }
-        darkTheme -> DarkColorScheme
-        else      -> LightColorScheme
-    }
-
+fun VoiceDeutschMasterTheme(content: @Composable () -> Unit) {
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
-            val window = (view.context as? Activity)?.window ?: return@SideEffect
-            @Suppress("DEPRECATION")
-            window.statusBarColor = colorScheme.background.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            val window = (view.context as Activity).window
+            window.statusBarColor = Background.toArgb()
+            window.navigationBarColor = Background.toArgb()
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = true
+            WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = true
         }
     }
 
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = LightColorScheme,
         typography  = VoiceDeutschTypography,
         shapes      = VoiceDeutschShapes,
         content     = content,
