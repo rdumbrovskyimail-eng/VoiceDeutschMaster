@@ -46,6 +46,14 @@ class AudioPlayer {
 
     fun write(pcmBytes: ByteArray): Int {
         val track = audioTrack ?: return -1
+        // ✅ FIX: Защита от STATE_UNINITIALIZED после многократных flush().
+        // AudioTrack может уйти в это состояние если пользователь часто перебивает ИИ.
+        // Пересоздаём трек вместо того чтобы писать в сломанный хардварный буфер.
+        if (track.state == AudioTrack.STATE_UNINITIALIZED) {
+            release()
+            start()
+            return 0
+        }
         if (pcmBytes.isEmpty() || _isPaused.get()) return 0
         return track.write(pcmBytes, 0, pcmBytes.size)
     }
