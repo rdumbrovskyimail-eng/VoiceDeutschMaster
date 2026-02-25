@@ -2,22 +2,15 @@ package com.voicedeutsch.master.voicecore.audio
 
 import android.content.Context
 import com.voicedeutsch.master.util.AudioUtils
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-class AudioPipeline(
-    private val context: Context,
-) {
+class AudioPipeline(private val context: Context) {
     private var recorder = AudioRecorder()
     private var player = AudioPlayer()
 
@@ -29,16 +22,17 @@ class AudioPipeline(
     val isRecording: Boolean get() = _isRecording
     val isPlaying: Boolean get() = _isPlaying
 
+    // Канал для отправки микрофона (без буферизации старья, DROP_OLDEST)
     private val outgoingChannel = Channel<ByteArray>(
         capacity = 10,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
-
     val incomingAudioFlow: Flow<ByteArray> = outgoingChannel.receiveAsFlow()
     fun audioChunks(): Flow<ByteArray> = incomingAudioFlow
 
+    // Входящая очередь от Gemini (24kHz)
     private var playbackQueue = Channel<ByteArray>(
-        capacity = PLAYBACK_QUEUE_CAPACITY,
+        capacity = 100,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
 
@@ -60,20 +54,17 @@ class AudioPipeline(
         _isInitialized = false
     }
 
-    // ИЗМЕНЕНО: Убран VAD. Поток с микрофона льётся напрямую чанками.
-    // Gemini сам детектирует речь на сервере.
     fun startRecording() {
         pipelineScope.launch {
             stateMutex.withLock {
                 if (_isRecording) return@withLock
                 ensureScopeAlive()
-
                 recorder.start()
                 _isRecording = true
 
                 recordingJob = pipelineScope.launch {
                     recorder.audioFrameFlow.collect { pcmShorts ->
-                        // НИКАКОГО VAD! Просто шлём сырой PCM 16kHz
+                        // НИКАКОГО VAD! Просто шлем сырой PCM 16kHz
                         val bytes = AudioUtils.shortArrayToByteArray(pcmShorts)
                         outgoingChannel.trySend(bytes)
                     }
@@ -106,7 +97,9 @@ class AudioPipeline(
     // МОМЕНТАЛЬНЫЙ СБРОС (Interruption)
     fun flushPlayback() {
         android.util.Log.d("AudioPipeline", "Interruption: Flushing audio queue")
+        // Очищаем корутинный канал
         while (playbackQueue.tryReceive().isSuccess) { }
+        // Сбрасываем аппаратный буфер
         player.flush()
     }
 
@@ -135,10 +128,7 @@ class AudioPipeline(
         ensureScopeAlive()
         recorder = AudioRecorder()
         player = AudioPlayer()
-        playbackQueue = Channel(
-            capacity = PLAYBACK_QUEUE_CAPACITY,
-            onBufferOverflow = BufferOverflow.DROP_OLDEST,
-        )
+        playbackQueue = Channel(capacity = 100, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     }
 
     fun getCurrentAmplitude(): Float = recorder.currentAmplitude
@@ -149,7 +139,6 @@ class AudioPipeline(
                 if (_isPlaying) return@withLock
                 _isPlaying = true
                 ensureScopeAlive()
-
                 playbackJob = pipelineScope.launch {
                     player.start()
                     try {
@@ -170,9 +159,5 @@ class AudioPipeline(
             scopeJob = SupervisorJob()
             pipelineScope = CoroutineScope(Dispatchers.IO + scopeJob)
         }
-    }
-
-    companion object {
-        private const val PLAYBACK_QUEUE_CAPACITY = 100
     }
 }
