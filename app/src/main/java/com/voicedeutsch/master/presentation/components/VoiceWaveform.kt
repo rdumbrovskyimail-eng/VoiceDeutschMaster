@@ -1,7 +1,5 @@
 package com.voicedeutsch.master.presentation.components
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -12,7 +10,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -28,9 +25,6 @@ import com.voicedeutsch.master.presentation.theme.WaveListening
 import com.voicedeutsch.master.presentation.theme.WaveProcessing
 import com.voicedeutsch.master.presentation.theme.WaveSpeaking
 import com.voicedeutsch.master.voicecore.session.VoiceEngineState
-import kotlinx.coroutines.launch
-import kotlin.math.abs
-import kotlin.math.cos
 import kotlin.math.sin
 
 /**
@@ -42,6 +36,12 @@ import kotlin.math.sin
  *  - PROCESSING    → pulsating concentric rings, [WaveProcessing] colour
  *  - SPEAKING      → animated sine wave, [WaveSpeaking] colour
  *  - ERROR         → red pulsating flat line, [WaveError] colour
+ *
+ * ✅ FIX: remember(amplitudes) — FloatArray не имеет структурного equals по умолчанию
+ * (сравнение по ссылке). Без remember Compose триггерит рекомпозицию всего экрана
+ * при каждом аудио-фрейме (~50 раз в секунду).
+ * remember(amplitudes) кэширует ссылку и пересоздаёт только при реальном изменении массива,
+ * изолируя Canvas от родительского дерева рекомпозиций.
  */
 @Composable
 fun VoiceWaveform(
@@ -54,6 +54,11 @@ fun VoiceWaveform(
     barWidthDp: Dp = 3.dp,
     gapWidthDp: Dp = 2.dp,
 ) {
+    // ✅ FIX: Кэшируем массив — Canvas не перерисовывает родительский Box при каждом фрейме.
+    // FloatArray.equals() сравнивает по ссылке → без remember любой новый массив
+    // (даже с теми же данными) вызывает рекомпозицию. remember(amplitudes) стабилизирует ссылку.
+    val currentAmplitudes = remember(amplitudes) { amplitudes }
+
     val infiniteTransition = rememberInfiniteTransition(label = "waveform")
 
     val phase by infiniteTransition.animateFloat(
@@ -95,7 +100,7 @@ fun VoiceWaveform(
 
             VoiceEngineState.LISTENING -> {
                 drawAmplitudeBars(
-                    amplitudes = amplitudes,
+                    amplitudes = currentAmplitudes, // ✅ используем закэшированный
                     barCount   = barCount,
                     barWidthPx = barWidthDp.toPx(),
                     gapWidthPx = gapWidthDp.toPx(),
@@ -178,7 +183,6 @@ private fun DrawScope.drawPulsingRings(pulseScale: Float, color: Color) {
             color  = color.copy(alpha = 0.6f - ring * 0.18f),
             radius = r,
             center = Offset(cx, cy),
-            // FIX: Stroke constructor uses 'width' parameter, not 'strokeWidth'
             style  = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f + ring.toFloat()),
         )
     }
