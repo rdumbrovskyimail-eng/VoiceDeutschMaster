@@ -2,6 +2,7 @@ package com.voicedeutsch.master.util
 
 /**
  * Global application constants — limits, intervals, default configuration values.
+ * Last updated: 2026-02-25 (Gemini Live 128K context)
  */
 object Constants {
 
@@ -73,9 +74,9 @@ object Constants {
     // ==========================================
     const val GEMINI_MODEL_NAME = "gemini-2.5-flash-native-audio-preview-12-2025"
 
-    // ⚠️ ИЗМЕНЕНО: 32_768 → 131_072
-    // Gemini 2.5 Flash Live API поддерживает 131k токенов контекста.
-    // Старое значение 32k было ошибочным — оно относилось к ранним preview-моделям.
+    // ⚠️ КРИТИЧЕСКИ ОБНОВЛЕНО: 32_768 → 131_072 (128K)
+    // Gemini 2.5 Flash Live API поддерживает 131072 токенов контекста.
+    // Старое значение 32k было ошибочным — относилось к ранним preview-моделям.
     const val GEMINI_LIVE_MAX_CONTEXT_TOKENS = 131_072
     const val GEMINI_REST_MAX_CONTEXT_TOKENS = 2_000_000
 
