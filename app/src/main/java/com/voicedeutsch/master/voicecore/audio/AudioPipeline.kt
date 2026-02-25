@@ -59,7 +59,12 @@ class AudioPipeline(private val context: Context) {
             stateMutex.withLock {
                 if (_isRecording) return@withLock
                 ensureScopeAlive()
-                recorder.start()
+
+                // ✅ FIX: recorder.start(pipelineScope) вместо recorder.start().
+                // AudioRecorder больше не создаёт raw Thread — запись идёт в корутине
+                // под контролем pipelineScope. При stopAll() / release() scope отменяется
+                // и корутина записи завершается автоматически без утечки потока.
+                recorder.start(pipelineScope)
                 _isRecording = true
 
                 recordingJob = pipelineScope.launch {
