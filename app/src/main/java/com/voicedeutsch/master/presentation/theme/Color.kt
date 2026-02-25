@@ -16,6 +16,10 @@ val Outline            = Color(0xFFE2E8F0)
 val OnBackground       = Color(0xFF1E293B) // Slate 800
 val OnSurfaceVariant   = Color(0xFF64748B) // Slate 500
 
+// ── Avatar ────────────────────────────────────────────────────────────────────
+val AvatarSkin = Color(0xFFFFEDD5)
+val AvatarHair = Color(0xFF334155)
+
 // ── Voice state colours ───────────────────────────────────────────────────────
 /** Idle / no session — subtle neutral wave */
 val WaveIdle       = Color(0xFF94A3B8) // Slate 400
