@@ -45,10 +45,10 @@ import java.util.concurrent.TimeUnit
 
 val dataModule = module {
 
-    // ─── JSON ────────────────────────────────────────────────────────────────
-    // Единственный Json-инстанс на всё приложение.
-    // ignoreUnknownKeys: безопасно для эволюции API (новые поля не ломают парсинг).
-    // isLenient: принимает JSON с одинарными кавычками (некоторые Firebase-ответы).
+    // \u2500\u2500\u2500 JSON \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    // \u0415\u0434\u0438\u043d\u0441\u0442\u0432\u0435\u043d\u043d\u044b\u0439 Json-\u0438\u043d\u0441\u0442\u0430\u043d\u0441 \u043d\u0430 \u0432\u0441\u0451 \u043f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0435.
+    // ignoreUnknownKeys: \u0431\u0435\u0437\u043e\u043f\u0430\u0441\u043d\u043e \u0434\u043b\u044f \u044d\u0432\u043e\u043b\u044e\u0446\u0438\u0438 API (\u043d\u043e\u0432\u044b\u0435 \u043f\u043e\u043b\u044f \u043d\u0435 \u043b\u043e\u043c\u0430\u044e\u0442 \u043f\u0430\u0440\u0441\u0438\u043d\u0433).
+    // isLenient: \u043f\u0440\u0438\u043d\u0438\u043c\u0430\u0435\u0442 JSON \u0441 \u043e\u0434\u0438\u043d\u0430\u0440\u043d\u044b\u043c\u0438 \u043a\u0430\u0432\u044b\u0447\u043a\u0430\u043c\u0438 (\u043d\u0435\u043a\u043e\u0442\u043e\u0440\u044b\u0435 Firebase-\u043e\u0442\u0432\u0435\u0442\u044b).
     single {
         Json {
             ignoreUnknownKeys = true
@@ -57,10 +57,10 @@ val dataModule = module {
         }
     }
 
-    // ─── Ktor HttpClient ─────────────────────────────────────────────────────
-    // ℹ️ HttpClient остаётся для вспомогательных HTTP-запросов (не Gemini).
-    // Основной AI-транспорт (Gemini Live API) — firebase-ai SDK (GeminiClient.kt).
-    // WebSockets плагин УДАЛЁН — WebSocket с Gemini теперь управляет SDK.
+    // \u2500\u2500\u2500 Ktor HttpClient \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    // \u2139\ufe0f HttpClient \u043e\u0441\u0442\u0430\u0451\u0442\u0441\u044f \u0434\u043b\u044f \u0432\u0441\u043f\u043e\u043c\u043e\u0433\u0430\u0442\u0435\u043b\u044c\u043d\u044b\u0445 HTTP-\u0437\u0430\u043f\u0440\u043e\u0441\u043e\u0432 (\u043d\u0435 Gemini).
+    // \u041e\u0441\u043d\u043e\u0432\u043d\u043e\u0439 AI-\u0442\u0440\u0430\u043d\u0441\u043f\u043e\u0440\u0442 (Gemini Live API) \u2014 firebase-ai SDK (GeminiClient.kt).
+    // WebSockets \u043f\u043b\u0430\u0433\u0438\u043d \u0423\u0414\u0410\u041b\u0401\u041d \u2014 WebSocket \u0441 Gemini \u0442\u0435\u043f\u0435\u0440\u044c \u0443\u043f\u0440\u0430\u0432\u043b\u044f\u0435\u0442 SDK.
     single {
         HttpClient(OkHttp) {
             engine {
@@ -71,147 +71,4 @@ val dataModule = module {
                 }
             }
 
-            // ContentNegotiation: нужен для response.body<T>() без рефлексии.
-            install(ContentNegotiation) {
-                json(get<Json>())
-            }
-
-            install(Logging) {
-                level = LogLevel.INFO
-                logger = object : Logger {
-                    override fun log(message: String) {
-                        android.util.Log.d("KtorNetwork", message)
-                    }
-                }
-            }
-        }
-    }
-
-    // ─── Firebase Auth ────────────────────────────────────────────────────────
-    // ✅ BoM 34.x: Firebase.auth — без -ktx суффикса.
-    single<FirebaseAuth> {
-        Firebase.auth.apply {
-            if (currentUser == null) {
-                signInAnonymously()
-                    .addOnSuccessListener { result ->
-                        android.util.Log.d("FirebaseAuth", "✅ Anonymous sign-in: uid=${result.user?.uid}")
-                    }
-                    .addOnFailureListener { e ->
-                        android.util.Log.w("FirebaseAuth", "⚠️ Anonymous sign-in failed: ${e.message}")
-                    }
-            }
-        }
-    }
-
-    // ─── Firebase Firestore ───────────────────────────────────────────────────
-    // ✅ BoM 34.x: PersistentCacheSettings — офлайн-кеш на диске.
-    single<FirebaseFirestore> {
-        Firebase.firestore.apply {
-            firestoreSettings = FirebaseFirestoreSettings.Builder()
-                .setLocalCacheSettings(
-                    PersistentCacheSettings.newBuilder()
-                        .setSizeBytes(50_000_000L)
-                        .build()
-                )
-                .build()
-        }
-    }
-
-    // ─── Firebase Storage ─────────────────────────────────────────────────────
-    single<FirebaseStorage> {
-        Firebase.storage.apply {
-            maxDownloadRetryTimeMillis = 60_000L
-            maxUploadRetryTimeMillis   = 120_000L
-        }
-    }
-
-    // ─── Database ────────────────────────────────────────────────────────────
-    // ✅ ПРОДАКШЕН 2026: fallbackToDestructiveMigrationFrom УДАЛЁН.
-    //
-    // Почему это критично:
-    //   fallbackToDestructiveMigration() стирает ВСЮ базу если Room не находит
-    //   нужную миграцию. Для пользователя это потеря прогресса → удаление приложения.
-    //
-    // Правило: каждый новый version в @Database требует явного MIGRATION_X_Y.
-    // Даже если схема не изменилась — пишем пустую миграцию:
-    //
-    //   val MIGRATION_2_3 = object : Migration(2, 3) {
-    //       override fun migrate(db: SupportSQLiteDatabase) {
-    //           // no-op: version bump без изменений схемы
-    //       }
-    //   }
-    //
-    // И добавляем её здесь через .addMigrations(AppDatabase.MIGRATION_2_3).
-    //
-    // Текущая версия БД: 2. Все переходы покрыты:
-    //   1 → 2: MIGRATION_1_2 (таблицы achievements + user_achievements)
-    single {
-        Room.databaseBuilder(
-            androidContext(),
-            AppDatabase::class.java,
-            AppDatabase.DATABASE_NAME,
-        )
-            .addMigrations(
-                AppDatabase.MIGRATION_1_2,
-                // При добавлении новых сущностей — добавляй MIGRATION_2_3 и т.д.
-                // НИКОГДА не используй fallbackToDestructiveMigration в продакшене.
-            )
-            .build()
-    }
-
-    // ─── DAOs ────────────────────────────────────────────────────────────────
-    single { get<AppDatabase>().userDao() }
-    single { get<AppDatabase>().wordDao() }
-    single { get<AppDatabase>().knowledgeDao() }
-    single { get<AppDatabase>().grammarRuleDao() }
-    single { get<AppDatabase>().phraseDao() }
-    single { get<AppDatabase>().sessionDao() }
-    single { get<AppDatabase>().progressDao() }
-    single { get<AppDatabase>().bookProgressDao() }
-    single { get<AppDatabase>().mistakeDao() }
-    single { get<AppDatabase>().achievementDao() }
-
-    // ─── DataStore & Assets ──────────────────────────────────────────────────
-    single { UserPreferencesDataStore(androidContext()) }
-    single { BookFileReader(androidContext(), get()) }
-
-    // ─── Repositories ────────────────────────────────────────────────────────
-    single<UserRepository> {
-        UserRepositoryImpl(get(), get(), get(), get(), get())
-    }
-
-    single<KnowledgeRepository> {
-        KnowledgeRepositoryImpl(get(), get(), get(), get(), get(), get(), get())
-    }
-
-    single<BookRepository> {
-        BookRepositoryImpl(get(), get(), get(), get(), get(), get())
-    }
-
-    single<SessionRepository> {
-        SessionRepositoryImpl(get(), get(), get())
-    }
-
-    single<ProgressRepository> {
-        ProgressRepositoryImpl(get(), get(), get(), get(), get(), get(), get(), get())
-    }
-
-    single<AchievementRepository> {
-        AchievementRepositoryImpl(get(), get())
-    }
-
-    single<SpeechRepository> {
-        SpeechRepositoryImpl(get(), get())
-    }
-
-    // ─── File Managers ───────────────────────────────────────────────────────
-    single { AudioCacheManager(androidContext()) }
-    single { ExportImportManager(androidContext(), get()) }
-
-    // ─── Remote Services (Firebase-based) ────────────────────────────────────
-    single { BackupManager(androidContext(), get<FirebaseFirestore>(), get<FirebaseStorage>(), get<FirebaseAuth>()) }
-    single { CloudSyncService(get<FirebaseFirestore>(), get<FirebaseAuth>()) }
-
-    // ✅ EphemeralTokenService УДАЛЁН:
-    // Firebase App Check + firebase-ai SDK управляют авторизацией прозрачно.
-}
+            // ContentNegotiation: \u043d\u0443\u0436\u0435\u043d \u0434\u043b\u044f response.body<T>() \u0431\u0435\u0437 \u0440
