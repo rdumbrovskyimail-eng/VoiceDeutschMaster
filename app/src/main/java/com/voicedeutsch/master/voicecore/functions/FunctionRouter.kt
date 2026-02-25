@@ -29,6 +29,22 @@ import kotlinx.serialization.json.*
  *                     get_words_for_repetition, get_weak_points
  *   4. User         : update_user_level, get_user_statistics
  *   5. Pronunciation: save_pronunciation_result, get_pronunciation_targets
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * ИЗМЕНЕНИЯ (Модуль 6):
+ * ════════════════════════════════════════════════════════════════════════════
+ *
+ *   1. УДАЛЕНО: getDeclarations() — 250 строк hardcoded JSON-строк.
+ *      Нативные declarations уже есть в *Functions.kt файлах
+ *      (KnowledgeFunctions, BookFunctions, SessionFunctions и т.д.).
+ *      GeminiClient.mapToFirebaseDeclaration() маппит их в SDK-объекты.
+ *
+ *   2. ДОБАВЛЕНО: Type coercion helpers — intCoerced(), floatCoerced(), boolCoerced().
+ *      Gemini иногда галлюцинирует типы: шлёт "2" (строку) вместо 2 (число),
+ *      "true" вместо true, "0.5" вместо 0.5.
+ *      Старые хелперы .int() / .float() падали с ClassCastException.
+ *
+ *   3. ИЗМЕНЕНО: Все handler-ы используют coerced-хелперы вместо старых.
  */
 class FunctionRouter(
     private val updateWordKnowledge:   UpdateWordKnowledgeUseCase,
@@ -113,9 +129,9 @@ class FunctionRouter(
             wordGerman         = args.str("word")
                 ?: return error("save_word_knowledge", "missing 'word'"),
             translation        = args.str("translation") ?: "",
-            newLevel           = args.int("level", 1),
-            quality            = args.int("quality", 3),
-            pronunciationScore = args.float("pronunciation_score"),
+            newLevel           = args.intCoerced("level", 1),      // ✅ coerced
+            quality            = args.intCoerced("quality", 3),    // ✅ coerced
+            pronunciationScore = args.floatCoerced("pronunciation_score"),  // ✅ coerced
             context            = args.str("context"),
         )
         updateWordKnowledge(params)
@@ -135,8 +151,8 @@ class FunctionRouter(
         val params = UpdateRuleKnowledgeUseCase.Params(
             userId   = userId,
             ruleId   = ruleId,
-            newLevel = args.int("level", 1),
-            quality  = args.int("quality", 3),
+            newLevel = args.intCoerced("level", 1),      // ✅ coerced
+            quality  = args.intCoerced("quality", 3),    // ✅ coerced
         )
         updateRuleKnowledge(params)
         return FunctionCallResult(
@@ -205,7 +221,7 @@ class FunctionRouter(
         args:   JsonObject,
         userId: String,
     ): FunctionCallResult {
-        val score = args.float("score") ?: 1.0f
+        val score = args.floatCoerced("score") ?: 1.0f    // ✅ coerced
         val result = advanceBookProgress(userId, score)
         return FunctionCallResult(
             functionName = "advance_to_next_lesson",
@@ -224,7 +240,7 @@ class FunctionRouter(
         args:   JsonObject,
         userId: String,
     ): FunctionCallResult {
-        val score = args.float("score") ?: 1.0f
+        val score = args.floatCoerced("score") ?: 1.0f    // ✅ coerced
         advanceBookProgress(userId, score)
         return FunctionCallResult(
             functionName = "mark_lesson_complete",
@@ -239,7 +255,7 @@ class FunctionRouter(
         args:   JsonObject,
         userId: String,
     ): FunctionCallResult {
-        val limit = args.int("limit", 15)
+        val limit = args.intCoerced("limit", 15)    // ✅ coerced
         val items = getWordsForRepetition(userId, limit)
         return FunctionCallResult(
             functionName = "get_words_for_repetition",
@@ -263,9 +279,6 @@ class FunctionRouter(
         )
     }
 
-    // PATCH APPLIED: WeakPoint — data class с полями description, category, severity.
-    // Старый код: add(JsonPrimitive(point)) — не компилировался (WeakPoint не примитив).
-    // Новый код: addJsonObject { put("description", ...) put("category", ...) ... }
     private suspend fun handleGetWeakPoints(userId: String): FunctionCallResult {
         val weakPoints = getWeakPoints(userId)
         return FunctionCallResult(
@@ -362,9 +375,9 @@ class FunctionRouter(
         recordPronunciation(
             RecordPronunciationResultUseCase.Params(
                 userId        = userId,
-                 sessionId     = sessionId,
+                sessionId     = sessionId,
                 word          = args.str("word") ?: "",
-                score         = args.float("score") ?: 0.5f,
+                score         = args.floatCoerced("score") ?: 0.5f,    // ✅ coerced
                 problemSounds = args["problem_sounds"]?.jsonArray
                     ?.map { it.jsonPrimitive.content }
                     ?: emptyList(),
@@ -397,255 +410,16 @@ class FunctionRouter(
         )
     }
 
-    // ── Function declarations для Gemini Setup ────────────────────────────────
-
-    fun getDeclarations(): List<String> = listOf(
-        """
-        {
-          "name": "save_word_knowledge",
-          "description": "Сохраняет прогресс изучения немецкого слова пользователем после практики.",
-          "parameters": {
-            "type": "OBJECT",
-            "properties": {
-              "word":                { "type": "STRING",  "description": "Немецкое слово" },
-              "translation":         { "type": "STRING",  "description": "Перевод на русский" },
-              "level":               { "type": "INTEGER", "description": "Уровень знания 1-5 (1=новое, 5=освоено)" },
-              "quality":             { "type": "INTEGER", "description": "Качество ответа 1-5 (SM-2)" },
-              "pronunciation_score": { "type": "NUMBER",  "description": "Оценка произношения 0.0-1.0, опционально" },
-              "context":             { "type": "STRING",  "description": "Предложение-контекст использования слова" }
-            },
-            "required": ["word", "translation", "level", "quality"]
-          }
-        }
-        """,
-        """
-        {
-          "name": "save_rule_knowledge",
-          "description": "Сохраняет прогресс изучения грамматического правила.",
-          "parameters": {
-            "type": "OBJECT",
-            "properties": {
-              "rule_id":    { "type": "STRING",  "description": "Идентификатор правила из грамматики урока" },
-              "rule_title": { "type": "STRING",  "description": "Название правила" },
-              "level":      { "type": "INTEGER", "description": "Уровень знания 1-5" },
-              "quality":    { "type": "INTEGER", "description": "Качество ответа 1-5 (SM-2)" },
-              "context":    { "type": "STRING",  "description": "Пример использования правила" }
-            },
-            "required": ["rule_id", "rule_title", "level", "quality"]
-          }
-        }
-        """,
-        """
-        {
-          "name": "record_mistake",
-          "description": "Фиксирует ошибку пользователя для последующего анализа и повторения.",
-          "parameters": {
-            "type": "OBJECT",
-            "properties": {
-              "mistake_type": { "type": "STRING", "description": "Тип ошибки: grammar, vocabulary, pronunciation, word_order" },
-              "user_input":   { "type": "STRING", "description": "Что сказал/написал пользователь" },
-              "correct_form": { "type": "STRING", "description": "Правильный вариант" },
-              "context":      { "type": "STRING", "description": "Контекст где возникла ошибка" },
-              "explanation":  { "type": "STRING", "description": "Объяснение ошибки" }
-            },
-            "required": ["mistake_type", "user_input", "correct_form"]
-          }
-        }
-        """,
-        """
-        {
-          "name": "get_current_lesson",
-          "description": "Возвращает информацию о текущем уроке пользователя.",
-          "parameters": {
-            "type": "OBJECT",
-            "properties": {},
-            "required": []
-          }
-        }
-        """,
-        """
-        {
-           "name": "advance_to_next_lesson",
-           "description": "Переводит пользователя к следующему уроку после завершения текущего.",
-           "parameters": {
-             "type": "OBJECT",
-             "properties": {
-               "score": { "type": "NUMBER", "description": "Оценка за урок 0.0-1.0" }
-             },
-             "required": ["score"]
-           }
-        }
-        """,
-        """
-        {
-          "name": "mark_lesson_complete",
-          "description": "Отмечает урок как пройденный без перехода к следующему.",
-          "parameters": {
-            "type": "OBJECT",
-            "properties": {
-              "chapter": { "type": "INTEGER", "description": "Номер главы" },
-              "lesson":  { "type": "INTEGER", "description": "Номер урока" }
-            },
-            "required": ["chapter", "lesson"]
-          }
-        }
-        """,
-        """
-        {
-          "name": "get_words_for_repetition",
-          "description": "Возвращает список слов для повторения по алгоритму SRS.",
-          "parameters": {
-            "type": "OBJECT",
-            "properties": {
-              "limit": { "type": "INTEGER", "description": "Максимальное количество слов (по умолчанию 15)" }
-            },
-            "required": []
-          }
-        }
-        """,
-        """
-        {
-          "name": "get_weak_points",
-          "description": "Возвращает слабые места пользователя для целенаправленной практики.",
-          "parameters": {
-            "type": "OBJECT",
-            "properties": {},
-            "required": []
-          }
-        }
-        """,
-        """
-        {
-          "name": "set_current_strategy",
-          "description": "Переключает стратегию обучения в текущей сессии.",
-          "parameters": {
-            "type": "OBJECT",
-            "properties": {
-              "strategy": {
-                "type": "STRING",
-                "description": "Название стратегии",
-                "enum": ["LINEAR_BOOK", "GAP_FILLING", "REPETITION", "FREE_PRACTICE", "PRONUNCIATION", "GRAMMAR_DRILL", "VOCABULARY_BOOST", "LISTENING", "ASSESSMENT"]
-              }
-            },
-            "required": ["strategy"]
-          }
-        }
-        """,
-        """
-        {
-          "name": "log_session_event",
-          "description": "Логирует важное событие сессии для аналитики.",
-          "parameters": {
-            "type": "OBJECT",
-            "properties": {
-              "event_type": { "type": "STRING", "description": "Тип события" },
-              "event_data": { "type": "STRING", "description": "JSON-данные события" }
-            },
-            "required": ["event_type"]
-          }
-        }
-        """,
-        """
-        {
-          "name": "update_user_level",
-          "description": "Обновляет уровень CEFR пользователя на основе оценки Gemini.",
-          "parameters": {
-            "type": "OBJECT",
-            "properties": {
-              "cefr_level": {
-                "type": "STRING",
-                "description": "Уровень CEFR",
-                "enum": ["A1", "A2", "B1", "B2", "C1", "C2"]
-              },
-              "sub_level": { "type": "INTEGER", "description": "Подуровень 1-3 внутри CEFR" }
-            },
-            "required": ["cefr_level"]
-          }
-        }
-        """,
-        """
-        {
-          "name": "get_user_statistics",
-          "description": "Возвращает сводную статистику обучения пользователя.",
-          "parameters": {
-            "type": "OBJECT",
-            "properties": {},
-            "required": []
-          }
-        }
-        """,
-        """
-        {
-          "name": "save_pronunciation_result",
-          "description": "Сохраняет результат оценки произношения слова.",
-          "parameters": {
-            "type": "OBJECT",
-            "properties": {
-              "word":           { "type": "STRING",  "description": "Немецкое слово" },
-              "score":          { "type": "NUMBER",  "description": "Оценка произношения 0.0-1.0" },
-              "problem_sounds": {
-                "type": "ARRAY",
-                "description": "Список проблемных звуков",
-                "items": { "type": "STRING" }
-              }
-            },
-            "required": ["word", "score"]
-          }
-        }
-        """,
-        """
-        {
-          "name": "get_pronunciation_targets",
-          "description": "Возвращает звуки/слова для целенаправленной практики произношения.",
-          "parameters": {
-            "type": "OBJECT",
-            "properties": {},
-            "required": []
-          }
-        }
-        """,
-        """
-        {
-          "name": "show_word_card",
-          "description": "Показывает карточку слова в интерфейсе пользователя.",
-          "parameters": {
-            "type": "OBJECT",
-            "properties": {
-              "word":        { "type": "STRING", "description": "Немецкое слово" },
-              "translation": { "type": "STRING", "description": "Перевод" }
-            },
-            "required": ["word"]
-          }
-        }
-        """,
-        """
-        {
-          "name": "show_grammar_hint",
-          "description": "Показывает подсказку по грамматике в интерфейсе.",
-          "parameters": {
-            "type": "OBJECT",
-            "properties": {
-              "rule":    { "type": "STRING", "description": "Грамматическое правило" },
-              "example": { "type": "STRING", "description": "Пример использования" }
-            },
-            "required": ["rule"]
-          }
-        }
-        """,
-        """
-        {
-          "name": "trigger_celebration",
-          "description": "Запускает анимацию поздравления в интерфейсе.",
-          "parameters": {
-            "type": "OBJECT",
-            "properties": {
-              "reason": { "type": "STRING", "description": "Причина поздравления" }
-            },
-            "required": []
-          }
-        }
-        """
-    )
+    // УДАЛЕНО: getDeclarations(): List<String>
+    // 250 строк hardcoded JSON-строк. Нативные declarations находятся в:
+    //   - KnowledgeFunctions.declarations
+    //   - BookFunctions.declarations
+    //   - SessionFunctions.declarations
+    //   - LearningFunctions.declarations
+    //   - ProgressFunctions.declarations
+    //   - UIFunctions.declarations
+    // FunctionRegistry.getAllDeclarations() агрегирует их.
+    // GeminiClient.mapToFirebaseDeclaration() маппит в Firebase SDK объекты.
 
     // ── UI handlers ───────────────────────────────────────────────────────────
 
@@ -658,16 +432,66 @@ class FunctionRouter(
     private fun handleTriggerCelebration(args: JsonObject) =
         FunctionCallResult("trigger_celebration", true, """{"status":"triggered"}""")
 
-    // ── Tiny JsonObject extension helpers ─────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════════
+    // Type-safe JSON helpers с COERCION для AI-галлюцинаций
+    // ══════════════════════════════════════════════════════════════════════════
+    //
+    // Gemini иногда возвращает:
+    //   "level": "2"  вместо  "level": 2
+    //   "score": "0.5" вместо "score": 0.5
+    //   "flag": "true" вместо "flag": true
+    //
+    // Стандартные jsonPrimitive.intOrNull / .floatOrNull возвращают null
+    // для строковых значений → функция получает default вместо реального значения.
+    // Coerced-хелперы сначала пробуют число, потом парсят строку.
+    // ══════════════════════════════════════════════════════════════════════════
 
+    /** Извлекает строку. Работает и для числовых значений (приводит к строке). */
     private fun JsonObject.str(key: String): String? =
         this[key]?.jsonPrimitive?.contentOrNull
 
-    private fun JsonObject.int(key: String, default: Int): Int =
-        this[key]?.jsonPrimitive?.intOrNull ?: default
+    /**
+     * Извлекает Int с coercion: 2 → 2, "2" → 2, "abc" → default.
+     * Защищает от AI-галлюцинации типов.
+     */
+    private fun JsonObject.intCoerced(key: String, default: Int): Int {
+        val element = this[key]?.jsonPrimitive ?: return default
+        // Сначала пробуем как число
+        element.intOrNull?.let { return it }
+        // Fallback: парсим строку "2" → 2
+        element.contentOrNull?.toIntOrNull()?.let { return it }
+        // Fallback 2: "2.0" → 2 (Gemini иногда шлёт float вместо int)
+        element.contentOrNull?.toFloatOrNull()?.toInt()?.let { return it }
+        return default
+    }
 
-    private fun JsonObject.float(key: String): Float? =
-        this[key]?.jsonPrimitive?.floatOrNull
+    /**
+     * Извлекает Float с coercion: 0.5 → 0.5, "0.5" → 0.5, "abc" → null.
+     */
+    private fun JsonObject.floatCoerced(key: String): Float? {
+        val element = this[key]?.jsonPrimitive ?: return null
+        element.floatOrNull?.let { return it }
+        return element.contentOrNull?.toFloatOrNull()
+    }
+
+    /**
+     * Извлекает Float с coercion и default.
+     */
+    private fun JsonObject.floatCoerced(key: String, default: Float): Float =
+        floatCoerced(key) ?: default
+
+    /**
+     * Извлекает Boolean с coercion: true → true, "true" → true, 1 → true.
+     */
+    private fun JsonObject.boolCoerced(key: String, default: Boolean = false): Boolean {
+        val element = this[key]?.jsonPrimitive ?: return default
+        element.booleanOrNull?.let { return it }
+        return when (element.contentOrNull?.lowercase()) {
+            "true", "1", "yes" -> true
+            "false", "0", "no" -> false
+            else               -> default
+        }
+    }
 
     private fun error(fn: String, msg: String) =
         FunctionCallResult(fn, false, """{"error":"$msg"}""")
