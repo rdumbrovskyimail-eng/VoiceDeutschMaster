@@ -32,7 +32,7 @@ object AudioUtils {
     fun calculateRMSdB(samples: ShortArray): Float {
         val rms = calculateRMS(samples)
         if (rms <= 0f) return -100f
-        return (20 * log10(rms / Short.MAX_VALUE.toFloat())).toFloat()
+        return (20 * log10(rms / Short.MAX_VALUE)).toFloat() // Removed .toFloat() from Short.MAX_VALUE
     }
 
     /**
@@ -45,7 +45,7 @@ object AudioUtils {
             val absSample = abs(sample.toInt())
             if (absSample > max) max = absSample
         }
-        return max.toFloat() / Short.MAX_VALUE.toFloat()
+        return max.toFloat() / Short.MAX_VALUE // Removed .toFloat() from Short.MAX_VALUE
     }
 
     /**
@@ -63,7 +63,7 @@ object AudioUtils {
 
             var maxInChunk = 0f
             for (j in startIdx until endIdx) {
-                val normalized = abs(samples[j].toFloat()) / Short.MAX_VALUE.toFloat()
+                val normalized = abs(samples[j].toFloat()) / Short.MAX_VALUE // Removed .toFloat() from Short.MAX_VALUE
                 if (normalized > maxInChunk) maxInChunk = normalized
             }
             result[i] = maxInChunk
