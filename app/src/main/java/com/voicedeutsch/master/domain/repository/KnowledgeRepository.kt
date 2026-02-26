@@ -151,7 +151,7 @@ interface KnowledgeRepository {
 
     suspend fun getPerfectPronunciationCount(userId: String): Int
 
-    suspend fun getRecentPronunciationRecords(userId: String, limit: Int): List<com.voicedeutsch.master.domain.model.speech.PronunciationResult>
+    suspend fun getRecentPronunciationRecords(userId: String, limit: Int): List<PronunciationResult>
 
     // ==========================================
     // KNOWLEDGE SNAPSHOT
@@ -160,4 +160,23 @@ interface KnowledgeRepository {
     suspend fun buildKnowledgeSnapshot(userId: String): KnowledgeSnapshot
 
     suspend fun recalculateOverdueItems(userId: String)
+
+    // ==========================================
+    // SYNC
+    // ==========================================
+
+    /**
+     * Сбрасывает очередь батча накопленных за сессию изменений в Firestore.
+     *
+     * Вызывается ОДИН РАЗ в конце сессии через [FlushKnowledgeSyncUseCase].
+     * 50 слов SRS = было 50 Firestore-записей → стало 1 batch-commit.
+     *
+     * Возвращает true если синхронизация прошла успешно (или очередь была пуста).
+     * false означает ошибку сети — данные остались в очереди и будут
+     * отправлены при следующем вызове (at-least-once семантика).
+     *
+     * Реализация в domain-слое возвращает Boolean чтобы не протащить
+     * [CloudSyncService.SyncStatus] (data-тип) в domain-интерфейс.
+     */
+    suspend fun flushSync(): Boolean
 }
