@@ -1,6 +1,7 @@
 package com.voicedeutsch.master.app.di
 
 import androidx.room.Room
+import androidx.room.RoomDatabase
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.auth
@@ -39,6 +40,10 @@ import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logger
 import io.ktor.client.plugins.logging.Logging
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
@@ -117,6 +122,9 @@ val dataModule = module {
 
     // ─── Database ────────────────────────────────────────────────────────────
     single {
+        // Scope привязан к жизни приложения — безопасная альтернатива GlobalScope
+        val dbScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
         Room.databaseBuilder(
             androidContext(),
             AppDatabase::class.java,
@@ -125,6 +133,25 @@ val dataModule = module {
             .addMigrations(
                 AppDatabase.MIGRATION_1_2,
             )
+            // FIX: Seed ачивок при первом создании БД (свежая установка)
+            // + onOpen покрывает пользователей, пришедших через миграцию 1→2
+            // (у них onCreate не сработает, таблица уже создана но пустая).
+            // seedDefaultAchievements() защищён проверкой isNotEmpty() — дублей не будет.
+            .addCallback(object : RoomDatabase.Callback() {
+                override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                    super.onCreate(db)
+                    dbScope.launch {
+                        get<AchievementRepository>().seedDefaultAchievements()
+                    }
+                }
+
+                override fun onOpen(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                    super.onOpen(db)
+                    dbScope.launch {
+                        get<AchievementRepository>().seedDefaultAchievements()
+                    }
+                }
+            })
             .build()
     }
 
