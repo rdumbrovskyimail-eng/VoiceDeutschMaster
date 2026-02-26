@@ -3,6 +3,7 @@ package com.voicedeutsch.master.data.remote.sync
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import androidx.sqlite.db.SimpleSQLiteQuery
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
@@ -60,6 +61,7 @@ import java.io.FileOutputStream
  */
 class BackupManager(
     private val context: Context,
+    private val db: AppDatabase, // 🔥 ВНЕДРЕНО: нужен для WAL checkpoint
     private val firestore: FirebaseFirestore,
     private val storage: FirebaseStorage,
     private val auth: FirebaseAuth,
@@ -86,10 +88,18 @@ class BackupManager(
     /**
      * Создаёт локальную копию Room DB в app/files/backups/.
      *
+     * 🔥 FIX: Перед копированием файла принудительно сбрасываем WAL-логи
+     * в основной .db файл через PRAGMA wal_checkpoint(TRUNCATE).
+     * Без этого скопированный файл может быть неконсистентным — Room держит
+     * незафиксированные транзакции в отдельном .db-wal файле.
+     *
      * @return Абсолютный путь к файлу бекапа, null при ошибке.
      */
     suspend fun createLocalBackup(): String? = withContext(Dispatchers.IO) {
         runCatching {
+            // 🔥 FIX: Принудительный сброс WAL логов в основной файл .db
+            db.query(SimpleSQLiteQuery("PRAGMA wal_checkpoint(TRUNCATE)")).moveToNext()
+
             val dbFile = context.getDatabasePath(AppDatabase.DATABASE_NAME)
             if (!dbFile.exists()) {
                 Log.w(TAG, "Database file not found: ${dbFile.absolutePath}")
@@ -173,7 +183,7 @@ class BackupManager(
      * Создаёт облачный бекап: локальный файл → Firebase Storage → метаданные в Firestore.
      *
      * Порядок операций:
-     *   1. Создать локальный бекап (staging)
+     *   1. Создать локальный бекап (staging) — с WAL checkpoint
      *   2. Загрузить в Firebase Storage с метаданными
      *   3. Записать метаданные в Firestore (для листинга)
      *   4. Очистить старые облачные бекапы (оставить MAX_CLOUD_BACKUPS)
@@ -184,7 +194,7 @@ class BackupManager(
         val uid = auth.currentUser?.uid
             ?: return@withContext BackupResult.Error("User not authenticated")
 
-        // 1. Локальный staging-файл
+        // 1. Локальный staging-файл (уже с WAL checkpoint внутри)
         val localPath = createLocalBackup()
             ?: return@withContext BackupResult.Error("Failed to create local backup")
 
@@ -248,7 +258,6 @@ class BackupManager(
         val uid = auth.currentUser?.uid ?: return@withContext emptyList()
 
         runCatching {
-            // Используем .await() для Firebase Tasks в suspend-функциях
             val snapshot = firestore
                 .collection("users")
                 .document(uid)
@@ -288,12 +297,10 @@ class BackupManager(
         runCatching {
             val tempFile = File(context.cacheDir, "restore_temp$BACKUP_EXTENSION")
 
-            // Скачиваем из Storage во временный файл
             storage.reference.child(storagePath).getFile(tempFile).await()
 
             Log.d(TAG, "Downloaded from Storage: $storagePath → ${tempFile.absolutePath}")
 
-            // Записываем поверх Room DB файла
             val dbFile = context.getDatabasePath(AppDatabase.DATABASE_NAME)
             FileInputStream(tempFile).use { input ->
                 FileOutputStream(dbFile).use { output ->
@@ -315,7 +322,6 @@ class BackupManager(
 
     /**
      * Удаляет старые облачные бекапы, оставляя последние [MAX_CLOUD_BACKUPS].
-     * Удаляет из Storage и Firestore одновременно.
      */
     private suspend fun pruneOldCloudBackups(uid: String) {
         val all = listCloudBackups()
@@ -324,10 +330,8 @@ class BackupManager(
         val toDelete = all.drop(MAX_CLOUD_BACKUPS)
         toDelete.forEach { backup ->
             runCatching {
-                // Удаляем из Storage
                 storage.reference.child(backup.storagePath).delete().await()
 
-                // Удаляем метаданные из Firestore
                 firestore
                     .collection("users").document(uid)
                     .collection(FIRESTORE_BACKUPS_COLLECTION)
