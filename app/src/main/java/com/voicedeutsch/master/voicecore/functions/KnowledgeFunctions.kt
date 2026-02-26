@@ -37,9 +37,6 @@ object KnowledgeFunctions {
             name = "record_mistake",
             description = "Зафиксировать ошибку пользователя для анализа слабых мест.",
             params = mapOf(
-                // ✅ FIX (Баг #5): явный enum в описании — ИИ не выдумывает
-                // произвольные типы ошибок (напр. "syntax", "spelling").
-                // Строгое перечисление снижает вероятность галлюцинации значения.
                 "mistake_type" to ("string" to "Тип ошибки. Строго одно из значений: grammar, vocabulary, pronunciation, phrase"),
                 "user_input"   to ("string" to "Что сказал/написал пользователь"),
                 "correct_form" to ("string" to "Правильный вариант"),
@@ -54,6 +51,7 @@ object KnowledgeFunctions {
             params = mapOf(
                 "limit" to ("integer" to "Максимальное количество слов (по умолчанию 10)"),
             ),
+            required = listOf("limit"), // ✅ ФИКС: делаем параметр обязательным, чтобы required не был пустым
         ),
         FunctionRegistry.declare(
             name = "get_weak_points",
