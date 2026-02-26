@@ -73,6 +73,16 @@ import kotlinx.serialization.json.buildJsonObject
 //   3. ДОБАВЛЕНО: mapToFirebaseDeclaration() + mapPropertyToSchema() (нативный маппинг)
 //   4. УДАЛЕНО: audioConversationJob, responseChannel
 //   5. ДОБАВЛЕНО: Schema.enumeration() для enum-свойств (set_current_strategy и т.д.)
+//
+// ════════════════════════════════════════════════════════════════════════════
+// ИЗМЕНЕНИЯ (Parallel Function Calling fix):
+//   6. FIX: mapServerContent() теперь извлекает ВСЕ FunctionCallPart через
+//      filterIsInstance<FunctionCallPart>() (список, не firstOrNull).
+//      Gemini 2.5 Flash умеет вызывать несколько функций за один ход.
+//      Старый код: .firstOrNull() → вторая функция игнорировалась навсегда,
+//      ИИ зависал ожидая ответа на неё.
+//   7. GeminiResponse.functionCall → functionCalls: List<GeminiFunctionCall>
+//   8. sendFunctionResults(List<Pair>) — отправляет все ответы одним батчем.
 // ════════════════════════════════════════════════════════════════════════════
 
 /**
@@ -105,12 +115,6 @@ class GeminiClient(
 
     /**
      * Подключается к Gemini Live API.
-     *
-     * Firebase.ai.liveModel() — backend по умолчанию googleAI.
-     * liveModel.connect() → LiveSession.
-     *
-     * context.functionDeclarations — List<GeminiFunctionDeclaration> (нативные объекты).
-     * Маппинг через mapToFirebaseDeclaration(), без JSON-парсинга.
      */
     suspend fun connect(context: ContextBuilder.SessionContext) {
         try {
@@ -161,9 +165,6 @@ class GeminiClient(
 
     /**
      * Отправляет chunk PCM-аудио в Gemini Live API.
-     * Формат: PCM 16-bit signed, 16 kHz, mono.
-     *
-     * session.send(content: Content) — ОДИН параметр, без turnComplete.
      */
     suspend fun sendAudioChunk(pcmBytes: ByteArray) {
         val session = liveSession ?: run {
@@ -179,8 +180,6 @@ class GeminiClient(
 
     /**
      * Отправляет текстовое сообщение в Gemini Live API.
-     *
-     * session.send(text: String) — ОДИН параметр, без turnComplete.
      */
     suspend fun sendText(text: String) {
         val session = liveSession ?: run {
@@ -195,25 +194,43 @@ class GeminiClient(
     }
 
     /**
-     * Отправляет результат выполнения функции обратно в Gemini.
-     *
-     * FunctionResponsePart(name, response) — без id.
+     * Отправляет результат одной функции обратно в Gemini.
+     * Используется для ручных/внешних вызовов (напр. из UI).
      */
     suspend fun sendFunctionResult(callId: String, name: String, resultJson: String) {
+        sendFunctionResults(listOf(Triple(callId, name, resultJson)))
+    }
+
+    /**
+     * ✅ FIX Parallel Function Calling: отправляет ВСЕ результаты функций одним батчем.
+     *
+     * Gemini 2.5 Flash умеет вызывать несколько функций за один ход.
+     * Если отправлять ответы по одному, Gemini получает частичный список
+     * и зависает ожидая остальных. session.sendFunctionResponse(list) —
+     * единственный корректный способ ответить на параллельные вызовы.
+     *
+     * @param results список Triple(callId, name, resultJson)
+     */
+    suspend fun sendFunctionResults(results: List<Triple<String, String, String>>) {
+        if (results.isEmpty()) return
         val session = liveSession ?: run {
-            Log.w(TAG, "sendFunctionResult: no active session")
+            Log.w(TAG, "sendFunctionResults: no active session")
             return
         }
         runCatching {
-            val responseJson = try {
-                json.parseToJsonElement(resultJson) as? JsonObject
-                    ?: buildJsonObject { put("result", JsonPrimitive(resultJson)) }
-            } catch (e: Exception) {
-                buildJsonObject { put("result", JsonPrimitive(resultJson)) }
+            val responseParts = results.map { (_, name, resultJson) ->
+                val responseJson = try {
+                    json.parseToJsonElement(resultJson) as? JsonObject
+                        ?: buildJsonObject { put("result", JsonPrimitive(resultJson)) }
+                } catch (e: Exception) {
+                    buildJsonObject { put("result", JsonPrimitive(resultJson)) }
+                }
+                FunctionResponsePart(name, responseJson)
             }
-            session.sendFunctionResponse(listOf(FunctionResponsePart(name, responseJson)))
+            session.sendFunctionResponse(responseParts)
+            Log.d(TAG, "✅ Sent ${responseParts.size} function response(s): ${results.map { it.second }}")
         }.onFailure { e ->
-            Log.e(TAG, "sendFunctionResult error: ${e.message}", e)
+            Log.e(TAG, "sendFunctionResults error: ${e.message}", e)
         }
     }
 
@@ -221,17 +238,6 @@ class GeminiClient(
 
     /**
      * Cold Flow входящих ответов от Gemini.
-     *
-     * session.receive() → Flow<LiveServerMessage>
-     *
-     * LiveServerMessage — sealed class. LiveServerContent — основной подтип.
-     * LiveServerContent.content.parts содержит:
-     *   - InlineDataPart → аудио (PCM 24kHz)
-     *   - TextPart → текстовый ответ
-     *   - FunctionCallPart → вызовы функций
-     *
-     * ⚠️ Если receive() возвращает Flow<LiveServerContent> напрямую —
-     *    уберите проверку `is LiveServerContent` и работайте с ним сразу.
      */
     fun receiveFlow(): Flow<GeminiResponse> = flow {
         val session = liveSession
@@ -251,32 +257,23 @@ class GeminiClient(
 
     // ── Release ───────────────────────────────────────────────────────────────
 
-    /**
-     * Освобождает CoroutineScope клиента. После вызова клиент нельзя использовать.
-     */
     fun release() {
         clientScope.cancel()
     }
-
-    // УДАЛЕНО: startManagedAudioConversation / stopManagedAudioConversation
-    // Managed mode ломает ручной контроль прерываний (interrupted: true).
-    // Используем архитектуру "2 корутины" в VoiceCoreEngineImpl.
 
     // ── Маппинг ответов ───────────────────────────────────────────────────────
 
     /**
      * Маппит LiveServerContent → GeminiResponse.
      *
-     * LiveServerContent свойства (из PR firebase-android-sdk #7482):
-     *   - content: Content?         → parts: List<Part>
-     *   - turnComplete: Boolean
-     *   - interrupted: Boolean
-     *   - generationComplete: Boolean
-     *   - inputTranscription: Transcription
-     *   - outputTranscription: Transcription
-     *
-     * ⚠️ Если InlineDataPart.inlineData не компилируется — попробуйте .data
-     * ⚠️ Если Transcription.text не компилируется — попробуйте .content
+     * ✅ FIX Parallel Function Calling:
+     *   БЫЛО: .filterIsInstance<FunctionCallPart>().firstOrNull()
+     *         → вторая и последующие функции игнорировались навсегда,
+     *           ИИ зависал ожидая ответа на них.
+     *   СТАЛО: .filterIsInstance<FunctionCallPart>() (весь список)
+     *         → все вызовы передаются в VoiceCoreEngineImpl,
+     *           обрабатываются параллельно через async,
+     *           отправляются батчем через sendFunctionResults().
      */
     private fun mapServerContent(sc: LiveServerContent): GeminiResponse? {
         val parts = sc.content?.parts.orEmpty()
@@ -285,7 +282,7 @@ class GeminiClient(
         val audioData = parts
             .filterIsInstance<InlineDataPart>()
             .firstOrNull()
-            ?.inlineData  // ByteArray — ⚠️ если не компилируется, попробуйте .data
+            ?.inlineData
             ?.takeIf { it.isNotEmpty() }
 
         // Извлекаем текст
@@ -294,27 +291,29 @@ class GeminiClient(
             .joinToString("") { it.text }
             .takeIf { it.isNotEmpty() }
 
-        // Извлекаем function calls
-        val functionCall = parts
+        // ✅ FIX: извлекаем ВСЕ function calls, не только первый
+        val functionCalls = parts
             .filterIsInstance<FunctionCallPart>()
-            .firstOrNull()
-            ?.let { fc ->
+            .map { fc ->
                 GeminiFunctionCall(
-                    id       = fc.name,  // нет отдельного id, используем name
+                    id       = fc.name, // нет отдельного id, используем name
                     name     = fc.name,
                     argsJson = fc.args.toString(),
                 )
             }
 
+        if (functionCalls.size > 1) {
+            Log.d(TAG, "Parallel function calls received: ${functionCalls.map { it.name }}")
+        }
+
         val isTurnComplete = sc.turnComplete
         val isInterrupted  = sc.interrupted
 
-        // Транскрипции — ⚠️ если .text не компилируется, попробуйте .content
         val inputTranscript  = sc.inputTranscription?.text?.takeIf { it.isNotEmpty() }
         val outputTranscript = sc.outputTranscription?.text?.takeIf { it.isNotEmpty() }
 
         // Если ответ полностью пустой — не эмитируем
-        if (audioData == null && textContent == null && functionCall == null &&
+        if (audioData == null && textContent == null && functionCalls.isEmpty() &&
             !isTurnComplete && !isInterrupted &&
             inputTranscript == null && outputTranscript == null) {
             return null
@@ -323,7 +322,7 @@ class GeminiClient(
         return GeminiResponse(
             audioData        = audioData,
             transcript       = textContent,
-            functionCall     = functionCall,
+            functionCalls    = functionCalls,
             isTurnComplete   = isTurnComplete,
             isInterrupted    = isInterrupted,
             inputTranscript  = inputTranscript,
@@ -333,13 +332,6 @@ class GeminiClient(
 
     // ── Нативный маппинг функций ──────────────────────────────────────────────
 
-    /**
-     * Прямой маппинг GeminiFunctionDeclaration → Firebase FunctionDeclaration.
-     * Без промежуточного JSON.
-     *
-     * FunctionDeclaration всегда требует parameters (Map<String, Schema>).
-     * Для функций без параметров → parameters = emptyMap().
-     */
     private fun mapToFirebaseDeclaration(decl: GeminiFunctionDeclaration): FunctionDeclaration {
         val params = decl.parameters
         val properties = params?.properties?.mapValues { (_, prop) ->
@@ -358,11 +350,6 @@ class GeminiClient(
         )
     }
 
-    /**
-     * Маппит GeminiProperty → Schema SDK.
-     * Поддерживает: STRING, INTEGER, NUMBER, BOOLEAN, ARRAY.
-     * Если у STRING-свойства задан enum — используется Schema.enumeration().
-     */
     private fun mapPropertyToSchema(prop: GeminiProperty): Schema {
         return when (prop.type.uppercase()) {
             "STRING" -> {
@@ -379,10 +366,6 @@ class GeminiClient(
             else      -> Schema.string(description = prop.description)
         }
     }
-
-    // УДАЛЕНО (Модуль 7): parseFunctionDeclarationLegacy() / parseSchemeLegacy()
-    // SessionContext.functionDeclarations теперь List<GeminiFunctionDeclaration>,
-    // а не List<String>. Legacy JSON парсинг больше не нужен.
 }
 
 // ── Response models ───────────────────────────────────────────────────────────
@@ -390,23 +373,24 @@ class GeminiClient(
 data class GeminiResponse(
     val audioData: ByteArray?,
     val transcript: String?,
-    val functionCall: GeminiFunctionCall?,
+    // ✅ FIX Parallel Function Calling: список вместо одного вызова
+    val functionCalls: List<GeminiFunctionCall> = emptyList(),
     val isTurnComplete: Boolean = false,
     val isInterrupted: Boolean = false,
     val inputTranscript: String? = null,
     val outputTranscript: String? = null,
 ) {
     fun hasAudio(): Boolean = audioData != null && audioData.isNotEmpty()
-    fun hasFunctionCall(): Boolean = functionCall != null
+    fun hasFunctionCalls(): Boolean = functionCalls.isNotEmpty()
     fun hasTranscript(): Boolean = !transcript.isNullOrEmpty()
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is GeminiResponse) return false
-        return transcript       == other.transcript &&
-               functionCall     == other.functionCall &&
-               isTurnComplete   == other.isTurnComplete &&
-               isInterrupted    == other.isInterrupted &&
+        return transcript      == other.transcript &&
+               functionCalls   == other.functionCalls &&
+               isTurnComplete  == other.isTurnComplete &&
+               isInterrupted   == other.isInterrupted &&
                inputTranscript  == other.inputTranscript &&
                outputTranscript == other.outputTranscript &&
                (audioData?.contentEquals(other.audioData) == true ||
@@ -417,7 +401,7 @@ data class GeminiResponse(
         var result = transcript.hashCode()
         result = 31 * result + isTurnComplete.hashCode()
         result = 31 * result + isInterrupted.hashCode()
-        result = 31 * result + (functionCall?.hashCode() ?: 0)
+        result = 31 * result + functionCalls.hashCode()
         return result
     }
 }
