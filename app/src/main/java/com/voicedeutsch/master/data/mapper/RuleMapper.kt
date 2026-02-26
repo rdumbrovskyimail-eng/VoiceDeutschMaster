@@ -10,56 +10,44 @@ import kotlinx.serialization.json.Json
 
 object RuleMapper {
 
-    fun GrammarRuleEntity.toDomain(json: Json): GrammarRule {
-        val examplesList = try {
-            json.decodeFromString<List<GrammarExample>>(examplesJson)
-        } catch (e: Exception) {
-            emptyList()
-        }
-        val exceptionsList = try {
-            json.decodeFromString<List<String>>(exceptionsJson)
-        } catch (e: Exception) {
-            emptyList()
-        }
-        val relatedIds = try {
-            json.decodeFromString<List<String>>(relatedRulesJson)
-        } catch (e: Exception) {
-            emptyList()
-        }
-        return GrammarRule(
-            id = id,
-            nameRu = nameRu,
-            nameDe = nameDe,
-            category = try {
-                GrammarCategory.valueOf(category.uppercase())
-            } catch (e: Exception) {
-                GrammarCategory.OTHER
-            },
-            descriptionRu = descriptionRu,
-            descriptionDe = descriptionDe,
-            difficultyLevel = CefrLevel.fromString(difficultyLevel),
-            examples = examplesList,
-            exceptions = exceptionsList,
-            relatedRuleIds = relatedIds,
-            bookChapter = bookChapter,
-            bookLesson = bookLesson,
-            createdAt = createdAt
-        )
-    }
+    // FIX: безопасная десериализация списка.
+    // Если строка пустая ("") или невалидный JSON — возвращаем emptyList()
+    // вместо SerializationException.
+    private inline fun <reified T> Json.safeDecodeList(raw: String): List<T> =
+        if (raw.isBlank()) emptyList()
+        else runCatching { decodeFromString<List<T>>(raw) }.getOrDefault(emptyList())
+
+    fun GrammarRuleEntity.toDomain(json: Json): GrammarRule = GrammarRule(
+        id              = id,
+        nameRu          = nameRu,
+        nameDe          = nameDe,
+        category        = runCatching {
+            GrammarCategory.valueOf(category.uppercase())
+        }.getOrDefault(GrammarCategory.OTHER),
+        descriptionRu   = descriptionRu,
+        descriptionDe   = descriptionDe,
+        difficultyLevel = CefrLevel.fromString(difficultyLevel),
+        examples        = json.safeDecodeList<GrammarExample>(examplesJson),
+        exceptions      = json.safeDecodeList<String>(exceptionsJson),
+        relatedRuleIds  = json.safeDecodeList<String>(relatedRulesJson),
+        bookChapter     = bookChapter,
+        bookLesson      = bookLesson,
+        createdAt       = createdAt,
+    )
 
     fun GrammarRule.toEntity(json: Json): GrammarRuleEntity = GrammarRuleEntity(
-        id = id,
-        nameRu = nameRu,
-        nameDe = nameDe,
-        category = category.name,
-        descriptionRu = descriptionRu,
-        descriptionDe = descriptionDe,
+        id              = id,
+        nameRu          = nameRu,
+        nameDe          = nameDe,
+        category        = category.name,
+        descriptionRu   = descriptionRu,
+        descriptionDe   = descriptionDe,
         difficultyLevel = difficultyLevel.name,
-        examplesJson = json.encodeToString(examples),
-        exceptionsJson = json.encodeToString(exceptions),
+        examplesJson    = json.encodeToString(examples),
+        exceptionsJson  = json.encodeToString(exceptions),
         relatedRulesJson = json.encodeToString(relatedRuleIds),
-        bookChapter = bookChapter,
-        bookLesson = bookLesson,
-        createdAt = createdAt
+        bookChapter     = bookChapter,
+        bookLesson      = bookLesson,
+        createdAt       = createdAt,
     )
 }
