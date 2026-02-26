@@ -3,7 +3,6 @@ package com.voicedeutsch.master.data.remote.sync
 import android.content.Context
 import android.net.Uri
 import android.util.Log
-import androidx.sqlite.db.SimpleSQLiteQuery
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
@@ -40,6 +39,20 @@ import java.io.FileOutputStream
  *   Fields:     storagePath, timestamp, sizeBytes, deviceModel, appVersion
  *
  * ════════════════════════════════════════════════════════════════════════════
+ * МЕТОД БЕКАПА — VACUUM INTO (API 27+):
+ * ════════════════════════════════════════════════════════════════════════════
+ *
+ * Почему НЕ FileInputStream + wal_checkpoint:
+ *   wal_checkpoint(TRUNCATE) сбрасывает WAL, но между checkpoint и copyTo
+ *   фоновый воркер (CloudSyncService, SrsRecalculationWorker) может записать
+ *   новую транзакцию → скопированный файл будет битым (corrupted).
+ *
+ * Почему VACUUM INTO:
+ *   SQLite создаёт атомарный снимок БД в момент вызова — без остановки записей,
+ *   без race condition. Встроенная гарантия консистентности на уровне движка.
+ *   Доступно с Android API 27 (SQLite 3.27.0+, 2019).
+ *
+ * ════════════════════════════════════════════════════════════════════════════
  * СТРУКТУРА STORAGE:
  * ════════════════════════════════════════════════════════════════════════════
  *
@@ -61,58 +74,55 @@ import java.io.FileOutputStream
  */
 class BackupManager(
     private val context: Context,
-    private val db: AppDatabase, // 🔥 ВНЕДРЕНО: нужен для WAL checkpoint
+    private val db: AppDatabase,
     private val firestore: FirebaseFirestore,
     private val storage: FirebaseStorage,
     private val auth: FirebaseAuth,
 ) {
     companion object {
         private const val TAG = "BackupManager"
-
-        // Локальная директория для staging-копий
         private const val LOCAL_BACKUP_DIR = "backups"
         private const val BACKUP_EXTENSION = ".db"
-
-        // Firestore collection path (relative to users/{uid})
         private const val FIRESTORE_BACKUPS_COLLECTION = "backups"
-
-        // Storage path prefix
         private const val STORAGE_BACKUPS_PREFIX = "backups"
-
-        // Максимальное количество облачных бекапов на пользователя
         private const val MAX_CLOUD_BACKUPS = 5
     }
 
     // ── Локальный бекап ───────────────────────────────────────────────────────
 
     /**
-     * Создаёт локальную копию Room DB в app/files/backups/.
+     * Создаёт локальную копию Room DB через VACUUM INTO.
      *
-     * 🔥 FIX: Перед копированием файла принудительно сбрасываем WAL-логи
-     * в основной .db файл через PRAGMA wal_checkpoint(TRUNCATE).
-     * Без этого скопированный файл может быть неконсистентным — Room держит
-     * незафиксированные транзакции в отдельном .db-wal файле.
+     * ✅ FIX: Заменили wal_checkpoint + FileInputStream на VACUUM INTO.
+     *
+     * Проблема старого подхода:
+     *   wal_checkpoint(TRUNCATE) сбрасывает WAL-лог, но не блокирует запись.
+     *   Если в промежутке между checkpoint и copyTo фоновый сервис запишет
+     *   транзакцию, скопированный файл окажется inconsistent / corrupted.
+     *
+     * VACUUM INTO (SQLite 3.27.0+, API 27+):
+     *   Создаёт атомарный снимок БД в отдельный файл прямо "на горячую".
+     *   SQLite сам гарантирует консистентность — race condition невозможен.
+     *   Никакого копирования файлов, никаких WAL-трюков.
      *
      * @return Абсолютный путь к файлу бекапа, null при ошибке.
      */
     suspend fun createLocalBackup(): String? = withContext(Dispatchers.IO) {
         runCatching {
-            // 🔥 FIX: Принудительный сброс WAL логов в основной файл .db
-            db.query(SimpleSQLiteQuery("PRAGMA wal_checkpoint(TRUNCATE)")).moveToNext()
-
-            val dbFile = context.getDatabasePath(AppDatabase.DATABASE_NAME)
-            if (!dbFile.exists()) {
-                Log.w(TAG, "Database file not found: ${dbFile.absolutePath}")
-                return@runCatching null
-            }
-
             val backupDir = File(context.filesDir, LOCAL_BACKUP_DIR).apply { mkdirs() }
             val backupFile = File(backupDir, "backup_${System.currentTimeMillis()}$BACKUP_EXTENSION")
 
-            FileInputStream(dbFile).use { input ->
-                FileOutputStream(backupFile).use { output ->
-                    input.copyTo(output)
-                }
+            // Удаляем файл если вдруг существует — VACUUM INTO не перезаписывает
+            if (backupFile.exists()) backupFile.delete()
+
+            // ✅ VACUUM INTO: атомарный снимок без race condition
+            // Путь должен быть абсолютным и экранированным для SQL
+            val escapedPath = backupFile.absolutePath.replace("'", "''")
+            db.openHelper.writableDatabase.execSQL("VACUUM INTO '$escapedPath'")
+
+            if (!backupFile.exists() || backupFile.length() == 0L) {
+                Log.w(TAG, "VACUUM INTO produced empty or missing file")
+                return@runCatching null
             }
 
             Log.d(TAG, "✅ Local backup created: ${backupFile.absolutePath} (${backupFile.length()} bytes)")
@@ -148,6 +158,9 @@ class BackupManager(
                 return@runCatching false
             }
 
+            // Закрываем БД перед перезаписью файла
+            db.close()
+
             val dbFile = context.getDatabasePath(AppDatabase.DATABASE_NAME)
             FileInputStream(backupFile).use { input ->
                 FileOutputStream(dbFile).use { output ->
@@ -180,10 +193,10 @@ class BackupManager(
     // ── Облачный бекап (Firebase Storage + Firestore) ─────────────────────────
 
     /**
-     * Создаёт облачный бекап: локальный файл → Firebase Storage → метаданные в Firestore.
+     * Создаёт облачный бекап: VACUUM INTO → Firebase Storage → метаданные в Firestore.
      *
      * Порядок операций:
-     *   1. Создать локальный бекап (staging) — с WAL checkpoint
+     *   1. VACUUM INTO → атомарный локальный файл (staging)
      *   2. Загрузить в Firebase Storage с метаданными
      *   3. Записать метаданные в Firestore (для листинга)
      *   4. Очистить старые облачные бекапы (оставить MAX_CLOUD_BACKUPS)
@@ -194,7 +207,6 @@ class BackupManager(
         val uid = auth.currentUser?.uid
             ?: return@withContext BackupResult.Error("User not authenticated")
 
-        // 1. Локальный staging-файл (уже с WAL checkpoint внутри)
         val localPath = createLocalBackup()
             ?: return@withContext BackupResult.Error("Failed to create local backup")
 
@@ -205,7 +217,6 @@ class BackupManager(
 
         return@withContext runCatching {
 
-            // 2. Загрузка в Firebase Storage
             val storageRef = storage.reference.child("users/$uid/$storagePath")
 
             val metadata = StorageMetadata.Builder()
@@ -219,7 +230,6 @@ class BackupManager(
 
             Log.d(TAG, "✅ Uploaded to Storage: users/$uid/$storagePath (${localFile.length()} bytes)")
 
-            // 3. Метаданные в Firestore
             val backupDoc = mapOf(
                 "storagePath" to "users/$uid/$storagePath",
                 "timestamp"   to timestamp,
@@ -239,10 +249,12 @@ class BackupManager(
 
             Log.d(TAG, "✅ Backup metadata written to Firestore")
 
-            // 4. Очистить старые облачные бекапы (оставить последние MAX_CLOUD_BACKUPS)
             pruneOldCloudBackups(uid)
 
-            BackupResult.Success(storagePath = "users/$uid/$storagePath", sizeBytes = localFile.length())
+            BackupResult.Success(
+                storagePath = "users/$uid/$storagePath",
+                sizeBytes   = localFile.length(),
+            )
 
         }.getOrElse { e ->
             Log.e(TAG, "❌ createCloudBackup failed: ${e.message}", e)
@@ -251,7 +263,7 @@ class BackupManager(
     }
 
     /**
-     * Возвращает список облачных бекапов пользователя из Firestore (без Storage API).
+     * Возвращает список облачных бекапов пользователя из Firestore.
      * Отсортирован от новых к старым.
      */
     suspend fun listCloudBackups(): List<BackupMetadata> = withContext(Dispatchers.IO) {
@@ -270,8 +282,8 @@ class BackupManager(
                 runCatching {
                     BackupMetadata(
                         storagePath = doc.getString("storagePath") ?: return@mapNotNull null,
-                        timestamp   = doc.getLong("timestamp")   ?: return@mapNotNull null,
-                        sizeBytes   = doc.getLong("sizeBytes")   ?: 0L,
+                        timestamp   = doc.getLong("timestamp")     ?: return@mapNotNull null,
+                        sizeBytes   = doc.getLong("sizeBytes")     ?: 0L,
                         deviceModel = doc.getString("deviceModel") ?: "",
                         appVersion  = doc.getString("appVersion")  ?: "",
                         fileName    = doc.getString("fileName")    ?: "",
@@ -289,17 +301,16 @@ class BackupManager(
      * Восстанавливает Room DB из облачного бекапа.
      * Скачивает файл из Firebase Storage → записывает поверх Room DB файла.
      * ⚠️ Требует перезапуска приложения для применения изменений.
-     *
-     * @param storagePath полный путь в Storage (из [BackupMetadata.storagePath])
-     * @return true если восстановление успешно.
      */
     suspend fun restoreFromCloudBackup(storagePath: String): Boolean = withContext(Dispatchers.IO) {
         runCatching {
             val tempFile = File(context.cacheDir, "restore_temp$BACKUP_EXTENSION")
 
             storage.reference.child(storagePath).getFile(tempFile).await()
-
             Log.d(TAG, "Downloaded from Storage: $storagePath → ${tempFile.absolutePath}")
+
+            // Закрываем БД перед перезаписью файла
+            db.close()
 
             val dbFile = context.getDatabasePath(AppDatabase.DATABASE_NAME)
             FileInputStream(tempFile).use { input ->
@@ -320,25 +331,19 @@ class BackupManager(
 
     // ── Вспомогательные методы ────────────────────────────────────────────────
 
-    /**
-     * Удаляет старые облачные бекапы, оставляя последние [MAX_CLOUD_BACKUPS].
-     */
     private suspend fun pruneOldCloudBackups(uid: String) {
         val all = listCloudBackups()
         if (all.size <= MAX_CLOUD_BACKUPS) return
 
-        val toDelete = all.drop(MAX_CLOUD_BACKUPS)
-        toDelete.forEach { backup ->
+        all.drop(MAX_CLOUD_BACKUPS).forEach { backup ->
             runCatching {
                 storage.reference.child(backup.storagePath).delete().await()
-
                 firestore
                     .collection("users").document(uid)
                     .collection(FIRESTORE_BACKUPS_COLLECTION)
                     .document(backup.timestamp.toString())
                     .delete()
                     .await()
-
                 Log.d(TAG, "Pruned old backup: ${backup.fileName}")
             }.onFailure { e ->
                 Log.w(TAG, "Failed to prune backup ${backup.fileName}: ${e.message}")
@@ -353,7 +358,6 @@ class BackupManager(
 
 // ── Data models ───────────────────────────────────────────────────────────────
 
-/** Метаданные облачного бекапа из Firestore. */
 data class BackupMetadata(
     val storagePath: String,
     val timestamp: Long,
@@ -363,7 +367,6 @@ data class BackupMetadata(
     val fileName: String,
 )
 
-/** Результат операции облачного бекапа. */
 sealed class BackupResult {
     data class Success(val storagePath: String, val sizeBytes: Long) : BackupResult()
     data class Error(val message: String) : BackupResult()
