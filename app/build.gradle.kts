@@ -202,10 +202,12 @@ tasks.withType<Test> {
     useJUnitPlatform()
 }
 
+// ✅ ИСПРАВЛЕНО: findProperty вызывается на этапе конфигурации (вне doLast)
 tasks.register("printAppCheckToken") {
+    val token = project.findProperty("appCheckDebugToken")?.toString()
+        ?: "❌ НЕ ЗАДАН — добавь APP_CHECK_DEBUG_TOKEN в GitHub Secrets"
+
     doLast {
-        val token = project.findProperty("appCheckDebugToken")
-            ?: "❌ НЕ ЗАДАН — добавь APP_CHECK_DEBUG_TOKEN в GitHub Secrets"
         println("")
         println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         println("🔑 APP CHECK DEBUG TOKEN: $token")
