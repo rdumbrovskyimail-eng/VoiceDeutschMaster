@@ -9,6 +9,7 @@ import com.voicedeutsch.master.domain.usecase.learning.EndLearningSessionUseCase
 import com.voicedeutsch.master.domain.usecase.learning.StartLearningSessionUseCase
 import com.voicedeutsch.master.util.NetworkMonitor
 import com.voicedeutsch.master.voicecore.audio.AudioPipeline
+import com.voicedeutsch.master.voicecore.audio.RmsCalculator
 import com.voicedeutsch.master.voicecore.context.ContextBuilder
 import com.voicedeutsch.master.voicecore.functions.FunctionRouter
 import com.voicedeutsch.master.voicecore.session.AudioState
@@ -25,11 +26,13 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -43,42 +46,39 @@ import java.util.concurrent.atomic.AtomicInteger
  * Heart of the system — оркестрирует все VoiceCore-компоненты.
  *
  * ════════════════════════════════════════════════════════════════════════════
+ * ИЗМЕНЕНИЯ (VirtualAvatar — устранение рекомпозиций):
+ * ════════════════════════════════════════════════════════════════════════════
+ *
+ *   ДОБАВЛЕНО: amplitudeFlow: Flow<Float>
+ *
+ *   Реализация через audioPipeline.audioChunks().map { RmsCalculator.calculate(it) }.
+ *   SessionViewModel подписывается на этот Flow и пишет значение в
+ *   mutableFloatStateOf — Compose читает его только в фазе draw Canvas,
+ *   рекомпозиция VirtualAvatar не происходит.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
  * ИЗМЕНЕНИЯ (Parallel Function Calling fix):
  * ════════════════════════════════════════════════════════════════════════════
  *
- *   response.functionCall → response.functionCalls (List)
- *   response.hasFunctionCall() → response.hasFunctionCalls()
- *
- *   handleGeminiResponse() при hasFunctionCalls():
- *     - Каждая функция запускается через async { } параллельно
- *     - awaitAll() ждёт все результаты
- *     - geminiClient.sendFunctionResults() отправляет батч одним вызовом
+ *   hasFunctionCalls() → async/awaitAll → sendFunctionResults() (батч).
  *
  * ════════════════════════════════════════════════════════════════════════════
  * ИЗМЕНЕНИЯ (Синхронизация и Firebase — Батчинг):
  * ════════════════════════════════════════════════════════════════════════════
  *
- *   ДОБАВЛЕНО: flushKnowledgeSync: FlushKnowledgeSyncUseCase
- *
- *   Вызывается в endSession() после endLearningSession().
- *   Отправляет все накопленные за сессию изменения знания (слова/правила)
- *   одним Firestore batch-коммитом вместо 50 отдельных запросов.
- *
- *   50 слов SRS = было 50 записей в квоту Firestore →
- *   стало 1 batch-commit после endSession().
+ *   flushKnowledgeSync() вызывается в endSession() одним batch-коммитом.
  */
 class VoiceCoreEngineImpl(
-    private val contextBuilder:      ContextBuilder,
-    private val functionRouter:      FunctionRouter,
-    private val audioPipeline:       AudioPipeline,
-    private val strategySelector:    StrategySelector,
-    private val geminiClient:        GeminiClient,
+    private val contextBuilder:        ContextBuilder,
+    private val functionRouter:        FunctionRouter,
+    private val audioPipeline:         AudioPipeline,
+    private val strategySelector:      StrategySelector,
+    private val geminiClient:          GeminiClient,
     private val buildKnowledgeSummary: BuildKnowledgeSummaryUseCase,
-    private val startLearningSession: StartLearningSessionUseCase,
-    private val endLearningSession:  EndLearningSessionUseCase,
-    private val networkMonitor:      NetworkMonitor,
-    // ✅ ДОБАВЛЕНО: сброс батча синхронизации в конце сессии
-    private val flushKnowledgeSync:  FlushKnowledgeSyncUseCase,
+    private val startLearningSession:  StartLearningSessionUseCase,
+    private val endLearningSession:    EndLearningSessionUseCase,
+    private val networkMonitor:        NetworkMonitor,
+    private val flushKnowledgeSync:    FlushKnowledgeSyncUseCase,
 ) : VoiceCoreEngine {
 
     companion object {
@@ -88,10 +88,10 @@ class VoiceCoreEngineImpl(
 
     // ── Coroutine infrastructure ──────────────────────────────────────────────
 
-    private val engineScope    = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private var sessionJob:    Job? = null
+    private val engineScope      = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var sessionJob:      Job? = null
     private var audioForwardJob: Job? = null
-    private val lifecycleMutex = Mutex()
+    private val lifecycleMutex   = Mutex()
 
     // ── State ─────────────────────────────────────────────────────────────────
 
@@ -103,6 +103,17 @@ class VoiceCoreEngineImpl(
 
     private val _audioState      = MutableStateFlow(AudioState.IDLE)
     override val audioState:     StateFlow<AudioState> = _audioState.asStateFlow()
+
+    // ✅ ДОБАВЛЕНО: Flow амплитуды для VirtualAvatar.
+    //
+    // audioPipeline.audioChunks() уже используется в startListening() для отправки
+    // чанков в Gemini. Здесь создаём отдельный холодный Flow от того же источника —
+    // AudioPipeline должен поддерживать несколько подписчиков (shareIn или SharedFlow).
+    // RmsCalculator вычисляет среднеквадратичное значение PCM → нормализует в 0f..1f.
+    //
+    // SessionViewModel подписывается в startSession() и отписывается в endSession().
+    override val amplitudeFlow: Flow<Float> = audioPipeline.audioChunks()
+        .map { pcm -> RmsCalculator.calculate(pcm).coerceIn(0f, 1f) }
 
     @Volatile private var config: GeminiConfig? = null
     @Volatile private var activeSessionId: String? = null
@@ -178,17 +189,12 @@ class VoiceCoreEngineImpl(
             transitionEngine(VoiceEngineState.CONTEXT_LOADING)
             reconnectAttempts.set(0)
 
-            val sessionData = withContext(Dispatchers.IO) {
-                startLearningSession(userId)
-            }
+            val sessionData = withContext(Dispatchers.IO) { startLearningSession(userId) }
             activeSessionId = sessionData.session.id
             activeUserId    = userId
             sessionStartMs  = System.currentTimeMillis()
 
-            val snapshot = withContext(Dispatchers.IO) {
-                buildKnowledgeSummary(userId)
-            }
-
+            val snapshot = withContext(Dispatchers.IO) { buildKnowledgeSummary(userId) }
             val strategy = strategySelector.selectStrategy(snapshot)
 
             val sessionContext = withContext(Dispatchers.IO) {
@@ -205,9 +211,7 @@ class VoiceCoreEngineImpl(
             transitionConnection(ConnectionState.CONNECTING)
 
             val connectResult = runCatching {
-                withContext(Dispatchers.IO) {
-                    geminiClient.connect(sessionContext)
-                }
+                withContext(Dispatchers.IO) { geminiClient.connect(sessionContext) }
             }
 
             if (connectResult.isFailure) {
@@ -269,19 +273,12 @@ class VoiceCoreEngineImpl(
 
                     val result = endLearningSession(sessionId)
 
-                    // ✅ БАТЧИНГ: сбрасываем всю очередь синхронизации одним batch-коммитом.
-                    // Вызываем ПОСЛЕ endLearningSession — данные сессии уже сохранены в Room.
-                    // Ошибка синхронизации не роняет endSession — данные в Room целые,
-                    // очередь сохранится и будет отправлена в следующем сеансе.
                     val syncOk = runCatching { flushKnowledgeSync() }.getOrElse { e ->
                         Log.w(TAG, "⚠️ flushKnowledgeSync failed (data safe in Room): ${e.message}")
                         false
                     }
-                    if (syncOk) {
-                        Log.d(TAG, "✅ Knowledge sync flushed successfully")
-                    } else {
-                        Log.w(TAG, "⚠️ Knowledge sync deferred — will retry next session")
-                    }
+                    if (syncOk) Log.d(TAG, "✅ Knowledge sync flushed")
+                    else        Log.w(TAG, "⚠️ Knowledge sync deferred — will retry next session")
 
                     result
                 }.onFailure { error ->
@@ -397,7 +394,6 @@ class VoiceCoreEngineImpl(
 
     private suspend fun handleGeminiResponse(response: GeminiResponse) {
         when {
-
             response.isInterrupted -> {
                 Log.d(TAG, "User interrupted AI — flushing audio queue")
                 audioPipeline.flushPlayback()
@@ -417,14 +413,12 @@ class VoiceCoreEngineImpl(
                             ?: voiceTranscript,
                     )
                 }
-
                 val audioData = response.audioData
                 if (audioData == null) {
                     Log.e(TAG, "hasAudio() = true но audioData == null — пропускаем")
                 } else {
                     audioPipeline.enqueueAudio(audioData)
                 }
-
                 if (response.isTurnComplete) {
                     transitionAudio(AudioState.IDLE)
                     transitionEngine(VoiceEngineState.WAITING)
@@ -451,10 +445,7 @@ class VoiceCoreEngineImpl(
                             } else {
                                 try {
                                     withTimeout(FUNCTION_CALL_TIMEOUT_MS) {
-                                        functionRouter.route(
-                                            call.name, call.argsJson,
-                                            userId, sessionId,
-                                        )
+                                        functionRouter.route(call.name, call.argsJson, userId, sessionId)
                                     }
                                 } catch (e: TimeoutCancellationException) {
                                     Log.w(TAG, "Function ${call.name} timed out")
@@ -525,10 +516,7 @@ class VoiceCoreEngineImpl(
                 transitionConnection(ConnectionState.RECONNECTING)
                 delay(delayMs)
 
-                runCatching {
-                    reconnectInternal()
-                }.onFailure { handleSessionError(it) }
-
+                runCatching { reconnectInternal() }.onFailure { handleSessionError(it) }
             } else {
                 Log.e(TAG, "Max reconnect attempts reached — giving up")
                 transitionConnection(ConnectionState.FAILED)
