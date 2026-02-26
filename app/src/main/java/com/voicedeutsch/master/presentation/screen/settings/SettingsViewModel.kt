@@ -3,6 +3,9 @@ package com.voicedeutsch.master.presentation.screen.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.voicedeutsch.master.data.local.datastore.UserPreferencesDataStore
+import com.voicedeutsch.master.data.remote.sync.BackupManager
+import com.voicedeutsch.master.data.remote.sync.BackupMetadata
+import com.voicedeutsch.master.data.remote.sync.BackupResult
 import com.voicedeutsch.master.domain.usecase.user.ConfigureUserPreferencesUseCase
 import com.voicedeutsch.master.domain.repository.UserRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +36,13 @@ data class SettingsUiState(
     val germanVoiceSpeed: Float = 0.8f,
     val showTranscription: Boolean = true,
 
+    // ── Backup ────────────────────────────────────────────────────────────────
+    val isBackingUp: Boolean = false,
+    val isRestoring: Boolean = false,
+    val isLoadingBackups: Boolean = false,
+    val cloudBackups: List<BackupMetadata> = emptyList(),
+    val showRestoreDialog: Boolean = false,
+
     val successMessage: String? = null,
     val errorMessage: String? = null,
 )
@@ -60,6 +70,13 @@ sealed interface SettingsEvent {
     // Система
     data class ToggleDataSaving(val enabled: Boolean) : SettingsEvent
 
+    // Backup
+    data object CreateCloudBackup : SettingsEvent
+    data object LoadCloudBackups : SettingsEvent
+    data object ShowRestoreDialog : SettingsEvent
+    data object HideRestoreDialog : SettingsEvent
+    data class RestoreFromCloud(val metadata: BackupMetadata) : SettingsEvent
+
     // Служебные
     data object SaveAll : SettingsEvent
     data object DismissMessages : SettingsEvent
@@ -77,6 +94,7 @@ class SettingsViewModel(
     private val configureUserPreferences: ConfigureUserPreferencesUseCase,
     private val preferencesDataStore: UserPreferencesDataStore,
     private val userRepository: UserRepository,
+    private val backupManager: BackupManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -102,6 +120,12 @@ class SettingsViewModel(
             is SettingsEvent.UpdateStrictness      -> _uiState.update { it.copy(pronunciationStrictness = event.strictness) }
             // Система
             is SettingsEvent.ToggleDataSaving      -> _uiState.update { it.copy(dataSavingMode = event.enabled) }
+            // Backup
+            is SettingsEvent.CreateCloudBackup     -> createCloudBackup()
+            is SettingsEvent.LoadCloudBackups      -> loadCloudBackups()
+            is SettingsEvent.ShowRestoreDialog     -> { loadCloudBackups(); _uiState.update { it.copy(showRestoreDialog = true) } }
+            is SettingsEvent.HideRestoreDialog     -> _uiState.update { it.copy(showRestoreDialog = false) }
+            is SettingsEvent.RestoreFromCloud      -> restoreFromCloud(event.metadata)
             // Служебные
             is SettingsEvent.SaveAll               -> saveAll()
             is SettingsEvent.DismissMessages       -> _uiState.update { it.copy(successMessage = null, errorMessage = null) }
@@ -127,20 +151,20 @@ class SettingsViewModel(
 
                 _uiState.update {
                     it.copy(
-                        isLoading              = false,
-                        sessionDurationMinutes = duration,
-                        dailyGoalWords         = goal,
-                        learningPace           = prefs?.learningPace?.name ?: "NORMAL",
-                        srsEnabled             = prefs?.srsEnabled ?: true,
-                        maxReviewsPerSession   = prefs?.maxReviewsPerSession ?: 30,
-                        reminderEnabled        = prefs?.reminderEnabled ?: false,
-                        reminderHour           = prefs?.reminderHour ?: 19,
-                        reminderMinute         = prefs?.reminderMinute ?: 0,
+                        isLoading               = false,
+                        sessionDurationMinutes  = duration,
+                        dailyGoalWords          = goal,
+                        learningPace            = prefs?.learningPace?.name ?: "NORMAL",
+                        srsEnabled              = prefs?.srsEnabled ?: true,
+                        maxReviewsPerSession    = prefs?.maxReviewsPerSession ?: 30,
+                        reminderEnabled         = prefs?.reminderEnabled ?: false,
+                        reminderHour            = prefs?.reminderHour ?: 19,
+                        reminderMinute          = prefs?.reminderMinute ?: 0,
                         pronunciationStrictness = prefs?.pronunciationStrictness?.name ?: "MODERATE",
-                        dataSavingMode         = prefs?.dataSavingMode ?: false,
-                        voiceSpeed             = voice?.voiceSpeed ?: 1.0f,
-                        germanVoiceSpeed       = voice?.germanVoiceSpeed ?: 0.8f,
-                        showTranscription      = voice?.showTranscription ?: true,
+                        dataSavingMode          = prefs?.dataSavingMode ?: false,
+                        voiceSpeed              = voice?.voiceSpeed ?: 1.0f,
+                        germanVoiceSpeed        = voice?.germanVoiceSpeed ?: 0.8f,
+                        showTranscription       = voice?.showTranscription ?: true,
                     )
                 }
             }.onFailure {
@@ -157,7 +181,6 @@ class SettingsViewModel(
                 val s = _uiState.value
                 val userId = userRepository.getActiveUserId() ?: error("Пользователь не найден")
 
-                // Обновляем продолжительность и цель через существующий use case
                 configureUserPreferences.updatePreferredSessionDuration(userId, s.sessionDurationMinutes)
                 configureUserPreferences.updateDailyGoal(
                     userId,
@@ -165,7 +188,6 @@ class SettingsViewModel(
                     minutes = s.sessionDurationMinutes,
                 )
 
-                // Остальные поля через расширенный use case (если методы есть)
                 runCatching { configureUserPreferences.updateLearningPace(userId, s.learningPace) }
                 runCatching { configureUserPreferences.updateSrsSettings(userId, s.srsEnabled, s.maxReviewsPerSession) }
                 runCatching { configureUserPreferences.updateReminderSettings(userId, s.reminderEnabled, s.reminderHour, s.reminderMinute) }
@@ -173,12 +195,61 @@ class SettingsViewModel(
                 runCatching { configureUserPreferences.updateDataSavingMode(userId, s.dataSavingMode) }
                 runCatching { configureUserPreferences.updateVoiceSettings(userId, s.voiceSpeed, s.germanVoiceSpeed, s.showTranscription) }
 
-                // DataStore — быстрый доступ для сессий без обращения в БД
                 preferencesDataStore.setSessionDuration(s.sessionDurationMinutes)
                 preferencesDataStore.setDailyGoal(s.dailyGoalWords)
             }
             .onSuccess { _uiState.update { it.copy(successMessage = "✅ Все настройки сохранены") } }
             .onFailure { e -> _uiState.update { it.copy(errorMessage = "❌ ${e.message}") } }
+        }
+    }
+
+    // ── Backup ────────────────────────────────────────────────────────────────
+
+    private fun createCloudBackup() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isBackingUp = true, errorMessage = null) }
+            when (val result = backupManager.createCloudBackup()) {
+                is BackupResult.Success -> _uiState.update {
+                    it.copy(
+                        isBackingUp    = false,
+                        successMessage = "✅ Бекап создан (${result.sizeBytes / 1024} КБ)",
+                    )
+                }
+                is BackupResult.Error -> _uiState.update {
+                    it.copy(
+                        isBackingUp  = false,
+                        errorMessage = "❌ Ошибка бекапа: ${result.message}",
+                    )
+                }
+            }
+        }
+    }
+
+    private fun loadCloudBackups() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingBackups = true) }
+            val backups = backupManager.listCloudBackups()
+            _uiState.update { it.copy(isLoadingBackups = false, cloudBackups = backups) }
+        }
+    }
+
+    private fun restoreFromCloud(metadata: BackupMetadata) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isRestoring = true, showRestoreDialog = false, errorMessage = null) }
+            val success = backupManager.restoreFromCloudBackup(metadata.storagePath)
+            _uiState.update {
+                if (success) {
+                    it.copy(
+                        isRestoring    = false,
+                        successMessage = "✅ Восстановлено. Перезапустите приложение для применения.",
+                    )
+                } else {
+                    it.copy(
+                        isRestoring  = false,
+                        errorMessage = "❌ Не удалось восстановить бекап",
+                    )
+                }
+            }
         }
     }
 }
