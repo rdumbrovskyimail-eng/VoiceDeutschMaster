@@ -13,6 +13,10 @@ class AudioPlayer {
             AudioFormat.CHANNEL_OUT_MONO,
             AudioFormat.ENCODING_PCM_16BIT,
         ).coerceAtLeast(4096)
+
+        // Размер чанка для порционной записи в WRITE_NON_BLOCKING режиме.
+        // ~42 мс при 24kHz / 16bit / mono — баланс между латентностью и overhead.
+        private const val WRITE_CHUNK_SIZE = MIN_BUFFER_SIZE
     }
 
     private var audioTrack: AudioTrack? = null
@@ -44,18 +48,55 @@ class AudioPlayer {
         _isPaused.set(false)
     }
 
-    fun write(pcmBytes: ByteArray): Int {
-        val track = audioTrack ?: return -1
+    /**
+     * Записывает PCM-данные в AudioTrack порционно в WRITE_NON_BLOCKING режиме.
+     *
+     * Проблема оригинала:
+     *   track.write(pcmBytes, 0, pcmBytes.size) — блокирующий вызов.
+     *   Если Gemini прислал большой чанк и аппаратный буфер переполнен,
+     *   корутина playbackJob в AudioPipeline зависает на Dispatchers.IO.
+     *   Это делает прерывания (interruption / flushPlayback) медленными —
+     *   cancelAndJoin() ждёт пока write() не разблокируется.
+     *
+     * Решение:
+     *   WRITE_NON_BLOCKING — пишем сколько влезет прямо сейчас, без блокировки.
+     *   Остаток делим на чанки и пишем в цикле с yield() между итерациями.
+     *   yield() даёт планировщику корутин возможность обработать cancellation —
+     *   при flushPlayback() корутина отменится между чанками, не застревая в write().
+     */
+    suspend fun write(pcmBytes: ByteArray) {
+        val track = audioTrack ?: return
+
         // ✅ FIX: Защита от STATE_UNINITIALIZED после многократных flush().
-        // AudioTrack может уйти в это состояние если пользователь часто перебивает ИИ.
-        // Пересоздаём трек вместо того чтобы писать в сломанный хардварный буфер.
         if (track.state == AudioTrack.STATE_UNINITIALIZED) {
             release()
             start()
-            return 0
+            return
         }
-        if (pcmBytes.isEmpty() || _isPaused.get()) return 0
-        return track.write(pcmBytes, 0, pcmBytes.size)
+
+        if (pcmBytes.isEmpty() || _isPaused.get()) return
+
+        var offset = 0
+        while (offset < pcmBytes.size) {
+            // Точка отмены — если flushPlayback() отменил корутину, выходим здесь
+            kotlinx.coroutines.yield()
+
+            if (_isPaused.get()) break
+
+            val chunkSize = minOf(WRITE_CHUNK_SIZE, pcmBytes.size - offset)
+            val written = track.write(
+                pcmBytes,
+                offset,
+                chunkSize,
+                AudioTrack.WRITE_NON_BLOCKING, // API 21+ — не блокирует поток
+            )
+
+            when {
+                written > 0  -> offset += written
+                written == 0 -> kotlinx.coroutines.delay(5) // буфер полон, ждём немного
+                else         -> break // ERROR_INVALID_OPERATION или ERROR_DEAD_OBJECT
+            }
+        }
     }
 
     fun pause() {
@@ -72,8 +113,8 @@ class AudioPlayer {
         runCatching {
             _isPaused.set(false)
             audioTrack?.pause()
-            audioTrack?.flush() // Аппаратный сброс буфера
-            audioTrack?.play()  // Сразу готовы к новому потоку
+            audioTrack?.flush()
+            audioTrack?.play()
         }
     }
 
