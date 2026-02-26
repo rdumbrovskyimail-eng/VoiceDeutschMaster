@@ -166,7 +166,7 @@ class GeminiClient(
                     responseModality = ResponseModality.AUDIO
                     speechConfig = SpeechConfig(voice = Voice(config.voiceName))
                 },
-                tools = tools,  // ✅ раскомментировано
+                //tools = tools,  // ✅ раскомментировано
                 systemInstruction = content(role = "user") { text(context.fullContext) },
             )
 
