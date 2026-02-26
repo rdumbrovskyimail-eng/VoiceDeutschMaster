@@ -1,4 +1,3 @@
-
 package com.voicedeutsch.master.voicecore.engine
 
 import android.util.Log
@@ -21,6 +20,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,78 +42,35 @@ import java.util.concurrent.atomic.AtomicInteger
  * Heart of the system — оркестрирует все VoiceCore-компоненты.
  *
  * ════════════════════════════════════════════════════════════════════════════
- * МИГРАЦИЯ: EphemeralTokenService + HttpClient → firebase-ai GeminiClient
+ * ИЗМЕНЕНИЯ (Parallel Function Calling fix):
  * ════════════════════════════════════════════════════════════════════════════
  *
- * БЫЛО:
- *   ephemeralTokenService.fetchToken(userId)     — ручной HTTP → Cloud Function
- *   GeminiClient(config, httpClient, json)       — Ktor WebSocket клиент
- *   geminiClient.receiveNextResponse()           — pull из Channel
- *   geminiClient.connect(cfg, context, token)    — с ephemeral token
+ *   response.functionCall → response.functionCalls (List)
+ *   response.hasFunctionCall() → response.hasFunctionCalls()
  *
- * СТАЛО:
- *   GeminiClient(config, json)                  — firebase-ai LiveSession
- *   geminiClient.connect(sessionContext)         — App Check прозрачно
- *   geminiClient.receiveFlow()                   — cold Flow из LiveSession
- *   sessionJob = receiveFlow().onEach{}.launchIn — реактивный цикл
+ *   handleGeminiResponse() при hasFunctionCalls():
+ *     - Каждая функция запускается через async { } параллельно
+ *     - awaitAll() ждёт все результаты
+ *     - geminiClient.sendFunctionResults() отправляет батч одним вызовом
  *
- * УДАЛЕНО из конструктора:
- *   - httpClient: io.ktor.client.HttpClient      — WebSocket управляет SDK
- *   - ephemeralTokenService: EphemeralTokenService — заменён App Check
- *
+ *   Это критично: Gemini 2.5 Flash зависает если получает частичный список
+ *   ответов на параллельные вызовы. SDK ожидает все ответы за один раз.
  * ════════════════════════════════════════════════════════════════════════════
- * LIFECYCLE:
- * ════════════════════════════════════════════════════════════════════════════
- *
- *   IDLE → INITIALIZING → IDLE (готов к сессии)
- *   startSession: CONTEXT_LOADING → CONNECTING → SESSION_ACTIVE → LISTENING / PROCESSING / SPEAKING
- *   endSession:   SESSION_ENDING → SAVING → IDLE
- *   error:        ERROR → RECONNECTING → SESSION_ACTIVE (или IDLE после max попыток)
- *
- * ════════════════════════════════════════════════════════════════════════════
- * CONCURRENCY:
- * ════════════════════════════════════════════════════════════════════════════
- *
- *   [lifecycleMutex] — сериализует все lifecycle-переходы
- *   [_sessionState]  — пишется только через [updateState] / [transitionXxx]
- *   [sessionJob]     — Flow-подписка на receiveFlow(), отменяется в endSession/destroy
- *   [audioForwardJob]— форвардит AudioPipeline chunks → GeminiClient параллельно
- *
- * ════════════════════════════════════════════════════════════════════════════
- * ИЗМЕНЕНИЯ (Модуль 5):
- * ════════════════════════════════════════════════════════════════════════════
- *
- *   1. FIX: Job leak — startSession() отменяет старые sessionJob/audioForwardJob
- *      перед созданием новых. Без этого повторный startSession() плодит зомби-корутины.
- *   2. FIX: runCatching на geminiClient.connect() — сеть может упасть в момент коннекта.
- *      Раньше исключение пробивалось наверх и крашило UI.
- *   3. FIX: reconnect deadlock — handleSessionError() вызывал startSession() который
- *      берёт lifecycleMutex → deadlock. Заменён на reconnectInternal() без mutex.
- *   4. FIX: endSession() — disconnect() обёрнут в отдельный runCatching.
- *      Ошибка сети при disconnect не должна ломать сохранение сессии.
  */
 class VoiceCoreEngineImpl(
     private val contextBuilder: ContextBuilder,
     private val functionRouter: FunctionRouter,
     private val audioPipeline: AudioPipeline,
     private val strategySelector: StrategySelector,
-    private val geminiClient: GeminiClient,            // ✅ firebase-ai SDK, без Ktor
+    private val geminiClient: GeminiClient,
     private val buildKnowledgeSummary: BuildKnowledgeSummaryUseCase,
     private val startLearningSession: StartLearningSessionUseCase,
     private val endLearningSession: EndLearningSessionUseCase,
     private val networkMonitor: NetworkMonitor,
-    // httpClient         УДАЛЁН — WebSocket управляет firebase-ai SDK
-    // ephemeralTokenService УДАЛЁН — заменён Firebase App Check
 ) : VoiceCoreEngine {
 
     companion object {
         private const val TAG = "VoiceCoreEngine"
-
-        /**
-         * Максимальное время выполнения функции (мс).
-         * Gemini Live API разрывает сессию если toolResponse не приходит ~15 сек.
-         * 12 секунд — безопасный буфер: успеваем ответить даже при зависании Room.
-         */
         private const val FUNCTION_CALL_TIMEOUT_MS = 12_000L
     }
 
@@ -166,13 +124,6 @@ class VoiceCoreEngineImpl(
 
     // ── VoiceCoreEngine: lifecycle ────────────────────────────────────────────
 
-    /**
-     * Инициализирует AudioPipeline и сохраняет GeminiConfig.
-     *
-     * ✅ ИЗМЕНЕНИЕ: GeminiClient больше не пересоздаётся здесь.
-     * VoiceCoreModule.kt создаёт GeminiClient как factory — новый экземпляр
-     * на каждую инжекцию. Пересоздавать его в initialize() нет смысла.
-     */
     override suspend fun initialize(config: GeminiConfig) {
         lifecycleMutex.withLock {
             val current = _sessionState.value.engineState
@@ -196,20 +147,6 @@ class VoiceCoreEngineImpl(
         }
     }
 
-    /**
-     * Запускает голосовую сессию.
-     *
-     * ✅ ИЗМЕНЕНИЕ: ephemeralTokenService.fetchToken() УДАЛЁН.
-     * geminiClient.connect(sessionContext) — без token-параметра.
-     * Firebase App Check SDK прозрачно прикрепляет токен к каждому запросу.
-     *
-     * ✅ ИЗМЕНЕНИЕ: sessionJob теперь подписывается на receiveFlow() (cold Flow)
-     * вместо цикла while { receiveNextResponse() }.
-     * Flow автоматически завершается при закрытии LiveSession.
-     *
-     * ✅ FIX (Модуль 5): Job leak — отменяем старые job'ы перед созданием новых.
-     * ✅ FIX (Модуль 5): runCatching на connect() — сеть может упасть.
-     */
     override suspend fun startSession(userId: String): VoiceSessionState =
         lifecycleMutex.withLock {
             val current = _sessionState.value.engineState
@@ -224,13 +161,11 @@ class VoiceCoreEngineImpl(
                 return@withLock _sessionState.value
             }
 
-            // ✅ FIX: Job leak — отменяем зомби-job'ы от предыдущей сессии
             cancelActiveJobs()
 
             transitionEngine(VoiceEngineState.CONTEXT_LOADING)
             reconnectAttempts.set(0)
 
-            // 1. Domain: создать запись сессии
             val sessionData = withContext(Dispatchers.IO) {
                 startLearningSession(userId)
             }
@@ -238,15 +173,12 @@ class VoiceCoreEngineImpl(
             activeUserId    = userId
             sessionStartMs  = System.currentTimeMillis()
 
-            // 2. Domain: построить снимок знаний
             val snapshot = withContext(Dispatchers.IO) {
                 buildKnowledgeSummary(userId)
             }
 
-            // 3. Выбрать стратегию обучения
             val strategy = strategySelector.selectStrategy(snapshot)
 
-            // 4. Собрать полный контекст сессии
             val sessionContext = withContext(Dispatchers.IO) {
                 contextBuilder.buildSessionContext(
                     userId            = userId,
@@ -257,8 +189,6 @@ class VoiceCoreEngineImpl(
                 )
             }
 
-            // 5. ✅ Подключиться к Gemini Live API через firebase-ai
-            // ✅ FIX: runCatching — сеть может упасть в момент коннекта
             transitionEngine(VoiceEngineState.CONNECTING)
             transitionConnection(ConnectionState.CONNECTING)
 
@@ -277,7 +207,6 @@ class VoiceCoreEngineImpl(
                 return@withLock _sessionState.value
             }
 
-            // 6. Активировать состояние сессии
             transitionEngine(VoiceEngineState.SESSION_ACTIVE)
             transitionConnection(ConnectionState.CONNECTED)
             reconnectAttempts.set(0)
@@ -291,15 +220,12 @@ class VoiceCoreEngineImpl(
                 )
             }
 
-            // 7. ✅ Запустить реактивный цикл через receiveFlow()
-            // Flow завершается сам при закрытии LiveSession — нет нужды в while(isActive).
             sessionJob = geminiClient
                 .receiveFlow()
                 .onEach  { response -> handleGeminiResponse(response) }
                 .catch   { error    -> handleSessionError(error) }
                 .launchIn(engineScope)
 
-            // 8. Начать запись микрофона
             startListening()
 
             Log.d(TAG, "✅ Session started [userId=$userId, sessionId=${sessionData.session.id}]")
@@ -315,7 +241,6 @@ class VoiceCoreEngineImpl(
             transitionEngine(VoiceEngineState.SESSION_ENDING)
         }
 
-        // ✅ FIX: используем cancelActiveJobs() для единообразия
         cancelActiveJobs()
 
         return lifecycleMutex.withLock {
@@ -327,8 +252,6 @@ class VoiceCoreEngineImpl(
                     transitionAudio(AudioState.IDLE)
                     transitionConnection(ConnectionState.DISCONNECTED)
 
-                    // ✅ FIX: disconnect() обёрнут отдельно — ошибка сети
-                    // не должна ломать сохранение сессии в Room
                     runCatching { geminiClient.disconnect() }
                         .onFailure { Log.w(TAG, "disconnect() warning: ${it.message}") }
 
@@ -345,12 +268,12 @@ class VoiceCoreEngineImpl(
             transitionEngine(VoiceEngineState.IDLE)
             updateState {
                 copy(
-                    isVoiceActive    = false,
-                    isListening      = false,
-                    isSpeaking       = false,
-                    isProcessing     = false,
+                    isVoiceActive     = false,
+                    isListening       = false,
+                    isSpeaking        = false,
+                    isProcessing      = false,
                     currentTranscript = "",
-                    voiceTranscript  = "",
+                    voiceTranscript   = "",
                 )
             }
 
@@ -385,7 +308,6 @@ class VoiceCoreEngineImpl(
 
         transitionAudio(AudioState.RECORDING)
 
-        // Форвардим PCM-чанки из AudioPipeline → GeminiClient.sendAudioChunk()
         audioForwardJob = audioPipeline.audioChunks()
             .onEach { pcmChunk ->
                 runCatching {
@@ -440,20 +362,11 @@ class VoiceCoreEngineImpl(
     }
 
     override suspend fun submitFunctionResult(callId: String, name: String, resultJson: String) {
-        // В firebase-ai Live API toolResponse отправляется автоматически через
-        // handleGeminiResponse → functionRouter.route → geminiClient.sendFunctionResult.
-        // Этот метод остаётся для внешних вызовов (напр. из UI при ручном подтверждении).
         geminiClient.sendFunctionResult(callId, name, resultJson)
     }
 
     // ── Обработка ответов Gemini ──────────────────────────────────────────────
 
-    /**
-     * Обрабатывает один GeminiResponse из receiveFlow().
-     *
-     * Вызывается в .onEach {} — в engineScope (Dispatchers.Default).
-     * Для IO-операций (Room, FunctionRouter) явно переключаем на Dispatchers.IO.
-     */
     private suspend fun handleGeminiResponse(response: GeminiResponse) {
         when {
 
@@ -471,9 +384,8 @@ class VoiceCoreEngineImpl(
                 transitionAudio(AudioState.PLAYING)
                 updateState {
                     copy(
-                        isProcessing  = false,
-                        isSpeaking    = true,
-                        // outputTranscript — субтитры что говорит Gemini (TTS→text)
+                        isProcessing    = false,
+                        isSpeaking      = true,
                         voiceTranscript = response.outputTranscript
                             ?: response.transcript
                             ?: voiceTranscript,
@@ -493,46 +405,65 @@ class VoiceCoreEngineImpl(
                 }
             }
 
-            // ── Function call ────────────────────────────────────────────────
-            response.hasFunctionCall() -> {
-                updateState { copy(isProcessing = true) }
-                val call = response.functionCall!!
-
+            // ── Function calls (Parallel Function Calling) ───────────────────
+            response.hasFunctionCalls() -> {
+                val calls     = response.functionCalls
                 val userId    = activeUserId
                 val sessionId = activeSessionId
 
-                // ✅ Запускаем выполнение в отдельной корутине.
-                // receiveFlow мгновенно продолжит читать WebSocket-фреймы!
+                Log.d(TAG, "Function calls received (${calls.size}): ${calls.map { it.name }}")
+                updateState { copy(isProcessing = true) }
+
+                // ✅ FIX Parallel Function Calling:
+                // Запускаем каждую функцию параллельно через async,
+                // затем awaitAll() ждёт все результаты,
+                // затем отправляем батч одним вызовом sendFunctionResults().
+                //
+                // НЕЛЬЗЯ отправлять ответы по одному:
+                //   Gemini 2.5 Flash ожидает полный список ответов за один раз.
+                //   Частичная отправка → модель зависает.
                 engineScope.launch {
-                    val result = if (userId == null) {
-                        Log.e(TAG, "hasFunctionCall: activeUserId == null")
-                        FunctionRouter.FunctionCallResult(call.name, false, """{"error":"no active user session"}""")
-                    } else {
-                        try {
-                            withTimeout(FUNCTION_CALL_TIMEOUT_MS) {
-                                withContext(Dispatchers.IO) {
-                                    functionRouter.route(call.name, call.argsJson, userId, sessionId)
+                    val results = calls.map { call ->
+                        async(Dispatchers.IO) {
+                            val result = if (userId == null) {
+                                Log.e(TAG, "hasFunctionCalls: activeUserId == null")
+                                FunctionRouter.FunctionCallResult(
+                                    call.name, false,
+                                    """{"error":"no active user session"}"""
+                                )
+                            } else {
+                                try {
+                                    withTimeout(FUNCTION_CALL_TIMEOUT_MS) {
+                                        functionRouter.route(
+                                            call.name, call.argsJson,
+                                            userId, sessionId,
+                                        )
+                                    }
+                                } catch (e: TimeoutCancellationException) {
+                                    Log.w(TAG, "Function ${call.name} timed out")
+                                    FunctionRouter.FunctionCallResult(
+                                        call.name, false,
+                                        """{"error":"function execution timed out"}"""
+                                    )
                                 }
                             }
-                        } catch (e: TimeoutCancellationException) {
-                            FunctionRouter.FunctionCallResult(call.name, false, """{"error":"function execution timed out"}""")
+                            applyFunctionSideEffects(call.name, result)
+                            Triple(call.id, result.functionName, result.resultJson)
                         }
-                    }
+                    }.awaitAll()
 
-                    applyFunctionSideEffects(call.name, result)
-                    geminiClient.sendFunctionResult(call.id, result.functionName, result.resultJson)
+                    // Батчевая отправка всех результатов
+                    geminiClient.sendFunctionResults(results)
                     updateState { copy(isProcessing = false) }
                 }
             }
 
             // ── Транскрипция ─────────────────────────────────────────────────
-            // inputTranscript — что сказал пользователь (STT)
             response.inputTranscript != null -> {
                 updateState { copy(currentTranscript = response.inputTranscript) }
                 transitionEngine(VoiceEngineState.PROCESSING)
             }
 
-            // Fallback: текстовый контент без аудио
             response.hasTranscript() -> {
                 updateState { copy(currentTranscript = response.transcript ?: "") }
                 transitionEngine(VoiceEngineState.PROCESSING)
@@ -542,10 +473,6 @@ class VoiceCoreEngineImpl(
 
     // ── Вспомогательные методы ────────────────────────────────────────────────
 
-    /**
-     * ✅ FIX (Модуль 5): Централизованная отмена активных job'ов.
-     * Предотвращает job leak при повторном startSession() и при endSession().
-     */
     private fun cancelActiveJobs() {
         audioForwardJob?.cancel()
         audioForwardJob = null
@@ -566,17 +493,6 @@ class VoiceCoreEngineImpl(
         }
     }
 
-    /**
-     * ✅ FIX (Модуль 5): Reconnect без deadlock.
-     *
-     * БЫЛО: handleSessionError() вызывал startSession(uid), который берёт
-     * lifecycleMutex → deadlock, т.к. handleSessionError вызывается из
-     * .catch{} внутри engineScope, а startSession() тоже берёт тот же mutex.
-     *
-     * СТАЛО: reconnectInternal() выполняет reconnect напрямую, без mutex.
-     * Он вызывается только из handleSessionError(), который уже запущен
-     * в отдельной корутине engineScope.launch{}.
-     */
     private fun handleSessionError(error: Throwable) {
         val maxAttempts = config?.reconnectMaxAttempts ?: GeminiConfig.DEFAULT_RECONNECT_ATTEMPTS
         Log.e(TAG, "Session error [attempts=${reconnectAttempts.get()}/$maxAttempts]: ${error.message}", error)
@@ -606,22 +522,13 @@ class VoiceCoreEngineImpl(
         }
     }
 
-    /**
-     * ✅ FIX (Модуль 5): Внутренний reconnect без lifecycleMutex.
-     *
-     * Переподключается к Gemini, перезапускает receiveFlow и микрофон.
-     * Контекст не перестраивается — используем тот же userId/sessionId.
-     */
     private suspend fun reconnectInternal() {
         val uid = activeUserId ?: error("reconnectInternal: no activeUserId")
-        val cfg = config ?: error("reconnectInternal: no config")
 
-        // Остановить старые потоки
         cancelActiveJobs()
         audioPipeline.stopAll()
         runCatching { geminiClient.disconnect() }
 
-        // Пересобрать контекст и подключиться
         val snapshot = withContext(Dispatchers.IO) { buildKnowledgeSummary(uid) }
         val strategy = strategySelector.selectStrategy(snapshot)
         val sessionContext = withContext(Dispatchers.IO) {
@@ -629,7 +536,7 @@ class VoiceCoreEngineImpl(
                 userId            = uid,
                 knowledgeSnapshot = snapshot,
                 currentStrategy   = strategy,
-                currentChapter    = 1, // TODO: сохранять текущую главу/урок в state
+                currentChapter    = 1,
                 currentLesson     = 1,
             )
         }
@@ -642,7 +549,6 @@ class VoiceCoreEngineImpl(
         reconnectAttempts.set(0)
         updateState { copy(errorMessage = null, currentStrategy = strategy) }
 
-        // Перезапустить receive flow и микрофон
         sessionJob = geminiClient
             .receiveFlow()
             .onEach  { response -> handleGeminiResponse(response) }
