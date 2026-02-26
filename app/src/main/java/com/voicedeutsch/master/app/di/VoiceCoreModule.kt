@@ -1,3 +1,4 @@
+// app/src/main/java/com/voicedeutsch/master/app/di/VoiceCoreModule.kt
 package com.voicedeutsch.master.app.di
 
 import com.voicedeutsch.master.voicecore.audio.AudioPipeline
@@ -27,15 +28,12 @@ import org.koin.dsl.module
 
 val voiceCoreModule = module {
 
-    // ─── Audio ───────────────────────────────────────────────────────────────
     single { AudioPipeline(androidContext()) }
 
-    // ─── Context providers ────────────────────────────────────────────────────
     single { UserContextProvider(get()) }
     single { BookContextProvider(get()) }
-    single { ContextBuilder(get(), get(), get()) } // 3 аргумента — 4-й удалён
+    single { ContextBuilder(get(), get(), get()) }
 
-    // ─── Functions ────────────────────────────────────────────────────────────
     single { FunctionRegistry }
     single {
         FunctionRouter(
@@ -43,7 +41,6 @@ val voiceCoreModule = module {
         )
     }
 
-    // ─── Strategy ─────────────────────────────────────────────────────────────
     single { StrategySelector() }
 
     factory { LinearBookStrategy() }
@@ -56,14 +53,9 @@ val voiceCoreModule = module {
     factory { ListeningStrategy() }
     factory { AssessmentStrategy() }
 
-    // ─── Session ──────────────────────────────────────────────────────────────
     single { VoiceSessionManager() }
     factory { SessionHistory() }
 
-    // ─── Gemini (firebase-ai) ─────────────────────────────────────────────────
-    // factory (не single): новый GeminiConfig/GeminiClient на каждую сессию —
-    // гарантирует чистое состояние LiveSession между сессиями.
-    // Если GeminiClient держит соединение между сессиями — смените на single.
     factory {
         GeminiConfig(
             modelName   = "gemini-2.5-flash-native-audio-preview-12-2025",
@@ -83,7 +75,6 @@ val voiceCoreModule = module {
         )
     }
 
-    // ─── VoiceCoreEngine ──────────────────────────────────────────────────────
     single<VoiceCoreEngine> {
         VoiceCoreEngineImpl(
             contextBuilder        = get(),
@@ -95,7 +86,7 @@ val voiceCoreModule = module {
             startLearningSession  = get(),
             endLearningSession    = get(),
             networkMonitor        = get(),
-            flushKnowledgeSync    = get(), // добавлено
+            flushKnowledgeSync    = get(), 
         )
     }
 }
