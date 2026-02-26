@@ -16,7 +16,8 @@ class AudioPlayer {
 
         // Размер чанка для порционной записи в WRITE_NON_BLOCKING режиме.
         // ~42 мс при 24kHz / 16bit / mono — баланс между латентностью и overhead.
-        private const val WRITE_CHUNK_SIZE = MIN_BUFFER_SIZE
+        // ИСПРАВЛЕНО: убран const — результат getMinBufferSize() не является compile-time константой.
+        private val WRITE_CHUNK_SIZE = MIN_BUFFER_SIZE
     }
 
     private var audioTrack: AudioTrack? = null
