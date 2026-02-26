@@ -1,4 +1,3 @@
-// app/src/main/java/com/voicedeutsch/master/app/VoiceDeutschApp.kt
 package com.voicedeutsch.master.app
 
 import android.app.Application
@@ -6,11 +5,9 @@ import android.content.Context
 import android.util.Log
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
-import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.analytics.analytics
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
-import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.firebase.crashlytics.crashlytics
 import com.voicedeutsch.master.BuildConfig
 import com.voicedeutsch.master.app.di.appModules
@@ -63,37 +60,34 @@ class VoiceDeutschApp : Application() {
         try {
             FirebaseApp.initializeApp(this)
             Log.d(TAG, "✅ FirebaseApp initialized")
-
             initAppCheck()
             initCrashlytics()
             initAnalytics()
-
         } catch (e: Exception) {
             Log.e(TAG, "❌ Firebase init failed: ${e.message}", e)
         }
     }
 
-    /**
-     * ✅ FIX: App Check - правильное разделение Debug и Release.
-     * 
-     * Библиотека `firebase-appcheck-debug` подключена через `debugImplementation`.
-     * Использование Reflection внутри `if (BuildConfig.DEBUG)` абсолютно безопасно:
-     * компилятор не ругается на "Unresolved reference", а в Release-сборке этот блок 
-     * будет вырезан оптимизатором R8, поэтому ClassNotFoundException не возникнет.
-     */
     private fun initAppCheck() {
         try {
-            if (BuildConfig.DEBUG) {
-                val debugProviderClass = Class.forName("com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory")
-                val getInstanceMethod = debugProviderClass.getMethod("getInstance")
-                val provider = getInstanceMethod.invoke(null) as com.google.firebase.appcheck.AppCheckProviderFactory
+            if (BuildConfig.USE_DEBUG_APP_CHECK) {
+                val token = BuildConfig.APP_CHECK_DEBUG_TOKEN
+                if (token.isNotEmpty()) {
+                    System.setProperty("firebase.test.token", token)
+                    Log.d(TAG, "✅ App Check debug token set from BuildConfig")
+                }
+                val debugProviderClass = Class.forName(
+                    "com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory"
+                )
+                val provider = debugProviderClass.getMethod("getInstance")
+                    .invoke(null) as com.google.firebase.appcheck.AppCheckProviderFactory
                 FirebaseAppCheck.getInstance().installAppCheckProviderFactory(provider)
-                Log.d(TAG, "✅ App Check initialized [DEBUG]")
+                Log.d(TAG, "✅ App Check initialized [DEBUG_PROVIDER] token=${token.ifEmpty { "auto" }}")
             } else {
                 FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
                     PlayIntegrityAppCheckProviderFactory.getInstance()
                 )
-                Log.d(TAG, "✅ App Check initialized[PLAY_INTEGRITY]")
+                Log.d(TAG, "✅ App Check initialized [PLAY_INTEGRITY]")
             }
         } catch (e: Exception) {
             Log.e(TAG, "❌ App Check init failed: ${e.message}", e)
