@@ -32,7 +32,7 @@ import kotlin.math.sin
  *     • ViewModel обновляет mutableFloatStateOf() — это структурное равенство,
  *       Compose отслеживает изменение только внутри Canvas (фаза draw).
  *     • Рекомпозиция VirtualAvatar НЕ происходит при изменении амплитуды.
- *     • Canvas читает currentAmplitude.floatValue ТОЛЬКО на этапе отрисовки
+ *     • Canvas читает currentAmplitude.value ТОЛЬКО на этапе отрисовки
  *       → пропускаем фазы рекомпозиции и layout полностью.
  *     • mouthOpen вычисляется прямо в Canvas вместо animateFloatAsState,
  *       чтобы не создавать лишний Animatable, подписанный на рекомпозицию.
@@ -53,7 +53,7 @@ import kotlin.math.sin
 fun VirtualAvatar(
     engineState:      VoiceEngineState,
     // ✅ FIX: State<Float> вместо FloatArray.
-    // Чтение .floatValue внутри Canvas {} происходит в фазе draw,
+    // Чтение .value внутри Canvas {} происходит в фазе draw,
     // а не в фазе рекомпозиции — Canvas пропускает recompose при изменении.
     currentAmplitude: State<Float>,
     modifier:         Modifier = Modifier,
@@ -63,7 +63,7 @@ fun VirtualAvatar(
     val breath by infiniteTransition.animateFloat(
         initialValue   = 0f,
         targetValue    = 2f * Math.PI.toFloat(),
-        animationSpec  = infiniteRepeatable(tween(3000, easing = SineEasing)),
+        animationSpec  = infiniteRepeatable(tween(3000, easing = LinearEasing)), // ИСПРАВЛЕНО: SineEasing → LinearEasing
         label          = "breath",
     )
 
@@ -89,7 +89,7 @@ fun VirtualAvatar(
         // ✅ Читаем амплитуду прямо в Canvas (фаза draw).
         // При изменении currentAmplitude рекомпозиция VirtualAvatar НЕ происходит —
         // Compose инвалидирует только фазу draw для этого Canvas.
-        val amp = currentAmplitude.floatValue
+        val amp = currentAmplitude.value // ИСПРАВЛЕНО: .floatValue → .value (тип State<Float>)
 
         // mouthOpen вычисляется здесь, а не через animateFloatAsState снаружи —
         // это устраняет лишний Animatable и подписку на рекомпозицию.
