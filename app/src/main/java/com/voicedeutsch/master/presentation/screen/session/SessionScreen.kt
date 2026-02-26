@@ -130,8 +130,6 @@ fun SessionScreen(
                 Button(
                     onClick = {
                         showExitDialog = false
-                        // 🔥 FIX: НЕ вызываем onSessionEnd() (навигацию) здесь!
-                        // Мы просто посылаем ивент. Карточка итогов покажется сама.
                         viewModel.onEvent(SessionEvent.EndSession)
                     },
                     colors = ButtonDefaults.buttonColors(
@@ -303,9 +301,9 @@ fun SessionScreen(
 
             // ── VirtualAvatar (заменяет VoiceWaveform) ───────────────────────
             VirtualAvatar(
-                engineState = voiceState.engineState,
-                amplitudes  = voiceState.voiceWaveformData,
-                modifier    = Modifier.padding(vertical = 16.dp),
+                engineState      = voiceState.engineState,
+                currentAmplitude = viewModel.currentAmplitude, // ИСПРАВЛЕНО: amplitudes → currentAmplitude
+                modifier         = Modifier.padding(vertical = 16.dp),
             )
 
             // ── Strategy canvas ──────────────────────────────────────────────
@@ -405,10 +403,6 @@ private fun TranscriptArea(
 ) {
     val listState = rememberLazyListState()
 
-    // FIX: используем scrollToItem вместо animateScrollToItem,
-    // чтобы избежать "эпилептичного" скролла при стриминге.
-    // Скроллим только если пользователь уже находится внизу —
-    // это позволяет листать историю вверх без прерываний.
     LaunchedEffect(voiceTranscript, userTranscript) {
         if (voiceTranscript.isNotEmpty() || userTranscript.isNotEmpty()) {
             runCatching {
@@ -458,7 +452,7 @@ private fun TranscriptBubble(
     val textColor = if (isVoice) Secondary else MaterialTheme.colorScheme.primary
 
     Column(
-        modifier           = modifier.fillMaxWidth(),
+        modifier            = modifier.fillMaxWidth(),
         horizontalAlignment = alignment,
     ) {
         Text(
@@ -496,7 +490,7 @@ private fun SessionStatsRow(
     modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier            = modifier,
+        modifier              = modifier,
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
         StatChip(value = wordsLearned,  label = "Новые")
