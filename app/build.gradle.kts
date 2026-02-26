@@ -44,7 +44,28 @@ android {
         debug {
             isMinifyEnabled = false
             buildConfigField("Boolean", "DEBUG_MODE", "true")
+            buildConfigField("Boolean", "USE_DEBUG_APP_CHECK", "true")
+            buildConfigField("String", "APP_CHECK_DEBUG_TOKEN", "\"\"")
         }
+
+        create("releaseDebug") {
+            initWith(getByName("release"))
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            buildConfigField("Boolean", "DEBUG_MODE", "false")
+            buildConfigField("Boolean", "USE_DEBUG_APP_CHECK", "true")
+            buildConfigField(
+                "String",
+                "APP_CHECK_DEBUG_TOKEN",
+                "\"${project.findProperty("appCheckDebugToken") ?: ""}\""
+            )
+        }
+
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -54,6 +75,8 @@ android {
                 "proguard-rules.pro"
             )
             buildConfigField("Boolean", "DEBUG_MODE", "false")
+            buildConfigField("Boolean", "USE_DEBUG_APP_CHECK", "false")
+            buildConfigField("String", "APP_CHECK_DEBUG_TOKEN", "\"\"")
         }
     }
 
@@ -124,7 +147,7 @@ dependencies {
     // ── Koin DI ──────────────────────────────────────────────────────────────
     implementation(libs.bundles.koin)
 
-    // ── Ktor (только OkHttp для REST, CIO и WebSockets удалены) ──────────────
+    // ── Ktor ─────────────────────────────────────────────────────────────────
     implementation(libs.bundles.ktor)
 
     // ── Kotlin ───────────────────────────────────────────────────────────────
@@ -145,6 +168,7 @@ dependencies {
 
     implementation(libs.firebase.appcheck.playintegrity)
     debugImplementation(libs.firebase.appcheck.debug)
+    "releaseDebugImplementation"(libs.firebase.appcheck.debug)
 
     implementation(libs.kotlinx.coroutines.play.services)
 
@@ -176,4 +200,18 @@ dependencies {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+}
+
+tasks.register("printAppCheckToken") {
+    doLast {
+        val token = project.findProperty("appCheckDebugToken")
+            ?: "❌ НЕ ЗАДАН — добавь APP_CHECK_DEBUG_TOKEN в GitHub Secrets"
+        println("")
+        println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        println("🔑 APP CHECK DEBUG TOKEN: $token")
+        println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        println("👆 Добавь этот токен в Firebase Console:")
+        println("   App Check → Apps → твоё приложение → Manage debug tokens")
+        println("")
+    }
 }
