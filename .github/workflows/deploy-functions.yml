@@ -44,7 +44,8 @@ jobs:
         firebase deploy \
           --only functions,firestore,storage \
           --project ${{ secrets.FIREBASE_PROJECT_ID }} \
-          --non-interactive
+          --non-interactive \
+          --force
 
     - name: Clean up credentials
       if: always()
