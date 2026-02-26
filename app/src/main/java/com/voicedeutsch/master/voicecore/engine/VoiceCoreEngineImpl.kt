@@ -4,6 +4,7 @@ import android.util.Log
 import com.voicedeutsch.master.domain.model.LearningStrategy
 import com.voicedeutsch.master.domain.model.session.SessionResult
 import com.voicedeutsch.master.domain.usecase.knowledge.BuildKnowledgeSummaryUseCase
+import com.voicedeutsch.master.domain.usecase.knowledge.FlushKnowledgeSyncUseCase
 import com.voicedeutsch.master.domain.usecase.learning.EndLearningSessionUseCase
 import com.voicedeutsch.master.domain.usecase.learning.StartLearningSessionUseCase
 import com.voicedeutsch.master.util.NetworkMonitor
@@ -53,20 +54,31 @@ import java.util.concurrent.atomic.AtomicInteger
  *     - awaitAll() ждёт все результаты
  *     - geminiClient.sendFunctionResults() отправляет батч одним вызовом
  *
- *   Это критично: Gemini 2.5 Flash зависает если получает частичный список
- *   ответов на параллельные вызовы. SDK ожидает все ответы за один раз.
  * ════════════════════════════════════════════════════════════════════════════
+ * ИЗМЕНЕНИЯ (Синхронизация и Firebase — Батчинг):
+ * ════════════════════════════════════════════════════════════════════════════
+ *
+ *   ДОБАВЛЕНО: flushKnowledgeSync: FlushKnowledgeSyncUseCase
+ *
+ *   Вызывается в endSession() после endLearningSession().
+ *   Отправляет все накопленные за сессию изменения знания (слова/правила)
+ *   одним Firestore batch-коммитом вместо 50 отдельных запросов.
+ *
+ *   50 слов SRS = было 50 записей в квоту Firestore →
+ *   стало 1 batch-commit после endSession().
  */
 class VoiceCoreEngineImpl(
-    private val contextBuilder: ContextBuilder,
-    private val functionRouter: FunctionRouter,
-    private val audioPipeline: AudioPipeline,
-    private val strategySelector: StrategySelector,
-    private val geminiClient: GeminiClient,
+    private val contextBuilder:      ContextBuilder,
+    private val functionRouter:      FunctionRouter,
+    private val audioPipeline:       AudioPipeline,
+    private val strategySelector:    StrategySelector,
+    private val geminiClient:        GeminiClient,
     private val buildKnowledgeSummary: BuildKnowledgeSummaryUseCase,
     private val startLearningSession: StartLearningSessionUseCase,
-    private val endLearningSession: EndLearningSessionUseCase,
-    private val networkMonitor: NetworkMonitor,
+    private val endLearningSession:  EndLearningSessionUseCase,
+    private val networkMonitor:      NetworkMonitor,
+    // ✅ ДОБАВЛЕНО: сброс батча синхронизации в конце сессии
+    private val flushKnowledgeSync:  FlushKnowledgeSyncUseCase,
 ) : VoiceCoreEngine {
 
     companion object {
@@ -76,25 +88,25 @@ class VoiceCoreEngineImpl(
 
     // ── Coroutine infrastructure ──────────────────────────────────────────────
 
-    private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private var sessionJob: Job? = null
+    private val engineScope    = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var sessionJob:    Job? = null
     private var audioForwardJob: Job? = null
     private val lifecycleMutex = Mutex()
 
     // ── State ─────────────────────────────────────────────────────────────────
 
-    private val _sessionState = MutableStateFlow(VoiceSessionState())
-    override val sessionState: StateFlow<VoiceSessionState> = _sessionState.asStateFlow()
+    private val _sessionState    = MutableStateFlow(VoiceSessionState())
+    override val sessionState:   StateFlow<VoiceSessionState> = _sessionState.asStateFlow()
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     override val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
-    private val _audioState = MutableStateFlow(AudioState.IDLE)
-    override val audioState: StateFlow<AudioState> = _audioState.asStateFlow()
+    private val _audioState      = MutableStateFlow(AudioState.IDLE)
+    override val audioState:     StateFlow<AudioState> = _audioState.asStateFlow()
 
     @Volatile private var config: GeminiConfig? = null
     @Volatile private var activeSessionId: String? = null
-    @Volatile private var activeUserId: String? = null
+    @Volatile private var activeUserId:    String? = null
     private val reconnectAttempts = AtomicInteger(0)
     @Volatile private var sessionStartMs: Long = 0L
 
@@ -255,7 +267,23 @@ class VoiceCoreEngineImpl(
                     runCatching { geminiClient.disconnect() }
                         .onFailure { Log.w(TAG, "disconnect() warning: ${it.message}") }
 
-                    endLearningSession(sessionId)
+                    val result = endLearningSession(sessionId)
+
+                    // ✅ БАТЧИНГ: сбрасываем всю очередь синхронизации одним batch-коммитом.
+                    // Вызываем ПОСЛЕ endLearningSession — данные сессии уже сохранены в Room.
+                    // Ошибка синхронизации не роняет endSession — данные в Room целые,
+                    // очередь сохранится и будет отправлена в следующем сеансе.
+                    val syncOk = runCatching { flushKnowledgeSync() }.getOrElse { e ->
+                        Log.w(TAG, "⚠️ flushKnowledgeSync failed (data safe in Room): ${e.message}")
+                        false
+                    }
+                    if (syncOk) {
+                        Log.d(TAG, "✅ Knowledge sync flushed successfully")
+                    } else {
+                        Log.w(TAG, "⚠️ Knowledge sync deferred — will retry next session")
+                    }
+
+                    result
                 }.onFailure { error ->
                     Log.e(TAG, "Session save failed: ${error.message}", error)
                     updateState { copy(errorMessage = "Session save failed: ${error.message}") }
@@ -370,7 +398,6 @@ class VoiceCoreEngineImpl(
     private suspend fun handleGeminiResponse(response: GeminiResponse) {
         when {
 
-            // ── Пользователь перебил модель ──────────────────────────────────
             response.isInterrupted -> {
                 Log.d(TAG, "User interrupted AI — flushing audio queue")
                 audioPipeline.flushPlayback()
@@ -379,7 +406,6 @@ class VoiceCoreEngineImpl(
                 updateState { copy(isSpeaking = false, isProcessing = false) }
             }
 
-            // ── Аудио ответ ──────────────────────────────────────────────────
             response.hasAudio() -> {
                 transitionAudio(AudioState.PLAYING)
                 updateState {
@@ -405,7 +431,6 @@ class VoiceCoreEngineImpl(
                 }
             }
 
-            // ── Function calls (Parallel Function Calling) ───────────────────
             response.hasFunctionCalls() -> {
                 val calls     = response.functionCalls
                 val userId    = activeUserId
@@ -414,14 +439,6 @@ class VoiceCoreEngineImpl(
                 Log.d(TAG, "Function calls received (${calls.size}): ${calls.map { it.name }}")
                 updateState { copy(isProcessing = true) }
 
-                // ✅ FIX Parallel Function Calling:
-                // Запускаем каждую функцию параллельно через async,
-                // затем awaitAll() ждёт все результаты,
-                // затем отправляем батч одним вызовом sendFunctionResults().
-                //
-                // НЕЛЬЗЯ отправлять ответы по одному:
-                //   Gemini 2.5 Flash ожидает полный список ответов за один раз.
-                //   Частичная отправка → модель зависает.
                 engineScope.launch {
                     val results = calls.map { call ->
                         async(Dispatchers.IO) {
@@ -452,13 +469,11 @@ class VoiceCoreEngineImpl(
                         }
                     }.awaitAll()
 
-                    // Батчевая отправка всех результатов
                     geminiClient.sendFunctionResults(results)
                     updateState { copy(isProcessing = false) }
                 }
             }
 
-            // ── Транскрипция ─────────────────────────────────────────────────
             response.inputTranscript != null -> {
                 updateState { copy(currentTranscript = response.inputTranscript) }
                 transitionEngine(VoiceEngineState.PROCESSING)
@@ -486,10 +501,10 @@ class VoiceCoreEngineImpl(
     ) {
         if (!result.success) return
         when (functionName) {
-            "save_word_knowledge"       -> updateState { copy(wordsLearnedInSession  = wordsLearnedInSession + 1) }
-            "get_words_for_repetition"  -> updateState { copy(wordsReviewedInSession = wordsReviewedInSession + 1) }
+            "save_word_knowledge"      -> updateState { copy(wordsLearnedInSession  = wordsLearnedInSession + 1) }
+            "get_words_for_repetition" -> updateState { copy(wordsReviewedInSession = wordsReviewedInSession + 1) }
             "mark_lesson_complete",
-            "advance_to_next_lesson"    -> updateState { copy(exercisesCompleted     = exercisesCompleted + 1) }
+            "advance_to_next_lesson"   -> updateState { copy(exercisesCompleted     = exercisesCompleted + 1) }
         }
     }
 
