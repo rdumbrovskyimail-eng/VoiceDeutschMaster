@@ -154,7 +154,7 @@ class GeminiClient(
                     .getOrNull()
             }
 
-            Log.d(TAG, "Successfully mapped ${firebaseDeclarations.size}/${declNames.size} declarations")
+            Log.d(TAG, "Successfully mapped \( {firebaseDeclarations.size}/ \){declNames.size} declarations")
 
             val tools = firebaseDeclarations
                 .takeIf { it.isNotEmpty() }
@@ -201,10 +201,17 @@ class GeminiClient(
             Log.w(TAG, "sendAudioChunk: no active session, dropping chunk")
             return
         }
+        
+        Log.d(TAG, ">>> sendAudioChunk: ${pcmBytes.size} bytes, mime=$AUDIO_INPUT_MIME")
+        
         runCatching {
             session.send(content { inlineData(pcmBytes, AUDIO_INPUT_MIME) })
+            Log.d(TAG, ">>> sendAudioChunk: SUCCESS")
         }.onFailure { e ->
-            Log.e(TAG, "sendAudioChunk error: ${e.message}", e)
+            Log.e(TAG, "sendAudioChunk error: ${e.message}")
+            Log.e(TAG, "  cause: \( {e.cause?.message} ( \){e.cause?.javaClass?.simpleName})")
+            // Сессия мертва — обнуляем чтобы не спамить
+            liveSession = null
         }
     }
 
