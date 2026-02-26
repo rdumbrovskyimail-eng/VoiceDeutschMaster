@@ -19,7 +19,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
@@ -33,7 +32,9 @@ import kotlin.coroutines.cancellation.CancellationException
  *
  * ✅ FIX 1: Убран runBlocking из onCleared().
  * runBlocking блокировал Main Thread на 5.5 сек → ANR (Android убивает через 5 сек).
- * Заменён на fire-and-forget корутину с NonCancellable + таймаутом.
+ * Заменён на fire-and-forget корутину с NonCancellable.
+ * withTimeout УДАЛЁН — он не отменяет вызовы к Room после перехода в поток SQLite,
+ * зато сам бросает TimeoutCancellationException, маскируя реальную причину зависания.
  *
  * ✅ FIX 2: VoiceSessionService теперь стартует при начале сессии и останавливается при конце.
  * Без foreground service Android убивает микрофон когда приложение уходит в фон.
@@ -164,20 +165,22 @@ class SessionViewModel(
         super.onCleared()
 
         // ✅ FIX 1: Убран runBlocking → был ANR (блокировал Main Thread на 5.5 сек).
-        // Теперь: fire-and-forget корутина на Dispatchers.IO.
+        // ✅ FIX: withTimeout УДАЛЁН — не отменяет вызовы Room после перехода в поток SQLite.
+        // Вместо этого: fire-and-forget корутина на Dispatchers.IO только если сессия активна.
         // NonCancellable гарантирует что cleanup выполнится даже после cancel ViewModel.
-        // Timeout 5 сек — защита от зависания endSession().
         //
         // ✅ FIX 3: context.startService(stopIntent) УДАЛЁН отсюда.
         // На Android 16 вызов startService из onCleared() вызывает
         // ForegroundServiceDidNotStartInTimeException когда приложение уходит в фон.
         // Сервис останавливается строго в endSession().
         // Если ViewModel уничтожается системой — Android сам убьёт Foreground Service.
-        CoroutineScope(Dispatchers.IO + NonCancellable).launch {
-            runCatching {
-                withTimeout(5_000L) { voiceCoreEngine.endSession() }
-            }.onFailure { e ->
-                android.util.Log.e("SessionViewModel", "cleanup endSession failed", e)
+        if (uiState.value.isSessionActive) {
+            CoroutineScope(Dispatchers.IO + NonCancellable).launch {
+                runCatching {
+                    voiceCoreEngine.endSession()
+                }.onFailure { e ->
+                    android.util.Log.e("SessionViewModel", "cleanup endSession failed", e)
+                }
             }
         }
     }
