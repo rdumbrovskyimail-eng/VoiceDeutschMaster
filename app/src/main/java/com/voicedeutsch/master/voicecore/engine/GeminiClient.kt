@@ -4,9 +4,11 @@ import android.util.Log
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.FunctionCallPart
+import com.google.firebase.ai.type.FunctionDeclaration
 import com.google.firebase.ai.type.FunctionResponsePart
 import com.google.firebase.ai.type.InlineDataPart
 import com.google.firebase.ai.type.LiveServerContent
+import com.google.firebase.ai.type.LiveServerMessage
 import com.google.firebase.ai.type.LiveSession
 import com.google.firebase.ai.type.PublicPreviewAPI
 import com.google.firebase.ai.type.ResponseModality
@@ -16,7 +18,6 @@ import com.google.firebase.ai.type.TextPart
 import com.google.firebase.ai.type.Tool
 import com.google.firebase.ai.type.Voice
 import com.google.firebase.ai.type.content
-import com.google.firebase.ai.type.defineFunction
 import com.google.firebase.ai.type.liveGenerationConfig
 import com.voicedeutsch.master.voicecore.context.ContextBuilder
 import com.voicedeutsch.master.voicecore.functions.GeminiFunctionDeclaration
@@ -41,18 +42,23 @@ import kotlinx.serialization.json.buildJsonObject
 //    - LiveServerContent    (com.google.firebase.ai.type) — подтип LiveServerMessage
 //    - FunctionCallPart, FunctionResponsePart, FunctionDeclaration
 //    - InlineDataPart, TextPart, Tool, Schema, Voice, SpeechConfig
-//    - defineFunction       (com.google.firebase.ai.type) — хелпер-билдер
 //
 // ❌ НЕ СУЩЕСТВУЮТ (подтверждено компилятором):
 //    - LiveContentResponse  → ФАНТОМ, нет в SDK
 //    - GenerativeBackend    → как отдельный импорт не резолвится
 //    - LiveGenerativeModel  → тип выводится, явный импорт невозможен
 //    - AudioTranscriptionConfig → нет в текущей версии
+//    - defineFunction       → Unresolved reference (нет в com.google.firebase.ai.type)
 //
 // 📝 КЛЮЧЕВЫЕ СИГНАТУРЫ (подтверждены ошибками компилятора):
 //    - session.send(content: Content)  — ОДИН параметр, без turnComplete
 //    - session.send(text: String)      — ОДИН параметр, без turnComplete
 //    - session.receive() → Flow<LiveServerMessage>
+//    - FunctionDeclaration(name, description, parameters, optionalParameters)
+//      * name: String (internal — нельзя читать снаружи!)
+//      * description: String (internal)
+//      * parameters: Map<String, Schema> (ОБЯЗАТЕЛЕН, нет дефолта)
+//      * optionalParameters: List<String> = emptyList()
 //    - LiveServerContent свойства (из PR #7482):
 //        content: Content, turnComplete: Boolean, interrupted: Boolean,
 //        generationComplete: Boolean, inputTranscription: Transcription,
@@ -73,31 +79,34 @@ import kotlinx.serialization.json.buildJsonObject
 //   3. ДОБАВЛЕНО: mapToFirebaseDeclaration() + mapPropertyToSchema() (нативный маппинг)
 //   4. УДАЛЕНО: audioConversationJob, responseChannel
 //   5. ДОБАВЛЕНО: Schema.enumeration() для enum-свойств (set_current_strategy и т.д.)
-//
 // ════════════════════════════════════════════════════════════════════════════
 // ИЗМЕНЕНИЯ (Parallel Function Calling fix):
-//   6. FIX: mapServerContent() теперь извлекает ВСЕ FunctionCallPart через
+//   6. FIX: mapServerContent() извлекает ВСЕ FunctionCallPart через
 //      filterIsInstance<FunctionCallPart>() (список, не firstOrNull).
-//      Gemini 2.5 Flash умеет вызывать несколько функций за один ход.
-//      Старый код: .firstOrNull() → вторая функция игнорировалась навсегда,
-//      ИИ зависал ожидая ответа на неё.
 //   7. GeminiResponse.functionCall → functionCalls: List<GeminiFunctionCall>
 //   8. sendFunctionResults(List<Pair>) — отправляет все ответы одним батчем.
 // ════════════════════════════════════════════════════════════════════════════
-// ИЗМЕНЕНИЯ (parameters_json_schema fix):
-//   9. FIX: mapToFirebaseDeclaration() переписан на defineFunction().
-//      БЫЛО: FunctionDeclaration(name, desc, parameters, optional) — прямой конструктор.
-//        Проблема 1: для функций без параметров emptyMap() генерировал пустую
-//                     parameters_json_schema, сервер отклонял handshake.
-//        Проблема 2: FunctionDeclaration не имеет 2-аргументного конструктора,
-//                     нельзя опустить parameters.
-//      СТАЛО: defineFunction() — SDK-хелпер, который корректно обрабатывает
-//             сериализацию parameters_json_schema для Live API, включая случай
-//             без параметров (не генерирует поле вообще).
-//   10. УДАЛЁН import FunctionDeclaration (больше не используется напрямую).
-//   11. УДАЛЁН import LiveServerMessage (не используется — receive() → LiveServerContent).
-//   12. ДОБАВЛЕН import defineFunction (com.google.firebase.ai.type).
-//   13. ДОБАВЛЕНО логирование деклараций при connect() для диагностики.
+// ИЗМЕНЕНИЯ (parameters_json_schema fix — попытка 3):
+//   9. FIX: mapToFirebaseDeclaration() — для функций без параметров
+//      подставляем dummy optional-параметр "_context".
+//
+//      ИСТОРИЯ ПРОБЛЕМЫ:
+//        Попытка 1: FunctionDeclaration(name, description) без parameters
+//          → НЕ КОМПИЛИРУЕТСЯ: "No value passed for parameter 'parameters'"
+//          → parameters ОБЯЗАТЕЛЕН, нет дефолта.
+//        Попытка 2: defineFunction(name, description)
+//          → НЕ КОМПИЛИРУЕТСЯ: "Unresolved reference 'defineFunction'"
+//          → defineFunction НЕ СУЩЕСТВУЕТ в BoM 34.9.0.
+//          → Также: FunctionDeclaration.name — internal, нельзя читать.
+//        Попытка 3 (текущая): для функций без параметров передаём:
+//          parameters = mapOf("_context" to Schema.string(...))
+//          optionalParameters = listOf("_context")
+//          → Гарантирует непустую валидную JSON Schema.
+//          → Параметр optional → модель не обязана его заполнять.
+//          → Сервер получает валидный parameters_json_schema.
+//
+//  10. Логирование имён через decl.name ДО создания FunctionDeclaration,
+//      т.к. FunctionDeclaration.name — internal и недоступен снаружи.
 // ════════════════════════════════════════════════════════════════════════════
 
 /**
@@ -135,14 +144,18 @@ class GeminiClient(
         try {
             Log.d(TAG, "Connecting to Gemini Live API [model=${config.modelName}]")
 
+            // Логируем имена ДО создания FunctionDeclaration,
+            // т.к. FunctionDeclaration.name — internal и недоступен снаружи.
+            val declNames = context.functionDeclarations.map { it.name }
+            Log.d(TAG, "Function declarations to register (${declNames.size}): $declNames")
+
             val firebaseDeclarations = context.functionDeclarations.mapNotNull { decl ->
                 runCatching { mapToFirebaseDeclaration(decl) }
                     .onFailure { Log.w(TAG, "Skipping invalid function ${decl.name}: ${it.message}") }
                     .getOrNull()
             }
 
-            Log.d(TAG, "Function declarations (${firebaseDeclarations.size}): " +
-                    firebaseDeclarations.joinToString { it.name })
+            Log.d(TAG, "Successfully mapped ${firebaseDeclarations.size}/${declNames.size} declarations")
 
             val tools = firebaseDeclarations
                 .takeIf { it.isNotEmpty() }
@@ -213,7 +226,6 @@ class GeminiClient(
 
     /**
      * Отправляет результат одной функции обратно в Gemini.
-     * Используется для ручных/внешних вызовов (напр. из UI).
      */
     suspend fun sendFunctionResult(callId: String, name: String, resultJson: String) {
         sendFunctionResults(listOf(Triple(callId, name, resultJson)))
@@ -221,11 +233,6 @@ class GeminiClient(
 
     /**
      * ✅ FIX Parallel Function Calling: отправляет ВСЕ результаты функций одним батчем.
-     *
-     * Gemini 2.5 Flash умеет вызывать несколько функций за один ход.
-     * Если отправлять ответы по одному, Gemini получает частичный список
-     * и зависает ожидая остальных. session.sendFunctionResponse(list) —
-     * единственный корректный способ ответить на параллельные вызовы.
      *
      * @param results список Triple(callId, name, resultJson)
      */
@@ -285,25 +292,18 @@ class GeminiClient(
      * Маппит LiveServerContent → GeminiResponse.
      *
      * ✅ FIX Parallel Function Calling:
-     *   БЫЛО: .filterIsInstance<FunctionCallPart>().firstOrNull()
-     *         → вторая и последующие функции игнорировались навсегда,
-     *           ИИ зависал ожидая ответа на них.
-     *   СТАЛО: .filterIsInstance<FunctionCallPart>() (весь список)
-     *         → все вызовы передаются в VoiceCoreEngineImpl,
-     *           обрабатываются параллельно через async,
-     *           отправляются батчем через sendFunctionResults().
+     *   БЫЛО: .firstOrNull() → вторая функция игнорировалась навсегда.
+     *   СТАЛО: весь список → все вызовы передаются в VoiceCoreEngineImpl.
      */
     private fun mapServerContent(sc: LiveServerContent): GeminiResponse? {
         val parts = sc.content?.parts.orEmpty()
 
-        // Извлекаем аудио (InlineDataPart → PCM 24kHz)
         val audioData = parts
             .filterIsInstance<InlineDataPart>()
             .firstOrNull()
             ?.inlineData
             ?.takeIf { it.isNotEmpty() }
 
-        // Извлекаем текст
         val textContent = parts
             .filterIsInstance<TextPart>()
             .joinToString("") { it.text }
@@ -314,7 +314,7 @@ class GeminiClient(
             .filterIsInstance<FunctionCallPart>()
             .map { fc ->
                 GeminiFunctionCall(
-                    id       = fc.name, // нет отдельного id, используем name
+                    id       = fc.name,
                     name     = fc.name,
                     argsJson = fc.args.toString(),
                 )
@@ -330,7 +330,6 @@ class GeminiClient(
         val inputTranscript  = sc.inputTranscription?.text?.takeIf { it.isNotEmpty() }
         val outputTranscript = sc.outputTranscription?.text?.takeIf { it.isNotEmpty() }
 
-        // Если ответ полностью пустой — не эмитируем
         if (audioData == null && textContent == null && functionCalls.isEmpty() &&
             !isTurnComplete && !isInterrupted &&
             inputTranscript == null && outputTranscript == null) {
@@ -353,35 +352,35 @@ class GeminiClient(
     /**
      * Маппит GeminiFunctionDeclaration → Firebase AI SDK FunctionDeclaration.
      *
-     * ✅ FIX: используем defineFunction() вместо конструктора FunctionDeclaration().
+     * ✅ FIX (попытка 3): для функций без параметров подставляем dummy
+     * optional-параметр "_context", чтобы parameters_json_schema
+     * никогда не была пустой.
      *
-     * БЫЛО: FunctionDeclaration(name, desc, parameters, optionalParameters)
-     *   Проблема 1: для функций без параметров emptyMap() генерировал пустую
-     *               parameters_json_schema → сервер отклонял WebSocket handshake.
-     *   Проблема 2: конструктор не имеет 2-аргументного варианта (parameters обязателен),
-     *               нельзя просто опустить parameters.
-     *
-     * СТАЛО: defineFunction() — SDK-хелпер с optional parameters.
-     *   - Для функций без параметров: defineFunction(name, description)
-     *     → SDK НЕ генерирует parameters_json_schema вообще.
-     *   - Для функций с параметрами: defineFunction(name, description, params, optional)
-     *     → SDK генерирует корректную JSON Schema.
+     * ИСТОРИЯ:
+     *   Попытка 1: FunctionDeclaration(name, description) без parameters
+     *     → "No value passed for parameter 'parameters'" — parameters ОБЯЗАТЕЛЕН.
+     *   Попытка 2: defineFunction(name, description)
+     *     → "Unresolved reference 'defineFunction'" — не существует в BoM 34.9.0.
+     *   Попытка 3: dummy optional "_context" → валидная непустая schema.
      */
-    private fun mapToFirebaseDeclaration(decl: GeminiFunctionDeclaration) =
-        mapToFirebaseDeclarationViaDefine(decl)
-
-    /**
-     * Основной путь: через defineFunction() SDK-хелпер.
-     */
-    private fun mapToFirebaseDeclarationViaDefine(decl: GeminiFunctionDeclaration): com.google.firebase.ai.type.FunctionDeclaration {
+    private fun mapToFirebaseDeclaration(decl: GeminiFunctionDeclaration): FunctionDeclaration {
         val params = decl.parameters
 
-        // Функции без параметров — defineFunction(name, description) без parameters
+        // Функции без параметров: подставляем dummy optional-параметр.
+        // Нельзя передать emptyMap() — SDK генерирует пустую parameters_json_schema,
+        // сервер отклоняет WebSocket handshake с ошибкой валидации.
+        // Нельзя опустить parameters — это обязательный аргумент конструктора.
         if (params == null || params.properties.isEmpty()) {
-            Log.d(TAG, "  ⚙ ${decl.name} — no parameters")
-            return defineFunction(
-                name        = decl.name,
-                description = decl.description,
+            Log.d(TAG, "  ⚙ ${decl.name} — no params, injecting dummy _context")
+            return FunctionDeclaration(
+                name               = decl.name,
+                description        = decl.description,
+                parameters         = mapOf(
+                    "_context" to Schema.string(
+                        description = "Optional execution context, can be omitted",
+                    ),
+                ),
+                optionalParameters = listOf("_context"),
             )
         }
 
@@ -394,7 +393,7 @@ class GeminiClient(
         Log.d(TAG, "  ⚙ ${decl.name} — params: ${properties.keys}, " +
                 "required: ${params.required}, optional: $optionalProperties")
 
-        return defineFunction(
+        return FunctionDeclaration(
             name               = decl.name,
             description        = decl.description,
             parameters         = properties,
@@ -425,7 +424,6 @@ class GeminiClient(
 data class GeminiResponse(
     val audioData: ByteArray?,
     val transcript: String?,
-    // ✅ FIX Parallel Function Calling: список вместо одного вызова
     val functionCalls: List<GeminiFunctionCall> = emptyList(),
     val isTurnComplete: Boolean = false,
     val isInterrupted: Boolean = false,
