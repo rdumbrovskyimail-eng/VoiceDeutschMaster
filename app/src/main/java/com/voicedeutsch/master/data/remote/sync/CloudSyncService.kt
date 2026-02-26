@@ -9,17 +9,12 @@ import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 
 /**
  * CloudSyncService — реал-тайм синхронизация прогресса пользователя через Firebase Firestore.
- *
- * ════════════════════════════════════════════════════════════════════════════
- * МИГРАЦИЯ: Заглушка MVP → Полноценный Firestore Sync
- * ════════════════════════════════════════════════════════════════════════════
- *
- * БЫЛО: пустые методы pushChanges/pullChanges с логом "not implemented in v1.0"
- * СТАЛО: полноценный двусторонний sync через Firestore с Flow-наблюдателями
  *
  * ════════════════════════════════════════════════════════════════════════════
  * СТРУКТУРА FIRESTORE:
@@ -41,14 +36,33 @@ import kotlinx.coroutines.tasks.await
  *
  *   Push (Room → Firestore):
  *     SetOptions.merge() — частичное обновление, не перезаписывает весь документ.
- *     Подходит для инкрементального обновления прогресса слов/фраз.
  *
  *   Pull (Firestore → Room):
- *     get().await() — одноразовое чтение (для восстановления на новом устройстве).
+ *     get().await() — одноразовое чтение (восстановление на новом устройстве).
  *
  *   Real-time наблюдение (Firestore → UI):
- *     callbackFlow + addSnapshotListener — живые обновления без polling.
- *     awaitClose { registration.remove() } — гарантирует очистку при отмене Flow.
+ *     callbackFlow + addSnapshotListener.
+ *     awaitClose { registration.remove() } — очистка при отмене Flow.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * BATCHING — ПАКЕТНАЯ ЗАПИСЬ (решение проблемы квот):
+ * ════════════════════════════════════════════════════════════════════════════
+ *
+ *   ПРОБЛЕМА: pushKnowledgeItem() вызывается после каждого слова в SRS.
+ *   50 слов за сессию = 50 сетевых запросов = 50 записей в квоту Firestore.
+ *   Бесплатная квота: 50 000 записей/день. При активном использовании — легко
+ *   исчерпать. Плюс: лишний расход батареи на радио-активность.
+ *
+ *   РЕШЕНИЕ: enqueueKnowledgeItem() складывает изменения в pendingQueue (Map).
+ *   Map по itemId гарантирует, что если слово обновилось дважды — хранится
+ *   только последнее состояние (дедупликация).
+ *
+ *   flushPendingQueue() отправляет всё одним firestore.batch().commit().
+ *   Firestore batch: максимум 500 операций за раз.
+ *   Большие очереди автоматически разбиваются на чанки по BATCH_CHUNK_SIZE.
+ *
+ *   Вызывать flushPendingQueue() нужно один раз в endSession() или
+ *   в BackupWorker при завершении работы приложения.
  *
  * ════════════════════════════════════════════════════════════════════════════
  * SECURITY RULES (Firestore):
@@ -71,11 +85,16 @@ class CloudSyncService(
         private const val TAG = "CloudSyncService"
 
         // Firestore collection / document paths
-        private const val USERS_COLLECTION    = "users"
-        private const val PROFILE_DOCUMENT    = "profile"
-        private const val PREFERENCES_DOC     = "preferences"
+        private const val USERS_COLLECTION      = "users"
+        private const val PROFILE_DOCUMENT      = "profile"
         private const val STATISTICS_COLLECTION = "statistics"
-        private const val PROGRESS_COLLECTION  = "progress"
+        private const val PROGRESS_COLLECTION   = "progress"
+
+        /**
+         * Максимум операций в одном Firestore batch.
+         * Лимит Firestore — 500. Берём 400 с запасом.
+         */
+        private const val BATCH_CHUNK_SIZE = 400
     }
 
     enum class SyncStatus {
@@ -83,19 +102,116 @@ class CloudSyncService(
         SYNCING,
         SUCCESS,
         ERROR,
-        OFFLINE,         // Данные записаны в офлайн-кеш Firestore, будут отправлены при сети
+        OFFLINE,
     }
 
-    // ── Push: Room → Firestore ────────────────────────────────────────────────
+    // ── Batching queue ────────────────────────────────────────────────────────
+
+    /**
+     * Локальная очередь ожидающих отправки обновлений знания.
+     *
+     * Ключ — itemId (wordId / phraseId).
+     * Значение — последняя версия данных. Если слово обновлялось несколько раз
+     * за сессию, в Firestore уйдёт только итоговое состояние (дедупликация).
+     *
+     * Защищена [queueMutex] — enqueue и flush могут вызываться из разных корутин.
+     */
+    private val pendingQueue  = mutableMapOf<String, Map<String, Any>>()
+    private val queueMutex    = Mutex()
+
+    /**
+     * Добавляет обновление знания в локальную очередь БЕЗ сетевого запроса.
+     *
+     * Заменяет прямой вызов pushKnowledgeItem() внутри сессии.
+     * Сеть не используется — только память. Быстро, не расходует квоту Firestore.
+     *
+     * Дедупликация: повторный enqueue для того же itemId перезаписывает данные —
+     * в итоге в Firestore уйдёт только последнее состояние слова за сессию.
+     *
+     * @param itemId  ID слова или фразы
+     * @param data    Map с полями знания (из KnowledgeMapper)
+     */
+    suspend fun enqueueKnowledgeItem(itemId: String, data: Map<String, Any>) {
+        queueMutex.withLock {
+            pendingQueue[itemId] = data
+        }
+        Log.d(TAG, "📥 enqueued: $itemId (queue size=${pendingQueue.size})")
+    }
+
+    /**
+     * Отправляет всю очередь в Firestore одним или несколькими batch-запросами.
+     *
+     * Вызывать ОДИН РАЗ в конце сессии (endSession) или при сохранении в фоне.
+     *
+     * Firestore batch лимит — 500 операций. Метод автоматически разбивает
+     * очередь на чанки по [BATCH_CHUNK_SIZE] и отправляет последовательно.
+     *
+     * После успешного flush очередь очищается. При ошибке — очередь сохраняется,
+     * следующий вызов повторит попытку (at-least-once семантика).
+     *
+     * @return [SyncStatus.SUCCESS] если все чанки отправлены.
+     *         [SyncStatus.OFFLINE] если сеть недоступна (Firestore сохранит в кеш).
+     *         [SyncStatus.ERROR]   если uid недоступен или произошла нераспознанная ошибка.
+     */
+    suspend fun flushPendingQueue(): SyncStatus {
+        val uid = currentUid() ?: return SyncStatus.ERROR.also {
+            Log.w(TAG, "flushPendingQueue: user not authenticated")
+        }
+
+        val snapshot: Map<String, Map<String, Any>> = queueMutex.withLock {
+            if (pendingQueue.isEmpty()) {
+                Log.d(TAG, "flushPendingQueue: queue is empty, nothing to sync")
+                return SyncStatus.SUCCESS
+            }
+            // Копируем и очищаем атомарно под локом
+            val copy = pendingQueue.toMap()
+            pendingQueue.clear()
+            copy
+        }
+
+        Log.d(TAG, "🚀 flushPendingQueue: sending ${snapshot.size} items in chunks of $BATCH_CHUNK_SIZE")
+
+        return runCatching {
+            val chunks = snapshot.entries.chunked(BATCH_CHUNK_SIZE)
+
+            chunks.forEachIndexed { index, chunk ->
+                val batch = firestore.batch()
+
+                chunk.forEach { (itemId, data) ->
+                    val ref = firestore
+                        .collection(USERS_COLLECTION)
+                        .document(uid)
+                        .collection(PROGRESS_COLLECTION)
+                        .document(itemId)
+                    batch.set(ref, data, SetOptions.merge())
+                }
+
+                batch.commit().await()
+                Log.d(TAG, "✅ batch chunk ${index + 1}/${chunks.size} committed (${chunk.size} ops)")
+            }
+
+            Log.d(TAG, "✅ flushPendingQueue: all ${snapshot.size} items synced")
+            SyncStatus.SUCCESS
+
+        }.getOrElse { e ->
+            // При ошибке возвращаем данные обратно в очередь — не теряем их
+            queueMutex.withLock {
+                snapshot.forEach { (k, v) -> pendingQueue.putIfAbsent(k, v) }
+            }
+            Log.w(TAG, "⚠️ flushPendingQueue failed, items restored to queue: ${e.message}")
+            SyncStatus.OFFLINE
+        }
+    }
+
+    /** Количество элементов в очереди ожидающих синхронизации. */
+    suspend fun pendingQueueSize(): Int = queueMutex.withLock { pendingQueue.size }
+
+    // ── Push: Room → Firestore (одиночные операции для не-SRS данных) ─────────
 
     /**
      * Отправляет профиль пользователя в Firestore.
      *
-     * SetOptions.merge() — безопасно: обновляет только переданные поля,
-     * не удаляет существующие. Идемпотентно.
-     *
-     * @param data Map с полями профиля (из UserMapper)
-     * @return [SyncStatus.SUCCESS] или [SyncStatus.ERROR]
+     * Вызывается редко (регистрация, смена имени, уровня) — батчинг не нужен.
      */
     suspend fun pushUserProfile(data: Map<String, Any>): SyncStatus {
         val uid = currentUid() ?: return SyncStatus.ERROR.also {
@@ -120,13 +236,13 @@ class CloudSyncService(
     }
 
     /**
-     * Отправляет прогресс по одному слову/фразе в Firestore.
+     * Прямая запись одного элемента прогресса в Firestore.
      *
-     * Вызывается из KnowledgeRepositoryImpl после каждого обновления SRS.
-     * Firestore офлайн-кеш гарантирует, что данные не потеряются при обрыве сети.
+     * ⚠️ ВНИМАНИЕ: не вызывай этот метод в цикле по словам SRS —
+     * используй [enqueueKnowledgeItem] + [flushPendingQueue] вместо этого.
      *
-     * @param itemId  ID слова или фразы (ключ документа)
-     * @param data    Map с полями знания (из KnowledgeMapper)
+     * Оставлен для редких случаев: ручная синхронизация одного слова,
+     * критичные данные которые нельзя откладывать до endSession.
      */
     suspend fun pushKnowledgeItem(itemId: String, data: Map<String, Any>): SyncStatus {
         val uid = currentUid() ?: return SyncStatus.ERROR
@@ -140,12 +256,10 @@ class CloudSyncService(
                 .set(data, SetOptions.merge())
                 .await()
 
-            Log.d(TAG, "✅ pushKnowledgeItem: $itemId synced")
+            Log.d(TAG, "✅ pushKnowledgeItem (direct): $itemId synced")
             SyncStatus.SUCCESS
 
         }.getOrElse { e ->
-            // При отсутствии сети Firestore SDK сохраняет в офлайн-кеш автоматически.
-            // Задача будет выполнена при восстановлении соединения.
             Log.w(TAG, "⚠️ pushKnowledgeItem offline (will retry): ${e.message}")
             SyncStatus.OFFLINE
         }
@@ -153,9 +267,7 @@ class CloudSyncService(
 
     /**
      * Отправляет дневную статистику сессии в Firestore.
-     *
-     * @param date ISO date string "2026-02-23"
-     * @param data Map с полями статистики
+     * Вызывается один раз в конце сессии — батчинг не нужен.
      */
     suspend fun pushDailyStatistics(date: String, data: Map<String, Any>): SyncStatus {
         val uid = currentUid() ?: return SyncStatus.ERROR
@@ -182,14 +294,7 @@ class CloudSyncService(
 
     /**
      * Скачивает прогресс пользователя из Firestore (одноразово).
-     *
-     * Используется при первом входе на новом устройстве для восстановления данных.
-     * Для постоянного наблюдения используйте [observeProgress].
-     *
-     * .await() из kotlinx-coroutines-play-services преобразует Firebase Task
-     * в suspend-функцию без callbacks.
-     *
-     * @return Список Map с данными прогресса, пустой список при ошибке/отсутствии данных.
+     * Используется при первом входе на новом устройстве.
      */
     suspend fun pullKnowledgeProgress(): List<Map<String, Any>> {
         val uid = currentUid() ?: return emptyList()
@@ -216,13 +321,10 @@ class CloudSyncService(
 
     /**
      * Скачивает дневную статистику за последние [days] дней.
-     *
-     * @return Список Map с данными статистики.
      */
     suspend fun pullStatistics(days: Int = 30): List<Map<String, Any>> {
         val uid = currentUid() ?: return emptyList()
 
-        // Дата отсечки: сегодня - days дней в формате ISO "2026-01-24"
         val cutoffDate = java.time.LocalDate.now()
             .minusDays(days.toLong())
             .toString()
@@ -254,9 +356,6 @@ class CloudSyncService(
     /**
      * Cold Flow реал-тайм обновлений прогресса из Firestore.
      *
-     * Использует callbackFlow + addSnapshotListener для получения живых обновлений.
-     * awaitClose гарантирует снятие Firestore-слушателя при отмене Flow.
-     *
      * Пример использования в ViewModel:
      * ```kotlin
      * cloudSyncService.observeProgress()
@@ -264,9 +363,6 @@ class CloudSyncService(
      *     .catch { e -> Log.e(TAG, "Sync error", e) }
      *     .launchIn(viewModelScope)
      * ```
-     *
-     * Firestore офлайн-кеш: Flow продолжает эмитировать кешированные данные
-     * при отсутствии сети. При восстановлении сети — автоматически синхронизируется.
      */
     fun observeProgress(): Flow<List<Map<String, Any>>> = callbackFlow {
         val uid = currentUid()
@@ -276,30 +372,21 @@ class CloudSyncService(
             return@callbackFlow
         }
 
-        var registration: ListenerRegistration? = null
-
-        registration = firestore
+        val registration: ListenerRegistration = firestore
             .collection(USERS_COLLECTION)
             .document(uid)
             .collection(PROGRESS_COLLECTION)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     Log.e(TAG, "observeProgress error: ${error.message}", error)
-                    // Не закрываем канал — при восстановлении сети Firestore переподключится
                     return@addSnapshotListener
                 }
-
-                val items = snapshot?.documents?.mapNotNull { doc ->
-                    doc.data
-                } ?: emptyList()
-
+                val items = snapshot?.documents?.mapNotNull { it.data } ?: emptyList()
                 trySend(items)
             }
 
-        // awaitClose: вызывается когда Flow отменяется.
-        // Снимает Firestore-слушатель, предотвращает утечки памяти.
         awaitClose {
-            registration?.remove()
+            registration.remove()
             Log.d(TAG, "observeProgress: snapshot listener removed")
         }
     }
@@ -324,7 +411,6 @@ class CloudSyncService(
                     Log.e(TAG, "observeUserProfile error: ${error.message}")
                     return@addSnapshotListener
                 }
-
                 trySend(snapshot?.data)
             }
 
@@ -337,14 +423,13 @@ class CloudSyncService(
      * Инициирует полную двустороннюю синхронизацию.
      *
      * Порядок:
-     *   1. Pull из Firestore → обновить Room
-     *   2. Push из Room → Firestore (идемпотентно через SetOptions.merge)
+     *   1. Сначала сбрасываем очередь батча (если есть ожидающие элементы)
+     *   2. Push переданных данных через батч
+     *   3. Pull из Firestore делается вызывающей стороной при необходимости
      *
      * Вызывается из BackupWorker и при восстановлении сетевого соединения.
-     * Данные из Room для push должны быть переданы вызывающей стороной —
-     * CloudSyncService не знает о Room напрямую (SRP).
      *
-     * @return [SyncStatus.SUCCESS] если обе операции прошли успешно.
+     * @return [SyncStatus.SUCCESS] если всё прошло успешно.
      */
     suspend fun syncAll(
         localProgressData: List<Pair<String, Map<String, Any>>>,
@@ -355,21 +440,12 @@ class CloudSyncService(
 
         Log.d(TAG, "Starting full sync for uid=$uid, items=${localProgressData.size}")
 
-        var errorCount = 0
-
-        // Push все локальные данные
+        // Добавляем переданные данные в очередь и сбрасываем всё разом
         localProgressData.forEach { (itemId, data) ->
-            val status = pushKnowledgeItem(itemId, data)
-            if (status == SyncStatus.ERROR) errorCount++
+            enqueueKnowledgeItem(itemId, data)
         }
 
-        return if (errorCount == 0) {
-            Log.d(TAG, "✅ syncAll completed: ${localProgressData.size} items")
-            SyncStatus.SUCCESS
-        } else {
-            Log.w(TAG, "⚠️ syncAll completed with $errorCount errors")
-            SyncStatus.ERROR
-        }
+        return flushPendingQueue()
     }
 
     // ── Вспомогательные методы ────────────────────────────────────────────────
