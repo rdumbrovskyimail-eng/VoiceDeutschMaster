@@ -196,4 +196,4 @@ exports.deleteUserAccount = onCall(
         console.log(`✅ Auth account deleted for uid=${uid}`);
         return { success: true };
     }
-);
+); 
