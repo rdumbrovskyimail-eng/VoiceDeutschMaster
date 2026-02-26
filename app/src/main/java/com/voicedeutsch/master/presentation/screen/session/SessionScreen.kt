@@ -405,11 +405,17 @@ private fun TranscriptArea(
 ) {
     val listState = rememberLazyListState()
 
+    // FIX: используем scrollToItem вместо animateScrollToItem,
+    // чтобы избежать "эпилептичного" скролла при стриминге.
+    // Скроллим только если пользователь уже находится внизу —
+    // это позволяет листать историю вверх без прерываний.
     LaunchedEffect(voiceTranscript, userTranscript) {
         if (voiceTranscript.isNotEmpty() || userTranscript.isNotEmpty()) {
             runCatching {
                 val itemCount = listState.layoutInfo.totalItemsCount
-                if (itemCount > 0) listState.animateScrollToItem(itemCount - 1)
+                if (itemCount > 0 && !listState.canScrollForward) {
+                    listState.scrollToItem(itemCount - 1)
+                }
             }
         }
     }
