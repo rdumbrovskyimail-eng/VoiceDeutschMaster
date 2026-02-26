@@ -91,37 +91,50 @@ class AudioPipeline(private val context: Context) {
     fun pausePlayback() = player.pause()
     fun resumePlayback() = player.resume()
 
-    // 🔥 FIX: Жесткая остановка без Race Conditions
+    // 🔥 FIX Deadlock: cancelAndJoin() вынесен ЗА пределы мьютекса.
+    // Было: cancelAndJoin() внутри withLock → playbackJob.finally тоже ждёт withLock → дэдлок.
+    // Стало: захватываем job-ссылку и сбрасываем состояние внутри мьютекса,
+    //        затем отпускаем мьютекс и только потом ждём завершения job.
     fun flushPlayback() {
         pipelineScope.launch {
-            stateMutex.withLock {
-                android.util.Log.d("AudioPipeline", "Interruption: Flushing audio queue")
-                // Убиваем текущую задачу воспроизведения
-                playbackJob?.cancelAndJoin()
+            android.util.Log.d("AudioPipeline", "Interruption: Flushing audio queue")
+
+            // 1. Захватываем ссылку и сбрасываем состояние под мьютексом
+            val jobToCancel = stateMutex.withLock {
+                val job = playbackJob
                 playbackJob = null
                 _isPlaying = false
-
-                // Полностью пересоздаем канал
                 playbackQueue.cancel()
                 playbackQueue = Channel(capacity = Channel.UNLIMITED)
-
-                // Сбрасываем железо
-                player.flush()
+                job
             }
+
+            // 2. cancelAndJoin() — ВНЕ мьютекса, дэдлок невозможен
+            jobToCancel?.cancelAndJoin()
+
+            // 3. Сбрасываем железо после гарантированной остановки job
+            player.flush()
         }
     }
 
     fun stopPlayback() {
         pipelineScope.launch {
-            stateMutex.withLock {
-                if (!_isPlaying) return@withLock
-                playbackJob?.cancelAndJoin()
+            // 1. Захватываем ссылку и сбрасываем состояние под мьютексом
+            val jobToCancel = stateMutex.withLock {
+                if (!_isPlaying) return@launch
+                val job = playbackJob
                 playbackJob = null
+                _isPlaying = false
                 playbackQueue.cancel()
                 playbackQueue = Channel(capacity = Channel.UNLIMITED)
-                player.stop()
-                _isPlaying = false
+                job
             }
+
+            // 2. cancelAndJoin() — ВНЕ мьютекса
+            jobToCancel?.cancelAndJoin()
+
+            // 3. Останавливаем железо
+            player.stop()
         }
     }
 
