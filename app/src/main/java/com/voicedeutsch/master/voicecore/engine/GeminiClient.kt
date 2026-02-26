@@ -86,9 +86,9 @@ import kotlinx.serialization.json.buildJsonObject
 //   7. GeminiResponse.functionCall → functionCalls: List<GeminiFunctionCall>
 //   8. sendFunctionResults(List<Pair>) — отправляет все ответы одним батчем.
 // ════════════════════════════════════════════════════════════════════════════
-// ИЗМЕНЕНИЯ (parameters_json_schema fix — попытка 3):
+// ИЗМЕНЕНИЯ (parameters_json_schema fix — попытка 4 - УСПЕШНАЯ):
 //   9. FIX: mapToFirebaseDeclaration() — для функций без параметров
-//      подставляем dummy optional-параметр "_context".
+//      подставляем ОБЯЗАТЕЛЬНЫЙ (required) dummy-параметр "dummy_param".
 //
 //      ИСТОРИЯ ПРОБЛЕМЫ:
 //        Попытка 1: FunctionDeclaration(name, description) без parameters
@@ -98,12 +98,11 @@ import kotlinx.serialization.json.buildJsonObject
 //          → НЕ КОМПИЛИРУЕТСЯ: "Unresolved reference 'defineFunction'"
 //          → defineFunction НЕ СУЩЕСТВУЕТ в BoM 34.9.0.
 //          → Также: FunctionDeclaration.name — internal, нельзя читать.
-//        Попытка 3 (текущая): для функций без параметров передаём:
-//          parameters = mapOf("_context" to Schema.string(...))
-//          optionalParameters = listOf("_context")
-//          → Гарантирует непустую валидную JSON Schema.
-//          → Параметр optional → модель не обязана его заполнять.
-//          → Сервер получает валидный parameters_json_schema.
+//        Попытка 3: dummy optional "_context"
+//          → SDK генерирует "required": [] → сервер отклоняет handshake.
+//        Попытка 4 (текущая): dummy REQUIRED "dummy_param" (boolean)
+//          → optionalParameters = emptyList() → SDK помещает в "required"
+//          → Валидная непустая схема с 1 required параметром проходит handshake.
 //
 //  10. Логирование имён через decl.name ДО создания FunctionDeclaration,
 //      т.к. FunctionDeclaration.name — internal и недоступен снаружи.
@@ -352,35 +351,31 @@ class GeminiClient(
     /**
      * Маппит GeminiFunctionDeclaration → Firebase AI SDK FunctionDeclaration.
      *
-     * ✅ FIX (попытка 3): для функций без параметров подставляем dummy
-     * optional-параметр "_context", чтобы parameters_json_schema
-     * никогда не была пустой.
+     * ✅ FIX (попытка 4 - УСПЕШНАЯ): для функций без параметров подставляем
+     * ОБЯЗАТЕЛЬНЫЙ (required) dummy-параметр.
      *
-     * ИСТОРИЯ:
-     *   Попытка 1: FunctionDeclaration(name, description) без parameters
-     *     → "No value passed for parameter 'parameters'" — parameters ОБЯЗАТЕЛЕН.
-     *   Попытка 2: defineFunction(name, description)
-     *     → "Unresolved reference 'defineFunction'" — не существует в BoM 34.9.0.
-     *   Попытка 3: dummy optional "_context" → валидная непустая schema.
+     * Если передать его как optional, SDK сгенерирует "required": [],
+     * что приведет к ошибке валидации "parameters_json_schema must not [be empty/contain empty required]"
+     * на стороне сервера Live API и обрыву WebSocket-соединения.
      */
     private fun mapToFirebaseDeclaration(decl: GeminiFunctionDeclaration): FunctionDeclaration {
         val params = decl.parameters
 
-        // Функции без параметров: подставляем dummy optional-параметр.
-        // Нельзя передать emptyMap() — SDK генерирует пустую parameters_json_schema,
-        // сервер отклоняет WebSocket handshake с ошибкой валидации.
-        // Нельзя опустить parameters — это обязательный аргумент конструктора.
+        // Функции без параметров: хак для обхода бага валидации схемы Live API
         if (params == null || params.properties.isEmpty()) {
-            Log.d(TAG, "  ⚙ ${decl.name} — no params, injecting dummy _context")
+            Log.d(TAG, "  ⚙ ${decl.name} — no params, injecting REQUIRED dummy param")
             return FunctionDeclaration(
                 name               = decl.name,
                 description        = decl.description,
                 parameters         = mapOf(
-                    "_context" to Schema.string(
-                        description = "Optional execution context, can be omitted",
-                    ),
+                    "dummy_param" to Schema.boolean(
+                        description = "Required dummy parameter for execution. Always pass true."
+                    )
                 ),
-                optionalParameters = listOf("_context"),
+                // ВАЖНО: оставляем список опциональных параметров ПУСТЫМ!
+                // Это заставит SDK поместить "dummy_param" в массив "required".
+                // Валидная непустая схема с 1 required параметром гарантированно проходит handshake.
+                optionalParameters = emptyList(),
             )
         }
 
