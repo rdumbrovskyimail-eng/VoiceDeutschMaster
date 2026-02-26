@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Rule
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -163,7 +164,7 @@ private fun GapFillingTestUI() {
 @Composable
 private fun GrammarTestUI() {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Outlined.Rule, contentDescription = null, tint = Color(0xFF9C27B0))
+        Icon(Icons.AutoMirrored.Outlined.Rule, contentDescription = null, tint = Color(0xFF9C27B0)) // ИСПРАВЛЕНО
         Spacer(Modifier.width(8.dp))
         Text("Грамматический штурм", style = MaterialTheme.typography.bodyMedium)
     }
