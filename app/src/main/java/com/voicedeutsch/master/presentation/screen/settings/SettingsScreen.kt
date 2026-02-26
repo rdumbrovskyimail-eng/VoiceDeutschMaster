@@ -10,6 +10,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.outlined.Edit
@@ -25,9 +27,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.voicedeutsch.master.data.remote.sync.BackupMetadata
 import com.voicedeutsch.master.presentation.theme.Background
 import com.voicedeutsch.master.util.AppLogger
 import com.voicedeutsch.master.util.CrashLogger
@@ -37,14 +39,15 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Settings screen — полное покрытие UserPreferences + VoiceSettings.
+ * Settings screen — полное покрытие UserPreferences + VoiceSettings + Backup.
  *
  * Секции:
  *  1. Обучение (Алгоритмы) — SRS, темп, цели
  *  2. Голос и ИИ (Gemini) — скорость, субтитры, строгость произношения
  *  3. Напоминание
  *  4. Система — экономия трафика
- *  5. Диагностика
+ *  5. Резервная копия — облачный бекап / рестор
+ *  6. Диагностика
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,6 +83,16 @@ fun SettingsScreen(
             snackbarHostState.showSnackbar(msg)
             viewModel.onEvent(SettingsEvent.DismissMessages)
         }
+    }
+
+    // ── Restore dialog ────────────────────────────────────────────────────────
+    if (state.showRestoreDialog) {
+        RestoreDialog(
+            backups    = state.cloudBackups,
+            isLoading  = state.isLoadingBackups,
+            onRestore  = { viewModel.onEvent(SettingsEvent.RestoreFromCloud(it)) },
+            onDismiss  = { viewModel.onEvent(SettingsEvent.HideRestoreDialog) },
+        )
     }
 
     Scaffold(
@@ -134,8 +147,8 @@ fun SettingsScreen(
                     steps         = 8,
                 )
                 RowSwitch(
-                    label   = "Интервальное повторение (SRS)",
-                    checked = state.srsEnabled,
+                    label           = "Интервальное повторение (SRS)",
+                    checked         = state.srsEnabled,
                     onCheckedChange = { viewModel.onEvent(SettingsEvent.ToggleSrs(it)) },
                 )
                 val paceOptions = listOf(
@@ -165,8 +178,8 @@ fun SettingsScreen(
                     steps         = 9,
                 )
                 RowSwitch(
-                    label   = "Показывать субтитры",
-                    checked = state.showTranscription,
+                    label           = "Показывать субтитры",
+                    checked         = state.showTranscription,
                     onCheckedChange = { viewModel.onEvent(SettingsEvent.ToggleTranscription(it)) },
                 )
                 val strictnessOptions = listOf(
@@ -189,8 +202,8 @@ fun SettingsScreen(
             // ── 3. Напоминание ────────────────────────────────────────────────
             SettingsSection(title = "Напоминание") {
                 RowSwitch(
-                    label   = "Включить напоминание",
-                    checked = state.reminderEnabled,
+                    label           = "Включить напоминание",
+                    checked         = state.reminderEnabled,
                     onCheckedChange = { viewModel.onEvent(SettingsEvent.ToggleReminder(it)) },
                 )
                 if (state.reminderEnabled) {
@@ -200,7 +213,7 @@ fun SettingsScreen(
                             .clickable { showTimePicker = true }
                             .padding(vertical = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
+                        verticalAlignment     = Alignment.CenterVertically,
                     ) {
                         Text(
                             "Время: ${state.reminderHour.toString().padStart(2, '0')}:" +
@@ -248,13 +261,78 @@ fun SettingsScreen(
             // ── 4. Система ────────────────────────────────────────────────────
             SettingsSection(title = "Система") {
                 RowSwitch(
-                    label   = "Экономия трафика (Data Saving)",
-                    checked = state.dataSavingMode,
+                    label           = "Экономия трафика (Data Saving)",
+                    checked         = state.dataSavingMode,
                     onCheckedChange = { viewModel.onEvent(SettingsEvent.ToggleDataSaving(it)) },
                 )
             }
 
-            // ── 5. Диагностика ────────────────────────────────────────────────
+            // ── 5. Резервная копия ────────────────────────────────────────────
+            SettingsSection(title = "Резервная копия") {
+                Text(
+                    text  = "Бекап хранится в Firebase Storage. Привязан к вашему анонимному аккаунту. Максимум 5 копий.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+
+                // Кнопка: создать бекап
+                Button(
+                    onClick  = { viewModel.onEvent(SettingsEvent.CreateCloudBackup) },
+                    enabled  = !state.isBackingUp && !state.isRestoring,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (state.isBackingUp) {
+                        CircularProgressIndicator(
+                            modifier    = Modifier.size(18.dp),
+                            color       = MaterialTheme.colorScheme.onPrimary,
+                            strokeWidth = 2.dp,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Создаю бекап...")
+                    } else {
+                        Icon(
+                            Icons.Default.CloudUpload,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Создать бекап в облако")
+                    }
+                }
+
+                // Кнопка: восстановить
+                OutlinedButton(
+                    onClick  = { viewModel.onEvent(SettingsEvent.ShowRestoreDialog) },
+                    enabled  = !state.isBackingUp && !state.isRestoring,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (state.isRestoring) {
+                        CircularProgressIndicator(
+                            modifier    = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Восстанавливаю...")
+                    } else {
+                        Icon(
+                            Icons.Default.CloudDownload,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Восстановить из облака")
+                    }
+                }
+
+                Text(
+                    text  = "⚠️ После восстановления потребуется перезапуск приложения.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                )
+            }
+
+            // ── 6. Диагностика ────────────────────────────────────────────────
             DiagnosticsSection(
                 logStats  = logStats,
                 isSaving  = isSavingLog,
@@ -278,6 +356,73 @@ fun SettingsScreen(
             Spacer(Modifier.height(16.dp))
         }
     }
+}
+
+// ── Restore dialog ────────────────────────────────────────────────────────────
+
+@Composable
+private fun RestoreDialog(
+    backups: List<BackupMetadata>,
+    isLoading: Boolean,
+    onRestore: (BackupMetadata) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Выбрать бекап для восстановления") },
+        text  = {
+            when {
+                isLoading -> {
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                }
+                backups.isEmpty() -> {
+                    Text(
+                        "Нет доступных бекапов в облаке.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                else -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        backups.forEach { backup ->
+                            val date = SimpleDateFormat(
+                                "dd.MM.yyyy HH:mm",
+                                Locale.getDefault(),
+                            ).format(Date(backup.timestamp))
+                            val sizeKb = backup.sizeBytes / 1024
+
+                            OutlinedButton(
+                                onClick  = { onRestore(backup) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Column(
+                                    modifier            = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = Alignment.Start,
+                                ) {
+                                    Text(
+                                        text  = date,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium,
+                                    )
+                                    Text(
+                                        text  = "${sizeKb} КБ · ${backup.deviceModel} · v${backup.appVersion}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Отмена") }
+        },
+    )
 }
 
 // ── Diagnostics section ───────────────────────────────────────────────────────
@@ -332,7 +477,11 @@ private fun DiagnosticsSection(
             modifier = Modifier.fillMaxWidth(),
         ) {
             if (isSaving) {
-                CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+                CircularProgressIndicator(
+                    modifier    = Modifier.size(18.dp),
+                    color       = MaterialTheme.colorScheme.onPrimary,
+                    strokeWidth = 2.dp,
+                )
                 Spacer(Modifier.width(8.dp))
                 Text("Открываю проводник...")
             } else {
@@ -397,7 +546,6 @@ private fun LabeledSlider(
     }
 }
 
-/** Switch с лейблом в одну строку. */
 @Composable
 private fun RowSwitch(
     label: String,
@@ -414,7 +562,6 @@ private fun RowSwitch(
     }
 }
 
-/** SingleChoiceSegmentedButtonRow с парами (value, label). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SegmentedControl(
