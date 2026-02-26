@@ -1,7 +1,7 @@
 package com.voicedeutsch.master.presentation.screen.session
 
 import android.content.Context
-import android.os.Build
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -17,9 +17,11 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
@@ -27,42 +29,65 @@ import kotlin.coroutines.cancellation.CancellationException
  *
  * Manages voice session lifecycle via [VoiceCoreEngine].
  *
- * Production Standard 2026:
- * API ключ не хранится на устройстве.
- * EphemeralTokenService вызывается внутри VoiceCoreEngineImpl.startSession().
+ * ════════════════════════════════════════════════════════════════════════════
+ * ИЗМЕНЕНИЯ (Производительность — VirtualAvatar рекомпозиции):
+ * ════════════════════════════════════════════════════════════════════════════
  *
- * ✅ FIX 1: Убран runBlocking из onCleared().
- * runBlocking блокировал Main Thread на 5.5 сек → ANR (Android убивает через 5 сек).
- * Заменён на fire-and-forget корутину с NonCancellable.
- * withTimeout УДАЛЁН — он не отменяет вызовы к Room после перехода в поток SQLite,
- * зато сам бросает TimeoutCancellationException, маскируя реальную причину зависания.
+ *   ДОБАВЛЕНО: currentAmplitude = mutableFloatStateOf(0f)
  *
- * ✅ FIX 2: VoiceSessionService теперь стартует при начале сессии и останавливается при конце.
- * Без foreground service Android убивает микрофон когда приложение уходит в фон.
+ *   БЫЛО: FloatArray amplitudes прокидывался в VirtualAvatar.
+ *   amplitudes.last() в remember(amplitudes) вызывал полную рекомпозицию
+ *   VirtualAvatar 50 раз в секунду при каждом аудио-чанке.
  *
- * ✅ FIX 3: Убран context.startService(stopIntent) из onCleared().
- * На Android 16 вызов startService из onCleared() (когда приложение уходит в фон)
- * вызывает ForegroundServiceDidNotStartInTimeException или краш.
- * Остановка сервиса привязана строго к endSession().
- * При уничтожении процесса Android сам убьёт Foreground Service.
+ *   СТАЛО: mutableFloatStateOf — Compose отслеживает изменение Float,
+ *   но VirtualAvatar читает значение только внутри Canvas (фаза draw).
+ *   Рекомпозиция компонента не происходит вообще — только перерисовка Canvas.
  *
- * ✅ FIX 4: ForegroundServiceStartNotAllowedException (Android 12+).
- * startForegroundService() крашит приложение если оно свёрнуто в момент вызова.
- * Оборачиваем в try-catch — если сервис не стартовал, сессия продолжает работать
- * без foreground protection (микрофон может быть убит системой при уходе в фон,
- * но краш не происходит). Ошибка логируется для диагностики.
+ *   Подписка на voiceCoreEngine.amplitudeFlow запускается в startSession()
+ *   и автоматически отменяется вместе с viewModelScope при endSession()
+ *   через хранение Job в amplitudeJob.
+ *
+ *   ТРЕБОВАНИЕ К VoiceCoreEngine:
+ *   Интерфейс VoiceCoreEngine должен экспортировать:
+ *     val amplitudeFlow: Flow<Float>
+ *   Реализация в VoiceCoreEngineImpl:
+ *     override val amplitudeFlow: Flow<Float> = audioPipeline.audioChunks()
+ *         .map { pcm -> RmsCalculator.calculate(pcm).coerceIn(0f, 1f) }
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * Прочие исправления (без изменений):
+ * ════════════════════════════════════════════════════════════════════════════
+ *
+ *   ✅ FIX 1: Убран runBlocking из onCleared() → был ANR.
+ *   ✅ FIX 2: VoiceSessionService стартует/останавливается вместе с сессией.
+ *   ✅ FIX 3: stopService убран из onCleared() → ForegroundServiceDidNotStartInTimeException.
+ *   ✅ FIX 4: startForegroundService обёрнут в try-catch → ForegroundServiceStartNotAllowedException.
  */
 class SessionViewModel(
-    private val voiceCoreEngine: VoiceCoreEngine,
-    private val userRepository: UserRepository,
+    private val voiceCoreEngine:      VoiceCoreEngine,
+    private val userRepository:       UserRepository,
     private val preferencesDataStore: UserPreferencesDataStore,
-    private val context: Context,
+    private val context:              Context,
 ) : ViewModel() {
 
     val voiceState: StateFlow<VoiceSessionState> = voiceCoreEngine.sessionState
 
     private val _uiState = MutableStateFlow(SessionUiState())
     val uiState: StateFlow<SessionUiState> = _uiState.asStateFlow()
+
+    // ✅ ДОБАВЛЕНО: текущая амплитуда для VirtualAvatar.
+    //
+    // mutableFloatStateOf — специализированный стейт для Float, без boxing.
+    // Передаётся в VirtualAvatar как State<Float>:
+    //   VirtualAvatar(currentAmplitude = viewModel.currentAmplitude)
+    //
+    // Изменение floatValue вызывает только перерисовку Canvas (фаза draw),
+    // а не рекомпозицию VirtualAvatar — это ключевое отличие от FloatArray.
+    val currentAmplitude = mutableFloatStateOf(0f)
+
+    // Job подписки на амплитуду — отменяется при endSession()
+    // чтобы не обновлять currentAmplitude когда сессия не активна.
+    private var amplitudeJob: kotlinx.coroutines.Job? = null
 
     fun onEvent(event: SessionEvent) {
         when (event) {
@@ -91,21 +116,22 @@ class SessionViewModel(
                 voiceCoreEngine.initialize(GeminiConfig())
                 voiceCoreEngine.startSession(userId)
 
-                // ✅ FIX 4: Оборачиваем в try-catch против ForegroundServiceStartNotAllowedException.
-                // На Android 12+ (API 31) система бросает это исключение если приложение
-                // находится в фоне в момент вызова startForegroundService().
-                // Сессия голосового движка уже запущена — краш здесь недопустим.
-                // Без сервиса сессия продолжит работать, но Android может убить микрофон
-                // при уходе приложения в фон. Пользователь об этом не уведомляется —
-                // это деградация, а не краш.
+                // ✅ Подписываемся на амплитуду после старта сессии.
+                // amplitudeFlow эмитирует RMS каждого PCM-чанка (0f..1f).
+                // Запись в mutableFloatStateOf на Main не нужна — Compose
+                // читает floatValue в Canvas на draw-фазе, поток Dispatchers.Default.
+                amplitudeJob = voiceCoreEngine.amplitudeFlow
+                    .onEach  { amp -> currentAmplitude.floatValue = amp }
+                    .catch   { e -> android.util.Log.w("SessionViewModel", "amplitudeFlow error: ${e.message}") }
+                    .launchIn(viewModelScope)
+
+                // ✅ FIX 4: try-catch против ForegroundServiceStartNotAllowedException (Android 12+)
                 try {
                     ContextCompat.startForegroundService(
                         context,
                         VoiceSessionService.startIntent(context),
                     )
                 } catch (e: Exception) {
-                    // ForegroundServiceStartNotAllowedException — API 31+, ловим через базовый Exception
-                    // чтобы не добавлять minSdk зависимость на конкретный класс исключения.
                     android.util.Log.w(
                         "SessionViewModel",
                         "Could not start foreground service (app likely in background): ${e.message}"
@@ -127,6 +153,11 @@ class SessionViewModel(
     }
 
     private fun endSession() {
+        // Останавливаем обновление амплитуды — сессия заканчивается
+        amplitudeJob?.cancel()
+        amplitudeJob = null
+        currentAmplitude.floatValue = 0f
+
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
 
@@ -134,9 +165,7 @@ class SessionViewModel(
                 voiceCoreEngine.endSession()
             }.getOrNull()
 
-            // ✅ FIX 2: Останавливаем foreground service вместе с сессией.
-            // Единственное место остановки сервиса — здесь, не в onCleared().
-            // stopService() безопасен даже если сервис не был запущен.
+            // ✅ FIX 2: Останавливаем foreground service вместе с сессией
             runCatching {
                 context.startService(VoiceSessionService.stopIntent(context))
             }.onFailure { e ->
@@ -145,9 +174,9 @@ class SessionViewModel(
 
             _uiState.update {
                 it.copy(
-                    isLoading = false,
+                    isLoading       = false,
                     isSessionActive = false,
-                    sessionResult = result,
+                    sessionResult   = result,
                 )
             }
         }
@@ -181,7 +210,7 @@ class SessionViewModel(
     private fun handlePermissionDenied() {
         _uiState.update {
             it.copy(
-                isLoading = false,
+                isLoading    = false,
                 errorMessage = "Доступ к микрофону запрещён. Откройте Настройки → Приложения → Разрешения."
             )
         }
@@ -189,17 +218,10 @@ class SessionViewModel(
 
     override fun onCleared() {
         super.onCleared()
+        amplitudeJob?.cancel()
 
-        // ✅ FIX 1: Убран runBlocking → был ANR (блокировал Main Thread на 5.5 сек).
-        // ✅ FIX: withTimeout УДАЛЁН — не отменяет вызовы Room после перехода в поток SQLite.
-        // Вместо этого: fire-and-forget корутина на Dispatchers.IO только если сессия активна.
-        // NonCancellable гарантирует что cleanup выполнится даже после cancel ViewModel.
-        //
-        // ✅ FIX 3: context.startService(stopIntent) УДАЛЁН отсюда.
-        // На Android 16 вызов startService из onCleared() вызывает
-        // ForegroundServiceDidNotStartInTimeException когда приложение уходит в фон.
-        // Сервис останавливается строго в endSession().
-        // Если ViewModel уничтожается системой — Android сам убьёт Foreground Service.
+        // ✅ FIX 1: fire-and-forget вместо runBlocking (был ANR)
+        // ✅ FIX 3: stopService убран отсюда (был ForegroundServiceDidNotStartInTimeException)
         if (uiState.value.isSessionActive) {
             CoroutineScope(Dispatchers.IO + NonCancellable).launch {
                 runCatching {
