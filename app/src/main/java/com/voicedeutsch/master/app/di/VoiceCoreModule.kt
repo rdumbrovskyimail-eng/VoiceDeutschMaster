@@ -33,7 +33,7 @@ val voiceCoreModule = module {
     // ─── Context providers ────────────────────────────────────────────────────
     single { UserContextProvider(get()) }
     single { BookContextProvider(get()) }
-    single { ContextBuilder(get(), get(), get(), get()) }
+    single { ContextBuilder(get(), get(), get()) } // 3 аргумента — 4-й удалён
 
     // ─── Functions ────────────────────────────────────────────────────────────
     single { FunctionRegistry }
@@ -61,25 +61,16 @@ val voiceCoreModule = module {
     factory { SessionHistory() }
 
     // ─── Gemini (firebase-ai) ─────────────────────────────────────────────────
-    // GeminiConfig: параметры модели — вынесены отдельно для удобства изменения
-    // без пересоздания GeminiClient (например, через Remote Config в будущем).
-    //
     // factory (не single): новый GeminiConfig/GeminiClient на каждую сессию —
     // гарантирует чистое состояние LiveSession между сессиями.
     // Если GeminiClient держит соединение между сессиями — смените на single.
     factory {
         GeminiConfig(
-            // Актуальная модель на февраль 2026: Native Audio + Thinking + Live API.
-            // Обновите через Firebase Remote Config без перевыпуска APK.
             modelName   = "gemini-2.5-flash-native-audio-preview-12-2025",
-            voiceName   = "Aoede",        // Естественный немецкий акцент
+            voiceName   = "Aoede",
             temperature = 0.8f,
             topP        = 0.95f,
             topK        = 40,
-            // ✅ ИСПРАВЛЕНО: используем enum AudioFormat из GeminiConfig,
-            // а не AudioConfig object (который содержит только константы).
-            // Аудио вход: PCM 16-bit, 16 kHz, mono (совпадает с AudioRecorder)
-            // Аудио выход: PCM 16-bit, 24 kHz, mono (AudioPlayer ресемплирует при необходимости)
             audioInputFormat  = GeminiConfig.AudioFormat.PCM_16KHZ_16BIT_MONO,
             audioOutputFormat = GeminiConfig.AudioFormat.PCM_24KHZ_16BIT_MONO,
         )
@@ -89,10 +80,6 @@ val voiceCoreModule = module {
         GeminiClient(
             config = get<GeminiConfig>(),
             json   = get(),
-            // ✅ EphemeralTokenService УДАЛЁН:
-            // App Check + firebase-ai SDK управляют авторизацией прозрачно.
-            // HttpClient для WebSocket УДАЛЁН:
-            // firebase-ai SDK управляет соединением внутри LiveSession.
         )
     }
 
@@ -103,13 +90,12 @@ val voiceCoreModule = module {
             functionRouter        = get(),
             audioPipeline         = get(),
             strategySelector      = get(),
-            geminiClient          = get(),          // ✅ Прямой GeminiClient (firebase-ai)
+            geminiClient          = get(),
             buildKnowledgeSummary = get(),
             startLearningSession  = get(),
             endLearningSession    = get(),
             networkMonitor        = get(),
-            // httpClient         УДАЛЁН — не нужен для firebase-ai
-            // ephemeralTokenService УДАЛЁН — заменён App Check
+            flushKnowledgeSync    = get(), // добавлено
         )
     }
 }
