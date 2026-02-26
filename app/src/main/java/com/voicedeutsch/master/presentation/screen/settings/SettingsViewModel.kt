@@ -137,13 +137,13 @@ class SettingsViewModel(
     private fun loadSettings() {
         viewModelScope.launch {
             runCatching {
-                val userId = userRepository.getActiveUserId()
+                val userId  = userRepository.getActiveUserId()
                 val profile = userId?.let { userRepository.getUserProfile(it) }
-                val prefs = profile?.preferences
-                val voice = profile?.voiceSettings
+                val prefs   = profile?.preferences
+                val voice   = profile?.voiceSettings
 
                 val duration = preferencesDataStore.getSessionDuration()
-                    ?: prefs?.preferredSessionDurationMinutes
+                    ?: prefs?.preferredSessionDurationMinutes // ИСПРАВЛЕНО: preferredSessionDuration → preferredSessionDurationMinutes
                     ?: 30
                 val goal = preferencesDataStore.getDailyGoal()
                     ?: prefs?.dailyGoalWords
@@ -175,10 +175,15 @@ class SettingsViewModel(
 
     // ── Save ──────────────────────────────────────────────────────────────────
 
+    // ИСПРАВЛЕНО: вместо сборки domain-объектов UserPreferences/VoiceSettings
+    // и вызова updatePreferences()/updateVoiceSettings(userId, object)
+    // используем прямые методы ConfigureUserPreferencesUseCase.
+    // runCatching на каждый опциональный метод — чтобы отсутствие одного
+    // не ломало сохранение остальных.
     private fun saveAll() {
         viewModelScope.launch {
             runCatching {
-                val s = _uiState.value
+                val s      = _uiState.value
                 val userId = userRepository.getActiveUserId() ?: error("Пользователь не найден")
 
                 configureUserPreferences.updatePreferredSessionDuration(userId, s.sessionDurationMinutes)
