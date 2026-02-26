@@ -78,19 +78,25 @@ jobs:
           --no-daemon \
           -Dlint.baselines.continue=true
 
-    - name: Build Release APK
+    - name: Print App Check Debug Token
       run: |
-        ./gradlew assembleRelease \
+        ./gradlew printAppCheckToken \
+          -PappCheckDebugToken="${{ secrets.APP_CHECK_DEBUG_TOKEN }}"
+
+    - name: Build ReleaseDebug APK
+      run: |
+        ./gradlew assembleReleaseDebug \
+          -PappCheckDebugToken="${{ secrets.APP_CHECK_DEBUG_TOKEN }}" \
           --parallel \
           --build-cache \
           --no-daemon \
           --configuration-cache \
           -Dlint.baselines.continue=true
 
-    - name: Upload Release APK
+    - name: Upload ReleaseDebug APK
       uses: actions/upload-artifact@v4
       with:
-        name: app-release-${{ github.run_number }}
-        path: app/build/outputs/apk/release/*.apk
+        name: app-releaseDebug-${{ github.run_number }}
+        path: app/build/outputs/apk/releaseDebug/*.apk
         if-no-files-found: error
         retention-days: 7
