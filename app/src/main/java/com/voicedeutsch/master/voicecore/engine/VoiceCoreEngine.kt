@@ -5,6 +5,7 @@ import com.voicedeutsch.master.domain.model.session.SessionResult
 import com.voicedeutsch.master.voicecore.session.AudioState
 import com.voicedeutsch.master.voicecore.session.ConnectionState
 import com.voicedeutsch.master.voicecore.session.VoiceSessionState
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -25,35 +26,30 @@ interface VoiceCoreEngine {
 
     // ── State observation ────────────────────────────────────────────────────
 
-    val sessionState: StateFlow<VoiceSessionState>
+    val sessionState:    StateFlow<VoiceSessionState>
     val connectionState: StateFlow<ConnectionState>
-    val audioState: StateFlow<AudioState>
+    val audioState:      StateFlow<AudioState>
+
+    /**
+     * RMS-амплитуда текущего аудио-чанка с микрофона, нормализованная в 0f..1f.
+     *
+     * Эмитирует значение на каждый PCM-чанк (~50 раз/сек).
+     * Используется в SessionViewModel для обновления [currentAmplitude],
+     * которое передаётся в VirtualAvatar как State<Float> и читается
+     * только в фазе draw Canvas — без рекомпозиции компонента.
+     *
+     * Эмитирует 0f когда сессия не активна или микрофон не пишет.
+     */
+    val amplitudeFlow: Flow<Float>
 
     // ── Lifecycle ────────────────────────────────────────────────────────────
 
-    /**
-     * Initialises the engine and underlying Gemini client with [config].
-     * Must be called before [startSession]. Idempotent if already initialised
-     * with the same config; re-initialises on config change.
-     */
     suspend fun initialize(config: GeminiConfig)
 
-    /**
-     * Builds context, connects to Gemini, and starts the session for [userId].
-     * @return the initial [VoiceSessionState] after connection is established.
-     */
     suspend fun startSession(userId: String): VoiceSessionState
 
-    /**
-     * Gracefully ends the active session, saves statistics, and disconnects.
-     * @return [SessionResult] if a session was active, `null` otherwise.
-     */
     suspend fun endSession(): SessionResult?
 
-    /**
-     * Releases all resources (coroutine scope, audio hardware, network).
-     * After calling this the engine cannot be used without [initialize].
-     */
     suspend fun destroy()
 
     // ── Audio control ────────────────────────────────────────────────────────
@@ -63,16 +59,11 @@ interface VoiceCoreEngine {
     fun pausePlayback()
     fun resumePlayback()
 
-    // ── Manual control (rarely used from UI) ─────────────────────────────────
+    // ── Manual control ────────────────────────────────────────────────────────
 
     suspend fun sendTextMessage(text: String)
     suspend fun requestStrategyChange(strategy: LearningStrategy)
     suspend fun requestBookNavigation(chapter: Int, lesson: Int)
 
-    /**
-     * Delivers the result of a function call back to Gemini so it can
-     * continue the generation stream. Called by [FunctionRouter] internally,
-     * but exposed here to allow manual result injection in tests.
-     */
     suspend fun submitFunctionResult(callId: String, name: String, resultJson: String)
 }
