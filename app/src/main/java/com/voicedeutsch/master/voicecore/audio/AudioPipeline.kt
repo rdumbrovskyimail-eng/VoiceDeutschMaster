@@ -3,7 +3,6 @@ package com.voicedeutsch.master.voicecore.audio
 import android.content.Context
 import com.voicedeutsch.master.util.AudioUtils
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -22,19 +21,13 @@ class AudioPipeline(private val context: Context) {
     val isRecording: Boolean get() = _isRecording
     val isPlaying: Boolean get() = _isPlaying
 
-    // Канал для отправки микрофона (без буферизации старья, DROP_OLDEST)
-    private val outgoingChannel = Channel<ByteArray>(
-        capacity = 10,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
+    // Микрофон
+    private val outgoingChannel = Channel<ByteArray>(capacity = 10)
     val incomingAudioFlow: Flow<ByteArray> = outgoingChannel.receiveAsFlow()
     fun audioChunks(): Flow<ByteArray> = incomingAudioFlow
 
-    // Входящая очередь от Gemini (24kHz)
-    private var playbackQueue = Channel<ByteArray>(
-        capacity = 100,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
+    // 🔥 FIX: Заменили DROP_OLDEST на UNLIMITED для плавности речи ИИ
+    private var playbackQueue = Channel<ByteArray>(capacity = Channel.UNLIMITED)
 
     private var scopeJob = SupervisorJob()
     private var pipelineScope = CoroutineScope(Dispatchers.IO + scopeJob)
@@ -69,7 +62,6 @@ class AudioPipeline(private val context: Context) {
 
                 recordingJob = pipelineScope.launch {
                     recorder.audioFrameFlow.collect { pcmShorts ->
-                        // НИКАКОГО VAD! Просто шлем сырой PCM 16kHz
                         val bytes = AudioUtils.shortArrayToByteArray(pcmShorts)
                         outgoingChannel.trySend(bytes)
                     }
@@ -99,22 +91,34 @@ class AudioPipeline(private val context: Context) {
     fun pausePlayback() = player.pause()
     fun resumePlayback() = player.resume()
 
-    // МОМЕНТАЛЬНЫЙ СБРОС (Interruption)
+    // 🔥 FIX: Жесткая остановка без Race Conditions
     fun flushPlayback() {
-        android.util.Log.d("AudioPipeline", "Interruption: Flushing audio queue")
-        // Очищаем корутинный канал
-        while (playbackQueue.tryReceive().isSuccess) { }
-        // Сбрасываем аппаратный буфер
-        player.flush()
+        pipelineScope.launch {
+            stateMutex.withLock {
+                android.util.Log.d("AudioPipeline", "Interruption: Flushing audio queue")
+                // Убиваем текущую задачу воспроизведения
+                playbackJob?.cancelAndJoin()
+                playbackJob = null
+                _isPlaying = false
+
+                // Полностью пересоздаем канал
+                playbackQueue.cancel()
+                playbackQueue = Channel(capacity = Channel.UNLIMITED)
+
+                // Сбрасываем железо
+                player.flush()
+            }
+        }
     }
 
     fun stopPlayback() {
         pipelineScope.launch {
             stateMutex.withLock {
                 if (!_isPlaying) return@withLock
-                playbackJob?.cancel()
+                playbackJob?.cancelAndJoin()
                 playbackJob = null
-                while (playbackQueue.tryReceive().isSuccess) { }
+                playbackQueue.cancel()
+                playbackQueue = Channel(capacity = Channel.UNLIMITED)
                 player.stop()
                 _isPlaying = false
             }
@@ -122,18 +126,8 @@ class AudioPipeline(private val context: Context) {
     }
 
     fun stopAll() {
-        scopeJob.cancel()
-        recorder.release()
-        player.release()
-        while (playbackQueue.tryReceive().isSuccess) { }
-        _isRecording = false
-        _isPlaying = false
-        recordingJob = null
-        playbackJob = null
-        ensureScopeAlive()
-        recorder = AudioRecorder()
-        player = AudioPlayer()
-        playbackQueue = Channel(capacity = 100, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+        runBlocking { flushPlayback() }
+        stopRecording()
     }
 
     fun getCurrentAmplitude(): Float = recorder.currentAmplitude
