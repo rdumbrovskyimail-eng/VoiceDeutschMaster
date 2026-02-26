@@ -5,11 +5,9 @@ import android.content.Context
 import android.util.Log
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
-import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.analytics.analytics
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
-import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.firebase.crashlytics.crashlytics
 import com.voicedeutsch.master.BuildConfig
 import com.voicedeutsch.master.app.di.appModules
@@ -36,8 +34,6 @@ import org.koin.core.logger.Level
  */
 class VoiceDeutschApp : Application() {
 
-    // ✅ attachBaseContext вызывается ДО onCreate — самая ранняя точка входа.
-    // CrashLogger здесь перехватит даже крэш в Koin init или Firebase init.
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
         try {
@@ -50,28 +46,19 @@ class VoiceDeutschApp : Application() {
     }
 
     override fun onCreate() {
-        // AppLogger стартует ДО super() — чтобы не пропустить системные события onCreate.
         initAppLogger()
-
         super.onCreate()
 
-        // Koin — ДО Firebase, чтобы DI-граф был готов раньше Firebase-колбэков.
         startKoin {
             androidLogger(if (BuildConfig.DEBUG) Level.DEBUG else Level.NONE)
             androidContext(this@VoiceDeutschApp)
             modules(appModules)
         }
 
-        // Firebase: строгий порядок — App → AppCheck → Crashlytics → Analytics.
         initFirebase()
-
         WorkManagerInitializer.initialize(this)
-
-        // Копируем последний краш в Downloads (если есть) — после полной инициализации.
         CrashLogger.getInstance()?.copyLatestCrashToDownloads(this)
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
 
     private fun initAppLogger() {
         try {
@@ -85,15 +72,10 @@ class VoiceDeutschApp : Application() {
     /**
      * Инициализация Firebase в строгом порядке:
      *
-     * 1. [FirebaseApp.initializeApp] — обязателен первым. Читает google-services.json,
-     *    создаёт singleton FirebaseApp. Без него все Firebase вызовы бросят IllegalStateException.
-     *
+     * 1. [FirebaseApp.initializeApp] — обязателен первым.
      * 2. [FirebaseAppCheck] — СРАЗУ после initializeApp, ДО любых обращений к Firestore,
-     *    Storage, firebase-ai и т.д. App Check токен автоматически прикрепляется ко всем
-     *    Firebase-запросам — но только если провайдер установлен до первого запроса.
-     *
+     *    Storage, firebase-ai и т.д.
      * 3. [FirebaseCrashlytics] — настройка кастомных ключей до первого крэша.
-     *
      * 4. [FirebaseAnalytics] — в debug отключаем сбор.
      */
     private fun initFirebase() {
@@ -111,18 +93,8 @@ class VoiceDeutschApp : Application() {
     }
 
     /**
-     * App Check без Reflection.
-     *
-     * ✅ FIX: Старый код использовал Class.forName() для DebugAppCheckProviderFactory.
-     * R8/ProGuard в релизных сборках вырезает debug-классы → Reflection падает
-     * с ClassNotFoundException и спамит логи даже в продакшене.
-     *
-     * РЕШЕНИЕ: прямой условный импорт через BuildConfig.DEBUG.
-     * R8 видит условие на этапе компиляции и выбрасывает недостижимую ветку целиком.
-     *
-     * Зависимости в build.gradle.kts:
-     *   implementation(libs.firebase.appcheck.playintegrity)   // всегда
-     *   debugImplementation(libs.firebase.appcheck.debug)      // только debug APK
+     * ✅ FIX: Используем FirebaseAppCheck.getInstance() вместо KTX-свойства Firebase.appCheck,
+     * которое могло не резолвиться в некоторых конфигурациях.
      *
      * Debug-сборка:  DebugAppCheckProviderFactory → UUID-токен в Logcat.
      *   → Добавьте токен в Firebase Console → App Check → Debug tokens.
@@ -131,7 +103,7 @@ class VoiceDeutschApp : Application() {
      */
     private fun initAppCheck() {
         try {
-            Firebase.appCheck.installAppCheckProviderFactory(
+            FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
                 if (BuildConfig.DEBUG) {
                     com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory.getInstance()
                 } else {
@@ -147,7 +119,6 @@ class VoiceDeutschApp : Application() {
     private fun initCrashlytics() {
         try {
             Firebase.crashlytics.apply {
-                // В debug-сборках отключаем отправку крэшей — не засоряем дашборд.
                 setCrashlyticsCollectionEnabled(!BuildConfig.DEBUG)
                 setCustomKey("build_type", if (BuildConfig.DEBUG) "debug" else "release")
                 setCustomKey("app_version", BuildConfig.VERSION_NAME)
@@ -161,8 +132,6 @@ class VoiceDeutschApp : Application() {
     private fun initAnalytics() {
         try {
             Firebase.analytics.apply {
-                // В debug-сборках отключаем сбор — не засоряем production данные.
-                // Для отладки событий: adb shell setprop debug.firebase.analytics.app <packageName>
                 setAnalyticsCollectionEnabled(!BuildConfig.DEBUG)
             }
             Log.d(TAG, "✅ Analytics initialized [collection=${!BuildConfig.DEBUG}]")
@@ -170,8 +139,6 @@ class VoiceDeutschApp : Application() {
             Log.e(TAG, "❌ Analytics init failed: ${e.message}", e)
         }
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
 
     private companion object {
         const val TAG = "VoiceDeutschApp"
