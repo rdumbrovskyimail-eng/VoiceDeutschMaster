@@ -58,6 +58,15 @@ jobs:
         echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> signing.properties
         echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> signing.properties
 
+    - name: Print SHA-256 fingerprint
+      run: |
+        keytool -list -v \
+          -keystore keystore.jks \
+          -alias ${{ secrets.KEY_ALIAS }} \
+          -storepass ${{ secrets.KEY_PASSWORD }} \
+          -keypass ${{ secrets.KEY_PASSWORD }} \
+          2>/dev/null | grep "SHA256:"
+
     - name: Create local.properties
       run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
