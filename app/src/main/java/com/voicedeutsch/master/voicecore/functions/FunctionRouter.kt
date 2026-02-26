@@ -22,7 +22,8 @@ import kotlinx.serialization.json.*
  *
  * Function groups:
  *   1. Knowledge    : save_word_knowledge, save_rule_knowledge, record_mistake
- *   2. Book         : get_current_lesson, advance_to_next_lesson, mark_lesson_complete
+ *   2. Book         : get_current_lesson, advance_to_next_lesson, mark_lesson_complete,
+ *                     read_lesson_paragraph
  *   3. Session      : set_current_strategy, log_session_event,
  *                     get_words_for_repetition, get_weak_points
  *   4. User         : update_user_level, get_user_statistics
@@ -40,20 +41,20 @@ import kotlinx.serialization.json.*
  * ИЗМЕНЕНИЯ (Баг #2 — "Слепой переход по книге"):
  * ════════════════════════════════════════════════════════════════════════════
  *
- *   FIX: handleAdvanceToNextLesson() теперь возвращает полный текст нового урока
- *   прямо в toolResponse.
+ *   FIX: handleAdvanceToNextLesson() теперь возвращает краткий превью нового
+ *   урока (≤ 3000 символов), а не полный текст.
  *
- *   БЫЛО: {"status":"advanced","next_chapter":1,"next_lesson":2}
- *   ИИ не знал содержания нового урока → продолжал говорить о старом.
+ *   БЫЛО: new_lesson_text — весь текст урока (может быть 20 000+ символов),
+ *   что легко превышает лимит toolResponse (~10k токенов).
  *
- *   СТАЛО: ответ дополнен полями new_lesson_title, new_lesson_text, new_vocabulary.
- *   ИИ получает текст нового урока мгновенно через WebSocket и начинает его
- *   изучение без разрыва сессии и пересборки SystemInstruction.
+ *   СТАЛО:
+ *   • advance_to_next_lesson  → new_lesson_preview (≤ 3000 символов),
+ *                               total_paragraphs, vocabulary_preview (≤ 10 слов),
+ *                               hint с подсказкой как читать дальше.
+ *   • read_lesson_paragraph   → один абзац по индексу (новая функция).
  *
- *   Почему это решает проблему:
- *   SystemInstruction обновляется только при новом connect(). Внутри активной
- *   WebSocket-сессии единственный способ передать контекст ИИ — toolResponse.
- *   Поэтому мы кладём весь нужный контент прямо в ответ функции.
+ *   ИИ читает урок «постранично» через read_lesson_paragraph(index),
+ *   не упираясь в лимит размера ответа инструмента.
  */
 class FunctionRouter(
     private val updateWordKnowledge:   UpdateWordKnowledgeUseCase,
@@ -68,6 +69,17 @@ class FunctionRouter(
     private val knowledgeRepository:   KnowledgeRepository,
     private val json:                  Json,
 ) {
+
+    companion object {
+        /** Символов в превью текста урока, передаваемом при advance_to_next_lesson. */
+        private const val LESSON_TEXT_PREVIEW_CHARS = 3_000
+
+        /** Слов словаря в превью (остальное ИИ может запросить через get_current_lesson). */
+        private const val VOCABULARY_PREVIEW_LIMIT  = 10
+
+        /** Разделитель абзацев в тексте урока. */
+        private val PARAGRAPH_DELIMITER = Regex("""\n{2,}""")
+    }
 
     // ── Result type ───────────────────────────────────────────────────────────
 
@@ -96,6 +108,7 @@ class FunctionRouter(
                 "get_current_lesson"        -> handleGetCurrentLesson(userId)
                 "advance_to_next_lesson"    -> handleAdvanceToNextLesson(args, userId)
                 "mark_lesson_complete"      -> handleMarkLessonComplete(args, userId)
+                "read_lesson_paragraph"     -> handleReadLessonParagraph(args, userId)
                 // Session
                 "get_words_for_repetition"  -> handleGetWordsForRepetition(args, userId)
                 "get_weak_points"           -> handleGetWeakPoints(userId)
@@ -227,18 +240,17 @@ class FunctionRouter(
     }
 
     /**
-     * ✅ FIX (Баг #2 — "Слепой переход по книге"):
+     * Переходит к следующему уроку и возвращает его **краткий** превью.
      *
-     * После advance_to_next_lesson сразу запрашиваем данные нового урока
-     * через getCurrentLesson() и кладём их в toolResponse.
+     * Полный текст урока может занимать десятки тысяч символов и не помещается
+     * в toolResponse (~10k токенов). Поэтому здесь передаются только:
+     *   • new_lesson_preview — первые [LESSON_TEXT_PREVIEW_CHARS] символов текста;
+     *   • vocabulary_preview  — первые [VOCABULARY_PREVIEW_LIMIT] слов словаря;
+     *   • total_paragraphs    — чтобы ИИ знал, сколько абзацев ждёт впереди;
+     *   • hint                — инструкция: вызывать read_lesson_paragraph(index).
      *
-     * ИИ получает new_lesson_title + new_lesson_text + new_vocabulary прямо
-     * в WebSocket-ответе и может немедленно начать работу с новым материалом
-     * без разрыва сессии.
-     *
-     * Поля new_lesson_text и new_vocabulary должны быть описаны в системном промпте:
-     * "Если в ответе advance_to_next_lesson присутствует new_lesson_text —
-     *  прочитай его и начни работу по новому уроку."
+     * Это позволяет ИИ немедленно начать работу с новым уроком, а затем
+     * дочитывать оставшийся текст по одному абзацу через отдельные вызовы.
      */
     private suspend fun handleAdvanceToNextLesson(
         args:   JsonObject,
@@ -247,11 +259,17 @@ class FunctionRouter(
         val score  = args.floatCoerced("score") ?: 1.0f
         val result = advanceBookProgress(userId, score)
 
-        // ✅ FIX: Сразу получаем контент нового урока из БД
         val newLessonData = getCurrentLesson(userId)
-        val newText = newLessonData?.content?.mainContent ?: "Текст урока недоступен."
-        val newVocabulary = newLessonData?.content?.vocabulary
-            ?.take(20)  // ограничиваем до 20 слов чтобы не раздуть токены
+        val content       = newLessonData?.content
+
+        val fullText        = content?.mainContent ?: ""
+        val previewText     = fullText.take(LESSON_TEXT_PREVIEW_CHARS)
+        val totalParagraphs = fullText
+            .split(PARAGRAPH_DELIMITER)
+            .count { it.isNotBlank() }
+
+        val vocabularyPreview = content?.vocabulary
+            ?.take(VOCABULARY_PREVIEW_LIMIT)
             ?.map { "${it.german} — ${it.russian}" }
             ?: emptyList()
 
@@ -264,13 +282,63 @@ class FunctionRouter(
                 put("next_lesson",         result.newLesson)
                 put("is_chapter_complete", result.isChapterComplete)
                 put("is_book_complete",    result.isBookComplete)
-                // ✅ Новые поля — контекст нового урока для ИИ
+                // Мета нового урока
                 put("new_lesson_title",    newLessonData?.lesson?.titleDe ?: "")
                 put("new_lesson_title_ru", newLessonData?.lesson?.titleRu ?: "")
-                put("new_lesson_text",     newText)
-                put("new_vocabulary",      buildJsonArray {
-                    newVocabulary.forEach { add(it) }
-                })
+                // Краткий превью текста (≤ LESSON_TEXT_PREVIEW_CHARS символов)
+                put("new_lesson_preview",  previewText)
+                put("text_truncated",      fullText.length > LESSON_TEXT_PREVIEW_CHARS)
+                put("total_paragraphs",    totalParagraphs)
+                // Первые VOCABULARY_PREVIEW_LIMIT слов словаря
+                put("vocabulary_preview",  buildJsonArray { vocabularyPreview.forEach { add(it) } })
+                put("total_vocabulary",    content?.vocabulary?.size ?: 0)
+                // Подсказка ИИ: как читать оставшийся текст
+                put("hint", "Use read_lesson_paragraph(index) to read paragraphs 0..${maxOf(0, totalParagraphs - 1)}")
+            }.toString(),
+        )
+    }
+
+    /**
+     * Возвращает один абзац урока по его индексу (0-based).
+     *
+     * ИИ вызывает эту функцию последовательно после advance_to_next_lesson,
+     * чтобы прочитать весь текст урока без превышения лимита toolResponse.
+     *
+     * Поле [has_next] позволяет ИИ понять, нужно ли продолжать чтение.
+     *
+     * Пример системного промпта:
+     * "Если total_paragraphs > 0, читай абзацы через read_lesson_paragraph(0),
+     *  read_lesson_paragraph(1), … пока has_next = false."
+     */
+    private suspend fun handleReadLessonParagraph(
+        args:   JsonObject,
+        userId: String,
+    ): FunctionCallResult {
+        val index      = args.intCoerced("index", 0)
+        val lessonData = getCurrentLesson(userId)
+        val paragraphs = (lessonData?.content?.mainContent ?: "")
+            .split(PARAGRAPH_DELIMITER)
+            .filter { it.isNotBlank() }
+
+        if (paragraphs.isEmpty()) {
+            return error("read_lesson_paragraph", "lesson has no content")
+        }
+        if (index < 0 || index >= paragraphs.size) {
+            return FunctionCallResult(
+                functionName = "read_lesson_paragraph",
+                success      = false,
+                resultJson   = """{"error":"index $index out of range 0..${paragraphs.size - 1}"}""",
+            )
+        }
+
+        return FunctionCallResult(
+            functionName = "read_lesson_paragraph",
+            success      = true,
+            resultJson   = buildJsonObject {
+                put("index",     index)
+                put("total",     paragraphs.size)
+                put("has_next",  index < paragraphs.size - 1)
+                put("paragraph", paragraphs[index])
             }.toString(),
         )
     }
@@ -448,8 +516,6 @@ class FunctionRouter(
             }.toString(),
         )
     }
-
-    // УДАЛЕНО: getDeclarations(): List<String>
 
     // ── UI handlers ───────────────────────────────────────────────────────────
 
