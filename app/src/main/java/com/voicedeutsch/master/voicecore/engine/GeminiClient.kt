@@ -166,7 +166,7 @@ class GeminiClient(
                     responseModality = ResponseModality.AUDIO
                     speechConfig = SpeechConfig(voice = Voice(config.voiceName))
                 },
-                //tools = tools,
+                tools = tools,  // ✅ раскомментировано
                 systemInstruction = content(role = "user") { text(context.fullContext) },
             )
 
@@ -383,7 +383,15 @@ class GeminiClient(
             mapPropertyToSchema(prop)
         }
 
-        val optionalProperties = properties.keys.filter { it !in params.required }
+        // ✅ ГЛОБАЛЬНЫЙ ФИКС: Если в функции есть параметры, но мы забыли указать required,
+        // SDK сгенерирует "required": [], что крашнет Live API.
+        // Защита: если required пуст, мы принудительно делаем ВСЕ параметры этой функции обязательными
+        // (передаем пустой список опциональных), и сервер спокойно принимает схему.
+        val optionalProperties = if (params.required.isEmpty()) {
+            emptyList()
+        } else {
+            properties.keys.filter { it !in params.required }
+        }
 
         Log.d(TAG, "  ⚙ ${decl.name} — params: ${properties.keys}, " +
                 "required: ${params.required}, optional: $optionalProperties")
