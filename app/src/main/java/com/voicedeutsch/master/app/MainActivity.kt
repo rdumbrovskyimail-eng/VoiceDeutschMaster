@@ -38,7 +38,6 @@ class MainActivity : ComponentActivity() {
                 else    -> isSystemInDarkTheme()
             }
 
-            // Исправлено: VoiceDeutschMasterTheme в Theme.kt не принимает darkTheme
             VoiceDeutschMasterTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     AppNavigation()
