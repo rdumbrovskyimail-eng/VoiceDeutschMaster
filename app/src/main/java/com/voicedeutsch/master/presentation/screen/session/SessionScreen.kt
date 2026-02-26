@@ -130,8 +130,9 @@ fun SessionScreen(
                 Button(
                     onClick = {
                         showExitDialog = false
+                        // 🔥 FIX: НЕ вызываем onSessionEnd() (навигацию) здесь!
+                        // Мы просто посылаем ивент. Карточка итогов покажется сама.
                         viewModel.onEvent(SessionEvent.EndSession)
-                        onSessionEnd()
                     },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error
