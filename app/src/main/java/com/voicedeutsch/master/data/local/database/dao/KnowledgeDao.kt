@@ -167,4 +167,32 @@ interface KnowledgeDao {
 
     @Query("SELECT COUNT(*) FROM pronunciation_records WHERE user_id = :userId AND score >= 0.9")
     suspend fun getPerfectPronunciationCount(userId: String): Int
+
+    // ==========================================
+    // BRIEF PROJECTIONS (для Snapshot — без JSON полей)
+    // ==========================================
+
+    /**
+     * Урезанная проекция WordKnowledge без mistakesJson и других тяжёлых полей.
+     * Используется в buildKnowledgeSnapshot() чтобы не грузить в память 5000+ полных объектов.
+     * CursorWindow Android ограничен ~2MB — без этой оптимизации OOM гарантирован.
+     */
+    data class WordKnowledgeBrief(
+        val wordId: String,
+        val knowledgeLevel: Int,
+        val timesSeen: Int,
+        val timesCorrect: Int,
+        val timesIncorrect: Int,
+        val lastSeen: Long?,
+        val nextReview: Long?,
+    )
+
+    @Query(
+        """
+        SELECT word_id, knowledge_level, times_seen, times_correct, times_incorrect, last_seen, next_review
+        FROM word_knowledge
+        WHERE user_id = :userId
+        """
+    )
+    suspend fun getBriefWordKnowledge(userId: String): List<WordKnowledgeBrief>
 }
