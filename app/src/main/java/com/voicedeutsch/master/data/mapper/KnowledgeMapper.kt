@@ -14,41 +14,36 @@ import kotlinx.serialization.json.Json
 
 object KnowledgeMapper {
 
+    // FIX: безопасная десериализация списка.
+    // Если строка пустая ("") или невалидный JSON — возвращаем emptyList()
+    // вместо SerializationException.
+    private inline fun <reified T> Json.safeDecodeList(raw: String): List<T> =
+        if (raw.isBlank()) emptyList()
+        else runCatching { decodeFromString<List<T>>(raw) }.getOrDefault(emptyList())
+
     // ── Entity → Domain ───────────────────────────────────────────────────────
 
-    fun WordKnowledgeEntity.toDomain(json: Json): WordKnowledge {
-        val contextsList = try {
-            json.decodeFromString<List<String>>(contextsJson)
-        } catch (e: Exception) {
-            emptyList()
-        }
-        val mistakesList = try {
-            json.decodeFromString<List<MistakeRecord>>(mistakesJson)
-        } catch (e: Exception) {
-            emptyList()
-        }
-        return WordKnowledge(
-            id                    = id,
-            userId                = userId,
-            wordId                = wordId,
-            knowledgeLevel        = knowledgeLevel,
-            timesSeen             = timesSeen,
-            timesCorrect          = timesCorrect,
-            timesIncorrect        = timesIncorrect,
-            lastSeen              = lastSeen,
-            lastCorrect           = lastCorrect,
-            lastIncorrect         = lastIncorrect,
-            nextReview            = nextReview,
-            srsIntervalDays       = srsIntervalDays,
-            srsEaseFactor         = srsEaseFactor,
-            pronunciationScore    = pronunciationScore,
-            pronunciationAttempts = pronunciationAttempts,
-            contexts              = contextsList,
-            mistakes              = mistakesList,
-            createdAt             = createdAt,
-            updatedAt             = updatedAt,
-        )
-    }
+    fun WordKnowledgeEntity.toDomain(json: Json): WordKnowledge = WordKnowledge(
+        id                    = id,
+        userId                = userId,
+        wordId                = wordId,
+        knowledgeLevel        = knowledgeLevel,
+        timesSeen             = timesSeen,
+        timesCorrect          = timesCorrect,
+        timesIncorrect        = timesIncorrect,
+        lastSeen              = lastSeen,
+        lastCorrect           = lastCorrect,
+        lastIncorrect         = lastIncorrect,
+        nextReview            = nextReview,
+        srsIntervalDays       = srsIntervalDays,
+        srsEaseFactor         = srsEaseFactor,
+        pronunciationScore    = pronunciationScore,
+        pronunciationAttempts = pronunciationAttempts,
+        contexts              = json.safeDecodeList<String>(contextsJson),
+        mistakes              = json.safeDecodeList<MistakeRecord>(mistakesJson),
+        createdAt             = createdAt,
+        updatedAt             = updatedAt,
+    )
 
     fun WordKnowledge.toEntity(json: Json): WordKnowledgeEntity = WordKnowledgeEntity(
         id                    = id,
@@ -72,29 +67,22 @@ object KnowledgeMapper {
         updatedAt             = updatedAt,
     )
 
-    fun RuleKnowledgeEntity.toDomain(json: Json): RuleKnowledge {
-        val commonMistakesList = try {
-            json.decodeFromString<List<String>>(commonMistakesJson)
-        } catch (e: Exception) {
-            emptyList()
-        }
-        return RuleKnowledge(
-            id              = id,
-            userId          = userId,
-            ruleId          = ruleId,
-            knowledgeLevel  = knowledgeLevel,
-            timesPracticed  = timesPracticed,
-            timesCorrect    = timesCorrect,
-            timesIncorrect  = timesIncorrect,
-            lastPracticed   = lastPracticed,
-            nextReview      = nextReview,
-            srsIntervalDays = srsIntervalDays,
-            srsEaseFactor   = srsEaseFactor,
-            commonMistakes  = commonMistakesList,
-            createdAt       = createdAt,
-            updatedAt       = updatedAt,
-        )
-    }
+    fun RuleKnowledgeEntity.toDomain(json: Json): RuleKnowledge = RuleKnowledge(
+        id              = id,
+        userId          = userId,
+        ruleId          = ruleId,
+        knowledgeLevel  = knowledgeLevel,
+        timesPracticed  = timesPracticed,
+        timesCorrect    = timesCorrect,
+        timesIncorrect  = timesIncorrect,
+        lastPracticed   = lastPracticed,
+        nextReview      = nextReview,
+        srsIntervalDays = srsIntervalDays,
+        srsEaseFactor   = srsEaseFactor,
+        commonMistakes  = json.safeDecodeList<String>(commonMistakesJson),
+        createdAt       = createdAt,
+        updatedAt       = updatedAt,
+    )
 
     fun RuleKnowledge.toEntity(json: Json): RuleKnowledgeEntity = RuleKnowledgeEntity(
         id                 = id,
@@ -114,19 +102,19 @@ object KnowledgeMapper {
     )
 
     fun PhraseKnowledgeEntity.toDomain(): PhraseKnowledge = PhraseKnowledge(
-        id              = id,
-        userId          = userId,
-        phraseId        = phraseId,
-        knowledgeLevel  = knowledgeLevel,
-        timesPracticed  = timesPracticed,
-        timesCorrect    = timesCorrect,
-        lastPracticed   = lastPracticed,
-        nextReview      = nextReview,
-        srsIntervalDays = srsIntervalDays,
-        srsEaseFactor   = srsEaseFactor,
+        id                 = id,
+        userId             = userId,
+        phraseId           = phraseId,
+        knowledgeLevel     = knowledgeLevel,
+        timesPracticed     = timesPracticed,
+        timesCorrect       = timesCorrect,
+        lastPracticed      = lastPracticed,
+        nextReview         = nextReview,
+        srsIntervalDays    = srsIntervalDays,
+        srsEaseFactor      = srsEaseFactor,
         pronunciationScore = pronunciationScore,
-        createdAt       = createdAt,
-        updatedAt       = updatedAt,
+        createdAt          = createdAt,
+        updatedAt          = updatedAt,
     )
 
     fun PhraseKnowledge.toEntity(): PhraseKnowledgeEntity = PhraseKnowledgeEntity(
@@ -150,9 +138,7 @@ object KnowledgeMapper {
         userId        = userId,
         word          = word,
         score         = score,
-        problemSounds = runCatching {
-            json.decodeFromString<List<String>>(problemSoundsJson)
-        }.getOrDefault(emptyList()),
+        problemSounds = json.safeDecodeList<String>(problemSoundsJson),
         attemptNumber = attemptNumber,
         sessionId     = sessionId?.ifEmpty { null },
         timestamp     = timestamp,
