@@ -3,7 +3,6 @@ package com.voicedeutsch.master.app.worker
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.voicedeutsch.master.domain.repository.KnowledgeRepository
 import com.voicedeutsch.master.domain.repository.UserRepository
 import com.voicedeutsch.master.domain.usecase.achievement.CheckAchievementsUseCase
 import org.koin.core.component.KoinComponent
@@ -21,20 +20,20 @@ class SrsRecalculationWorker(
 ) : CoroutineWorker(appContext, params), KoinComponent {
 
     private val userRepository: UserRepository by inject()
-    private val knowledgeRepository: KnowledgeRepository by inject()
     private val checkAchievements: CheckAchievementsUseCase by inject()
 
     override suspend fun doWork(): Result {
         return runCatching {
             val users = userRepository.getAllUserIds()
             for (userId in users) {
-                // Recalculate overdue SRS items
-                knowledgeRepository.recalculateOverdueItems(userId)
+                // FIX: recalculateOverdueItems() удалён — метод был no-op.
+                // Пересчёт не нужен: getWordsForReview() уже фильтрует
+                // по next_review <= now на уровне SQL-запроса.
 
-                // Update streak (break if no session yesterday)
+                // Сброс streak если пользователь пропустил день
                 userRepository.updateStreakIfNeeded(userId)
 
-                // Check achievements
+                // Проверка ачивок
                 checkAchievements(userId)
             }
             Result.success()
