@@ -101,6 +101,7 @@ class CrashLogger private constructor(
         }
     }
 
+    @Suppress("DEPRECATION") // thread.id deprecated в API 33, используем для совместимости
     private fun buildCrashReport(throwable: Throwable, thread: Thread, timestamp: String): String =
         buildString {
             append("=".repeat(70)).append("\n")
@@ -197,8 +198,8 @@ class CrashLogger private constructor(
     fun getAllLogs(): List<LogFile> {
         return logDirectory.listFiles()?.mapNotNull { file ->
             when {
-                file.name.startsWith(CRASH_PREFIX)            -> LogFile(file, LogType.CRASH,   file.lastModified())
-                file.name.startsWith(LOGCAT_PREFIX)           -> LogFile(file, LogType.LOGCAT,  file.lastModified())
+                file.name.startsWith(CRASH_PREFIX)             -> LogFile(file, LogType.CRASH,   file.lastModified())
+                file.name.startsWith(LOGCAT_PREFIX)            -> LogFile(file, LogType.LOGCAT,  file.lastModified())
                 file.name.startsWith(AppLogger.SESSION_PREFIX) -> LogFile(file, LogType.SESSION, file.lastModified())
                 else -> null
             }
@@ -217,11 +218,11 @@ class CrashLogger private constructor(
     fun getStats(): LogStats {
         val logs = getAllLogs()
         return LogStats(
-            totalCrashes  = logs.count { it.type == LogType.CRASH },
-            totalLogCats  = logs.count { it.type == LogType.LOGCAT },
-            totalSessions = logs.count { it.type == LogType.SESSION },
+            totalCrashes   = logs.count { it.type == LogType.CRASH },
+            totalLogCats   = logs.count { it.type == LogType.LOGCAT },
+            totalSessions  = logs.count { it.type == LogType.SESSION },
             totalSizeBytes = logs.sumOf { it.file.length() },
-            location = logDirectory.absolutePath,
+            location       = logDirectory.absolutePath,
         )
     }
 
@@ -270,8 +271,8 @@ class CrashLogger private constructor(
 // ── Data classes ──────────────────────────────────────────────────────────────
 
 data class LogFile(val file: File, val type: LogType, val timestamp: Long) {
-    val name: String         get() = file.name
-    val sizeKB: Long         get() = file.length() / 1024
+    val name: String          get() = file.name
+    val sizeKB: Long          get() = file.length() / 1024
     val formattedDate: String get() =
         SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(timestamp))
 }
@@ -279,11 +280,11 @@ data class LogFile(val file: File, val type: LogType, val timestamp: Long) {
 enum class LogType { CRASH, LOGCAT, SESSION }
 
 data class LogStats(
-    val totalCrashes:  Int,
-    val totalLogCats:  Int,
-    val totalSessions: Int,
+    val totalCrashes:   Int,
+    val totalLogCats:   Int,
+    val totalSessions:  Int,
     val totalSizeBytes: Long,
-    val location: String,
+    val location:       String,
 ) {
     val totalSizeKB: Long get() = totalSizeBytes / 1024
 }
