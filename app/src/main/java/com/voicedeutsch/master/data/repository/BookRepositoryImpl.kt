@@ -43,7 +43,7 @@ import kotlinx.serialization.json.Json
  * СТАЛО:
  *
  * 1. getChapterGrammar() — читает grammar.json из assets и возвращает
- *    список title правил для данной главы. Используется в SystemInstruction
+ *    список nameRu правил для данной главы. Используется в SystemInstruction
  *    для передачи ИИ списка тем текущей главы.
  *
  * 2. loadBookIntoDatabase() — добавлен блок загрузки грамматики для каждой главы.
@@ -115,7 +115,7 @@ class BookRepositoryImpl(
      * ✅ FIX: Читает grammar.json и возвращает список названий правил главы.
      *
      * БЫЛО: тело содержало path-переменную и сразу return emptyList() — файл не читался.
-     * СТАЛО: открываем assets, парсим List<GrammarRule>, возвращаем title каждого правила.
+     * СТАЛО: открываем assets, парсим List<GrammarRule>, возвращаем nameRu каждого правила.
      *
      * Используется в ContextBuilder для передачи ИИ списка грамматических тем,
      * и в KnowledgeSummary для отображения прогресса по грамматике.
@@ -126,7 +126,7 @@ class BookRepositoryImpl(
             val path = "book/$chapterDir/grammar.json"
             val jsonString = context.assets.open(path).bufferedReader().use { it.readText() }
             val rules = json.decodeFromString<List<GrammarRule>>(jsonString)
-            rules.map { it.title }
+            rules.map { it.nameRu } // ИСПРАВЛЕНО: it.title → it.nameRu
         } catch (e: Exception) {
             android.util.Log.w("BookRepository", "getChapterGrammar($chapterNumber): ${e.message}")
             emptyList()
@@ -146,8 +146,8 @@ class BookRepositoryImpl(
             Pair(current.chapter, current.lesson)
         } else {
             val firstProgress = BookProgressEntity(
-                id     = generateUUID(),
-                userId = userId,
+                id      = generateUUID(),
+                userId  = userId,
                 chapter = 1,
                 lesson  = 1,
                 status  = "NOT_STARTED",
@@ -262,9 +262,9 @@ class BookRepositoryImpl(
 
         for (chapterNum in 1..metadata.totalChapters) {
 
-            // 1. Загрузка словаря (существующий код)
-            val vocabulary    = bookFileReader.readChapterVocabulary(chapterNum)
-            val wordEntities  = vocabulary.map { entry ->
+            // 1. Загрузка словаря
+            val vocabulary   = bookFileReader.readChapterVocabulary(chapterNum)
+            val wordEntities = vocabulary.map { entry ->
                 WordEntity(
                     id              = generateUUID(),
                     german          = entry.german,
@@ -286,14 +286,14 @@ class BookRepositoryImpl(
             // 2. ✅ FIX: Загрузка грамматики
             // Ошибка одной главы не должна ломать загрузку всей книги → try/catch на блок.
             try {
-                val chapterDir     = "chapter_${chapterNum.toString().padStart(2, '0')}"
-                val grammarJson    = context.assets
+                val chapterDir   = "chapter_${chapterNum.toString().padStart(2, '0')}"
+                val grammarJson  = context.assets
                     .open("book/$chapterDir/grammar.json")
                     .bufferedReader()
                     .use { it.readText() }
 
-                val rules          = json.decodeFromString<List<GrammarRule>>(grammarJson)
-                val ruleEntities   = rules
+                val rules        = json.decodeFromString<List<GrammarRule>>(grammarJson)
+                val ruleEntities = rules
                     .map { rule -> rule.copy(bookChapter = chapterNum) }
                     .map { rule -> with(RuleMapper) { rule.toEntity(json) } }
 
