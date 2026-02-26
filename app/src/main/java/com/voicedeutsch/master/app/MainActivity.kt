@@ -1,3 +1,4 @@
+// app/src/main/java/com/voicedeutsch/master/app/MainActivity.kt
 package com.voicedeutsch.master.app
 
 import android.os.Bundle
@@ -5,9 +6,13 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import com.voicedeutsch.master.data.local.datastore.UserPreferencesDataStore
 import com.voicedeutsch.master.presentation.navigation.AppNavigation
 import com.voicedeutsch.master.presentation.theme.VoiceDeutschMasterTheme
 import com.voicedeutsch.master.util.CrashLogger
@@ -26,8 +31,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            // Исправлено: VoiceDeutschMasterTheme не принимает darkTheme —
-            // тема всегда светлая, isDarkTheme и getThemeFlow() не используются.
+            val themePref by dataStore.getThemeFlow().collectAsState(initial = "system")
+            val isDarkTheme = when (themePref) {
+                "dark"  -> true
+                "light" -> false
+                else    -> isSystemInDarkTheme()
+            }
+
+            // Исправлено: VoiceDeutschMasterTheme в Theme.kt не принимает darkTheme
             VoiceDeutschMasterTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     AppNavigation()
