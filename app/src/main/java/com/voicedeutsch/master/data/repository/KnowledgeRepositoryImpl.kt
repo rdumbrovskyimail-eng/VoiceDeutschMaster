@@ -395,7 +395,6 @@ class KnowledgeRepositoryImpl(
         knowledgeDao.getRecentPronunciationRecords(userId, limit).map { with(KnowledgeMapper) { it.toDomain(json) } }
 
     override suspend fun recalculateOverdueItems(userId: String) {
-        val now = DateUtils.nowTimestamp()
         // Words overdue — already handled by getWordsForReview query
         // This method exists as a hook for future SRS interval recalculation
         // Currently a no-op: SRS intervals are recalculated on-demand when
@@ -407,30 +406,34 @@ class KnowledgeRepositoryImpl(
     // ==========================================
 
     override suspend fun buildKnowledgeSnapshot(userId: String): KnowledgeSnapshot {
-        val allWK = knowledgeDao.getAllWordKnowledge(userId)
+        // ✅ FIX OOM: Используем getBriefWordKnowledge() вместо getAllWordKnowledge().
+        // getAllWordKnowledge() тянет полные объекты включая mistakesJson (может быть очень большим).
+        // При 5000+ словах Room пытается аллоцировать >2MB в CursorWindow → OOM / CursorWindowAllocationException.
+        // WordKnowledgeBrief содержит только числовые поля — никаких JSON-строк.
+        val allWKBrief = knowledgeDao.getBriefWordKnowledge(userId)
         val allWords = wordDao.getAllWords()
         val allRK = knowledgeDao.getAllRuleKnowledge(userId)
         val allRules = grammarRuleDao.getAllRules()
         val now = DateUtils.nowTimestamp()
 
         // --- Vocabulary Snapshot ---
-        val wordsByLevel = allWK.groupBy { it.knowledgeLevel }
+        val wordsByLevel = allWKBrief.groupBy { it.knowledgeLevel }
             .mapValues { it.value.size }
 
         val byTopic = allWords.groupBy { it.topic }.mapValues { (_, words) ->
             val knownInTopic = words.count { w ->
-                allWK.any { wk -> wk.wordId == w.id && wk.knowledgeLevel >= 4 }
+                allWKBrief.any { wk -> wk.wordId == w.id && wk.knowledgeLevel >= 4 }
             }
             TopicStats(known = knownInTopic, total = words.size)
         }
 
-        val recentWords = allWK
+        val recentWords = allWKBrief
             .filter { it.lastSeen != null }
             .sortedByDescending { it.lastSeen }
             .take(10)
             .mapNotNull { wk -> allWords.find { it.id == wk.wordId }?.german }
 
-        val problemWordsList = allWK
+        val problemWordsList = allWKBrief
             .filter { it.knowledgeLevel <= 2 && it.timesSeen >= 3 }
             .sortedBy { it.knowledgeLevel }
             .take(10)
@@ -444,7 +447,7 @@ class KnowledgeRepositoryImpl(
             }
 
         val vocabularySnapshot = VocabularySnapshot(
-            totalWords = allWK.count { it.knowledgeLevel > 0 },
+            totalWords = allWKBrief.count { it.knowledgeLevel > 0 },
             byLevel = wordsByLevel,
             byTopic = byTopic,
             recentNewWords = recentWords,
