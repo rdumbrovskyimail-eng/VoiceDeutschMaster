@@ -55,6 +55,7 @@ val presentationModule = module {
             configureUserPreferences = get(),
             preferencesDataStore     = get(),
             userRepository           = get(),
+            backupManager            = get(),
         )
     }
     viewModel {
