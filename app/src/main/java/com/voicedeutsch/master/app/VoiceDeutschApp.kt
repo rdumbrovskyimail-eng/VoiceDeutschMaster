@@ -1,3 +1,4 @@
+// app/src/main/java/com/voicedeutsch/master/app/VoiceDeutschApp.kt
 package com.voicedeutsch.master.app
 
 import android.app.Application
@@ -5,9 +6,11 @@ import android.content.Context
 import android.util.Log
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
+import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.analytics.analytics
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.firebase.crashlytics.crashlytics
 import com.voicedeutsch.master.BuildConfig
 import com.voicedeutsch.master.app.di.appModules
@@ -19,19 +22,6 @@ import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
 import org.koin.core.logger.Level
 
-/**
- * Application entry point.
- *
- * Порядок инициализации (критически важен):
- *  1. [CrashLogger]        — в attachBaseContext(), ДО super(). Ловит краши с самого старта.
- *  2. [AppLogger]          — первым в onCreate(), до super(). Кольцевой буфер logcat.
- *  3. super.onCreate()
- *  4. Koin DI              — до Firebase: модули могут предоставлять Firebase-зависимости.
- *  5. Firebase             — СТРОГИЙ порядок внутри: App → AppCheck → Crashlytics → Analytics.
- *                            App Check должен быть установлен ДО первого обращения к любому
- *                            Firebase-сервису (Firestore, Storage, firebase-ai и т.д.).
- *  6. WorkManager
- */
 class VoiceDeutschApp : Application() {
 
     override fun attachBaseContext(base: Context) {
@@ -69,15 +59,6 @@ class VoiceDeutschApp : Application() {
         }
     }
 
-    /**
-     * Инициализация Firebase в строгом порядке:
-     *
-     * 1. [FirebaseApp.initializeApp] — обязателен первым.
-     * 2. [FirebaseAppCheck] — СРАЗУ после initializeApp, ДО любых обращений к Firestore,
-     *    Storage, firebase-ai и т.д.
-     * 3. [FirebaseCrashlytics] — настройка кастомных ключей до первого крэша.
-     * 4. [FirebaseAnalytics] — в debug отключаем сбор.
-     */
     private fun initFirebase() {
         try {
             FirebaseApp.initializeApp(this)
@@ -93,24 +74,27 @@ class VoiceDeutschApp : Application() {
     }
 
     /**
-     * ✅ FIX: Используем FirebaseAppCheck.getInstance() вместо KTX-свойства Firebase.appCheck,
-     * которое могло не резолвиться в некоторых конфигурациях.
-     *
-     * Debug-сборка:  DebugAppCheckProviderFactory → UUID-токен в Logcat.
-     *   → Добавьте токен в Firebase Console → App Check → Debug tokens.
-     * Release-сборка: PlayIntegrityAppCheckProviderFactory → Google Play Integrity API.
-     *   → SHA-256 fingerprint release-ключа обязателен в Firebase Console → Project settings.
+     * ✅ FIX: App Check - правильное разделение Debug и Release.
+     * 
+     * Библиотека `firebase-appcheck-debug` подключена через `debugImplementation`.
+     * Использование Reflection внутри `if (BuildConfig.DEBUG)` абсолютно безопасно:
+     * компилятор не ругается на "Unresolved reference", а в Release-сборке этот блок 
+     * будет вырезан оптимизатором R8, поэтому ClassNotFoundException не возникнет.
      */
     private fun initAppCheck() {
         try {
-            FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
-                if (BuildConfig.DEBUG) {
-                    com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory.getInstance()
-                } else {
+            if (BuildConfig.DEBUG) {
+                val debugProviderClass = Class.forName("com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory")
+                val getInstanceMethod = debugProviderClass.getMethod("getInstance")
+                val provider = getInstanceMethod.invoke(null) as com.google.firebase.appcheck.AppCheckProviderFactory
+                FirebaseAppCheck.getInstance().installAppCheckProviderFactory(provider)
+                Log.d(TAG, "✅ App Check initialized [DEBUG]")
+            } else {
+                FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
                     PlayIntegrityAppCheckProviderFactory.getInstance()
-                }
-            )
-            Log.d(TAG, "✅ App Check initialized [${if (BuildConfig.DEBUG) "DEBUG" else "PLAY_INTEGRITY"}]")
+                )
+                Log.d(TAG, "✅ App Check initialized[PLAY_INTEGRITY]")
+            }
         } catch (e: Exception) {
             Log.e(TAG, "❌ App Check init failed: ${e.message}", e)
         }
