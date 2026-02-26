@@ -22,9 +22,11 @@ class AudioPipeline(private val context: Context) {
     val isPlaying: Boolean get() = _isPlaying
 
     // Микрофон
-    private val outgoingChannel = Channel<ByteArray>(capacity = 10)
-    val incomingAudioFlow: Flow<ByteArray> = outgoingChannel.receiveAsFlow()
-    fun audioChunks(): Flow<ByteArray> = incomingAudioFlow
+    private val _audioSharedFlow = kotlinx.coroutines.flow.MutableSharedFlow<ByteArray>(
+        extraBufferCapacity = 64
+    )
+    val incomingAudioFlow: kotlinx.coroutines.flow.SharedFlow<ByteArray> = _audioSharedFlow
+    fun audioChunks(): kotlinx.coroutines.flow.Flow<ByteArray> = _audioSharedFlow
 
     // 🔥 FIX: Заменили DROP_OLDEST на UNLIMITED для плавности речи ИИ
     private var playbackQueue = Channel<ByteArray>(capacity = Channel.UNLIMITED)
@@ -63,7 +65,7 @@ class AudioPipeline(private val context: Context) {
                 recordingJob = pipelineScope.launch {
                     recorder.audioFrameFlow.collect { pcmShorts ->
                         val bytes = AudioUtils.shortArrayToByteArray(pcmShorts)
-                        outgoingChannel.trySend(bytes)
+                        _audioSharedFlow.tryEmit(bytes)
                     }
                 }
             }
