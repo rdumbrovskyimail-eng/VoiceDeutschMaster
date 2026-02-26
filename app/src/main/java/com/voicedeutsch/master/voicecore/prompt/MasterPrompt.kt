@@ -14,6 +14,16 @@ package com.voicedeutsch.master.voicecore.prompt
  *   instructions naturally and follows them reliably.
  * - All section headers use ALL-CAPS for easy scanning by the model.
  * - Kept as a pure `object` (no dependencies) — fully testable and deterministic.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * ИЗМЕНЕНИЯ (Баг #2 — "Слепой переход по книге"):
+ * ════════════════════════════════════════════════════════════════════════════
+ *
+ *   ДОБАВЛЕНО в РАЗДЕЛ 6: шаг 8а — инструкция постраничного чтения нового
+ *   урока через read_lesson_paragraph(index) при text_truncated = true.
+ *
+ *   ДОБАВЛЕНО в РАЗДЕЛ 7: обязательный function call read_lesson_paragraph
+ *   при переходе к новому уроку с усечённым текстом.
  */
 object MasterPrompt {
 
@@ -183,7 +193,7 @@ LISTENING — Аудирование
 Книга — главный учебный материал. В контексте есть BOOK CONTEXT с текущим уроком.
 
 ПРОЦЕСС РАБОТЫ С УРОКОМ:
-1. Вызови get_current_lesson для получения актуального содержимого
+1. Вызови get_current_lesson() для получения актуального содержимого
 2. Прочитай заголовок урока пользователю
 3. Читай текст ПО ПРЕДЛОЖЕНИЯМ — не всё сразу
 4. После каждого предложения: задай вопрос или попроси перевести ключевое слово
@@ -192,10 +202,21 @@ LISTENING — Аудирование
 7. Спроси, переходить ли к следующему, или повторить
 8. Если переход: вызови advance_to_next_lesson
 
+8а. ВАЖНО — ЧТЕНИЕ НОВОГО УРОКА ПОСЛЕ ПЕРЕХОДА:
+    Ответ advance_to_next_lesson содержит поле text_truncated.
+    - Если text_truncated = false: используй new_lesson_preview как полный текст урока.
+    - Если text_truncated = true: new_lesson_preview содержит только начало текста.
+      Дочитай оставшиеся абзацы вызовами read_lesson_paragraph(index),
+      начиная с index = 0, по одному абзацу за раз, пока has_next = false.
+      Только после получения всех абзацев начинай работу с текстом нового урока.
+      Поле total_paragraphs в ответе advance_to_next_lesson показывает
+      сколько всего абзацев тебя ждёт.
+
 ЗАПРЕЩЕНО:
 - Читать весь текст урока без остановок
 - Пропускать слова только потому что пользователь "наверное знает"
 - Переходить к следующему уроку без mark_lesson_complete
+- Начинать работу с новым уроком, не дочитав все абзацы (при text_truncated = true)
 
 ═══════════════════════════════════════════════════════════════════
 РАЗДЕЛ 7. ОБЯЗАТЕЛЬНЫЕ FUNCTION CALLS
@@ -215,6 +236,9 @@ LISTENING — Аудирование
 ПРИ ПЕРЕХОДЕ К СЛЕДУЮЩЕМУ УРОКУ:
 → mark_lesson_complete(chapter, lesson, score)
 → advance_to_next_lesson(current_lesson_score)
+→ если text_truncated = true в ответе advance_to_next_lesson:
+     read_lesson_paragraph(0), read_lesson_paragraph(1), …
+     повторяй пока has_next = false
 
 ПРИ ОЦЕНКЕ ПРОИЗНОШЕНИЯ:
 → save_pronunciation_result(word, score, problem_sounds)
