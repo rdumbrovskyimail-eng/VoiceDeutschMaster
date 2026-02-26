@@ -31,6 +31,7 @@ import com.voicedeutsch.master.domain.repository.ProgressRepository
 import com.voicedeutsch.master.domain.repository.SessionRepository
 import com.voicedeutsch.master.domain.repository.SpeechRepository
 import com.voicedeutsch.master.domain.repository.UserRepository
+import com.voicedeutsch.master.domain.usecase.knowledge.FlushKnowledgeSyncUseCase
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -46,9 +47,6 @@ import java.util.concurrent.TimeUnit
 val dataModule = module {
 
     // ─── JSON ────────────────────────────────────────────────────────────────
-    // Единственный Json-инстанс на всё приложение.
-    // ignoreUnknownKeys: безопасно для эволюции API (новые поля не ломают парсинг).
-    // isLenient: принимает JSON с одинарными кавычками (некоторые Firebase-ответы).
     single {
         Json {
             ignoreUnknownKeys = true
@@ -58,9 +56,6 @@ val dataModule = module {
     }
 
     // ─── Ktor HttpClient ─────────────────────────────────────────────────────
-    // ℹ️ HttpClient остаётся для вспомогательных HTTP-запросов (не Gemini).
-    // Основной AI-транспорт (Gemini Live API) — firebase-ai SDK (GeminiClient.kt).
-    // WebSockets плагин УДАЛЁН — WebSocket с Gemini теперь управляет SDK.
     single {
         HttpClient(OkHttp) {
             engine {
@@ -70,12 +65,9 @@ val dataModule = module {
                     writeTimeout(30, TimeUnit.SECONDS)
                 }
             }
-
-            // ContentNegotiation: нужен для response.body<T>() без рефлексии.
             install(ContentNegotiation) {
                 json(get<Json>())
             }
-
             install(Logging) {
                 level = LogLevel.INFO
                 logger = object : Logger {
@@ -88,7 +80,6 @@ val dataModule = module {
     }
 
     // ─── Firebase Auth ────────────────────────────────────────────────────────
-    // ✅ BoM 34.x: Firebase.auth — без -ktx суффикса.
     single<FirebaseAuth> {
         Firebase.auth.apply {
             if (currentUser == null) {
@@ -104,7 +95,6 @@ val dataModule = module {
     }
 
     // ─── Firebase Firestore ───────────────────────────────────────────────────
-    // ✅ BoM 34.x: PersistentCacheSettings — офлайн-кеш на диске.
     single<FirebaseFirestore> {
         Firebase.firestore.apply {
             firestoreSettings = FirebaseFirestoreSettings.Builder()
@@ -126,25 +116,6 @@ val dataModule = module {
     }
 
     // ─── Database ────────────────────────────────────────────────────────────
-    // ✅ ПРОДАКШЕН 2026: fallbackToDestructiveMigrationFrom УДАЛЁН.
-    //
-    // Почему это критично:
-    //   fallbackToDestructiveMigration() стирает ВСЮ базу если Room не находит
-    //   нужную миграцию. Для пользователя это потеря прогресса → удаление приложения.
-    //
-    // Правило: каждый новый version в @Database требует явного MIGRATION_X_Y.
-    // Даже если схема не изменилась — пишем пустую миграцию:
-    //
-    //   val MIGRATION_2_3 = object : Migration(2, 3) {
-    //       override fun migrate(db: SupportSQLiteDatabase) {
-    //           // no-op: version bump без изменений схемы
-    //       }
-    //   }
-    //
-    // И добавляем её здесь через .addMigrations(AppDatabase.MIGRATION_2_3).
-    //
-    // Текущая версия БД: 2. Все переходы покрыты:
-    //   1 → 2: MIGRATION_1_2 (таблицы achievements + user_achievements)
     single {
         Room.databaseBuilder(
             androidContext(),
@@ -153,8 +124,6 @@ val dataModule = module {
         )
             .addMigrations(
                 AppDatabase.MIGRATION_1_2,
-                // При добавлении новых сущностей — добавляй MIGRATION_2_3 и т.д.
-                // НИКОГДА не используй fallbackToDestructiveMigration в продакшене.
             )
             .build()
     }
@@ -175,18 +144,33 @@ val dataModule = module {
     single { UserPreferencesDataStore(androidContext()) }
     single { BookFileReader(androidContext(), get()) }
 
+    // ─── Remote Services ─────────────────────────────────────────────────────
+    single { BackupManager(androidContext(), get<AppDatabase>(), get<FirebaseFirestore>(), get<FirebaseStorage>(), get<FirebaseAuth>()) }
+    single { CloudSyncService(get<FirebaseFirestore>(), get<FirebaseAuth>()) }
+
     // ─── Repositories ────────────────────────────────────────────────────────
     single<UserRepository> {
         UserRepositoryImpl(get(), get(), get(), get(), get())
     }
 
+    // ✅ ИЗМЕНЕНО: добавлен get<CloudSyncService>() восьмым аргументом.
+    // KnowledgeRepositoryImpl теперь принимает CloudSyncService для батч-синхронизации.
+    // Было: KnowledgeRepositoryImpl(get(), get(), get(), get(), get(), get(), get())
+    // Стало: + get<CloudSyncService>()
     single<KnowledgeRepository> {
-        KnowledgeRepositoryImpl(get(), get(), get(), get(), get(), get(), get())
+        KnowledgeRepositoryImpl(
+            wordDao         = get(),
+            knowledgeDao    = get(),
+            grammarRuleDao  = get(),
+            phraseDao       = get(),
+            progressDao     = get(),
+            mistakeDao      = get(),
+            json            = get(),
+            cloudSync       = get(),   // ✅ CloudSyncService для батчинга
+        )
     }
 
     single<BookRepository> {
-        // ✅ FIX (Баг #3): добавлен androidContext() — BookRepositoryImpl теперь
-        // читает grammar.json из assets напрямую через Context.
         BookRepositoryImpl(androidContext(), get(), get(), get(), get(), get(), get())
     }
 
@@ -210,10 +194,10 @@ val dataModule = module {
     single { AudioCacheManager(androidContext()) }
     single { ExportImportManager(androidContext(), get()) }
 
-    // ─── Remote Services (Firebase-based) ────────────────────────────────────
-    single { BackupManager(androidContext(), get<AppDatabase>(), get<FirebaseFirestore>(), get<FirebaseStorage>(), get<FirebaseAuth>()) }
-    single { CloudSyncService(get<FirebaseFirestore>(), get<FirebaseAuth>()) }
-
-    // ✅ EphemeralTokenService УДАЛЁН:
-    // Firebase App Check + firebase-ai SDK управляют авторизацией прозрачно.
+    // ─── Use Cases: Knowledge Sync ───────────────────────────────────────────
+    // ✅ ДОБАВЛЕНО: FlushKnowledgeSyncUseCase — вызывается в VoiceCoreEngineImpl.endSession().
+    // Определяем здесь, а не в useCaseModule, потому что зависит от KnowledgeRepository
+    // который уже объявлен в dataModule. Если у вас есть отдельный useCaseModule —
+    // перенесите эту строку туда.
+    single { FlushKnowledgeSyncUseCase(get<KnowledgeRepository>()) }
 }
