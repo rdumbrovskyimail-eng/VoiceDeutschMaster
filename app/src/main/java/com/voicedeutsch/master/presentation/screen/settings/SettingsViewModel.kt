@@ -1,3 +1,4 @@
+// app/src/main/java/com/voicedeutsch/master/presentation/screen/settings/SettingsViewModel.kt
 package com.voicedeutsch.master.presentation.screen.settings
 
 import androidx.lifecycle.ViewModel
@@ -6,6 +7,8 @@ import com.voicedeutsch.master.data.local.datastore.UserPreferencesDataStore
 import com.voicedeutsch.master.data.remote.sync.BackupManager
 import com.voicedeutsch.master.data.remote.sync.BackupMetadata
 import com.voicedeutsch.master.data.remote.sync.BackupResult
+import com.voicedeutsch.master.domain.model.user.LearningPace
+import com.voicedeutsch.master.domain.model.user.PronunciationStrictness
 import com.voicedeutsch.master.domain.usecase.user.ConfigureUserPreferencesUseCase
 import com.voicedeutsch.master.domain.repository.UserRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,12 +17,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-// ── State ─────────────────────────────────────────────────────────────────────
-
 data class SettingsUiState(
     val isLoading: Boolean = true,
 
-    // ── UserPreferences ───────────────────────────────────────────────────────
     val sessionDurationMinutes: Int = 30,
     val dailyGoalWords: Int = 10,
     val learningPace: String = "NORMAL",
@@ -31,12 +31,10 @@ data class SettingsUiState(
     val pronunciationStrictness: String = "MODERATE",
     val dataSavingMode: Boolean = false,
 
-    // ── VoiceSettings ─────────────────────────────────────────────────────────
     val voiceSpeed: Float = 1.0f,
     val germanVoiceSpeed: Float = 0.8f,
     val showTranscription: Boolean = true,
 
-    // ── Backup ────────────────────────────────────────────────────────────────
     val isBackingUp: Boolean = false,
     val isRestoring: Boolean = false,
     val isLoadingBackups: Boolean = false,
@@ -47,49 +45,33 @@ data class SettingsUiState(
     val errorMessage: String? = null,
 )
 
-// ── Events ────────────────────────────────────────────────────────────────────
-
 sealed interface SettingsEvent {
-    // Занятия
     data class UpdateSessionDuration(val minutes: Int) : SettingsEvent
     data class UpdateDailyGoal(val words: Int) : SettingsEvent
     data class UpdateLearningPace(val pace: String) : SettingsEvent
     data class ToggleSrs(val enabled: Boolean) : SettingsEvent
     data class UpdateMaxReviews(val count: Int) : SettingsEvent
 
-    // Напоминание
     data class ToggleReminder(val enabled: Boolean) : SettingsEvent
     data class UpdateReminderTime(val hour: Int, val minute: Int) : SettingsEvent
 
-    // Голос и ИИ
     data class UpdateGermanSpeed(val speed: Float) : SettingsEvent
     data class UpdateVoiceSpeed(val speed: Float) : SettingsEvent
     data class ToggleTranscription(val enabled: Boolean) : SettingsEvent
     data class UpdateStrictness(val strictness: String) : SettingsEvent
 
-    // Система
     data class ToggleDataSaving(val enabled: Boolean) : SettingsEvent
 
-    // Backup
     data object CreateCloudBackup : SettingsEvent
     data object LoadCloudBackups : SettingsEvent
     data object ShowRestoreDialog : SettingsEvent
     data object HideRestoreDialog : SettingsEvent
     data class RestoreFromCloud(val metadata: BackupMetadata) : SettingsEvent
 
-    // Служебные
     data object SaveAll : SettingsEvent
     data object DismissMessages : SettingsEvent
 }
 
-// ── ViewModel ─────────────────────────────────────────────────────────────────
-
-/**
- * ViewModel for [SettingsScreen].
- *
- * Manages all UserPreferences + VoiceSettings fields.
- * On [SettingsEvent.SaveAll] persists everything to UserProfile and DataStore.
- */
 class SettingsViewModel(
     private val configureUserPreferences: ConfigureUserPreferencesUseCase,
     private val preferencesDataStore: UserPreferencesDataStore,
@@ -104,46 +86,38 @@ class SettingsViewModel(
 
     fun onEvent(event: SettingsEvent) {
         when (event) {
-            // Занятия
             is SettingsEvent.UpdateSessionDuration -> _uiState.update { it.copy(sessionDurationMinutes = event.minutes) }
             is SettingsEvent.UpdateDailyGoal       -> _uiState.update { it.copy(dailyGoalWords = event.words) }
             is SettingsEvent.UpdateLearningPace    -> _uiState.update { it.copy(learningPace = event.pace) }
             is SettingsEvent.ToggleSrs             -> _uiState.update { it.copy(srsEnabled = event.enabled) }
             is SettingsEvent.UpdateMaxReviews      -> _uiState.update { it.copy(maxReviewsPerSession = event.count) }
-            // Напоминание
             is SettingsEvent.ToggleReminder        -> _uiState.update { it.copy(reminderEnabled = event.enabled) }
             is SettingsEvent.UpdateReminderTime    -> _uiState.update { it.copy(reminderHour = event.hour, reminderMinute = event.minute) }
-            // Голос и ИИ
             is SettingsEvent.UpdateGermanSpeed     -> _uiState.update { it.copy(germanVoiceSpeed = event.speed) }
             is SettingsEvent.UpdateVoiceSpeed      -> _uiState.update { it.copy(voiceSpeed = event.speed) }
             is SettingsEvent.ToggleTranscription   -> _uiState.update { it.copy(showTranscription = event.enabled) }
             is SettingsEvent.UpdateStrictness      -> _uiState.update { it.copy(pronunciationStrictness = event.strictness) }
-            // Система
             is SettingsEvent.ToggleDataSaving      -> _uiState.update { it.copy(dataSavingMode = event.enabled) }
-            // Backup
             is SettingsEvent.CreateCloudBackup     -> createCloudBackup()
             is SettingsEvent.LoadCloudBackups      -> loadCloudBackups()
             is SettingsEvent.ShowRestoreDialog     -> { loadCloudBackups(); _uiState.update { it.copy(showRestoreDialog = true) } }
             is SettingsEvent.HideRestoreDialog     -> _uiState.update { it.copy(showRestoreDialog = false) }
             is SettingsEvent.RestoreFromCloud      -> restoreFromCloud(event.metadata)
-            // Служебные
             is SettingsEvent.SaveAll               -> saveAll()
             is SettingsEvent.DismissMessages       -> _uiState.update { it.copy(successMessage = null, errorMessage = null) }
         }
     }
 
-    // ── Load ──────────────────────────────────────────────────────────────────
-
     private fun loadSettings() {
         viewModelScope.launch {
             runCatching {
-                val userId  = userRepository.getActiveUserId()
+                val userId = userRepository.getActiveUserId()
                 val profile = userId?.let { userRepository.getUserProfile(it) }
-                val prefs   = profile?.preferences
-                val voice   = profile?.voiceSettings
+                val prefs = profile?.preferences
+                val voice = profile?.voiceSettings
 
                 val duration = preferencesDataStore.getSessionDuration()
-                    ?: prefs?.preferredSessionDurationMinutes // ИСПРАВЛЕНО: preferredSessionDuration → preferredSessionDurationMinutes
+                    ?: prefs?.preferredSessionDuration
                     ?: 30
                 val goal = preferencesDataStore.getDailyGoal()
                     ?: prefs?.dailyGoalWords
@@ -173,32 +147,35 @@ class SettingsViewModel(
         }
     }
 
-    // ── Save ──────────────────────────────────────────────────────────────────
-
-    // ИСПРАВЛЕНО: вместо сборки domain-объектов UserPreferences/VoiceSettings
-    // и вызова updatePreferences()/updateVoiceSettings(userId, object)
-    // используем прямые методы ConfigureUserPreferencesUseCase.
-    // runCatching на каждый опциональный метод — чтобы отсутствие одного
-    // не ломало сохранение остальных.
     private fun saveAll() {
         viewModelScope.launch {
             runCatching {
-                val s      = _uiState.value
+                val s = _uiState.value
                 val userId = userRepository.getActiveUserId() ?: error("Пользователь не найден")
+                val profile = userRepository.getUserProfile(userId) ?: return@launch
 
-                configureUserPreferences.updatePreferredSessionDuration(userId, s.sessionDurationMinutes)
-                configureUserPreferences.updateDailyGoal(
-                    userId,
-                    words   = s.dailyGoalWords,
-                    minutes = s.sessionDurationMinutes,
+                val updatedPrefs = profile.preferences.copy(
+                    preferredSessionDuration = s.sessionDurationMinutes,
+                    dailyGoalWords = s.dailyGoalWords,
+                    dailyGoalMinutes = s.sessionDurationMinutes,
+                    learningPace = LearningPace.valueOf(s.learningPace),
+                    srsEnabled = s.srsEnabled,
+                    maxReviewsPerSession = s.maxReviewsPerSession,
+                    reminderEnabled = s.reminderEnabled,
+                    reminderHour = s.reminderHour,
+                    reminderMinute = s.reminderMinute,
+                    pronunciationStrictness = PronunciationStrictness.valueOf(s.pronunciationStrictness),
+                    dataSavingMode = s.dataSavingMode
                 )
 
-                runCatching { configureUserPreferences.updateLearningPace(userId, s.learningPace) }
-                runCatching { configureUserPreferences.updateSrsSettings(userId, s.srsEnabled, s.maxReviewsPerSession) }
-                runCatching { configureUserPreferences.updateReminderSettings(userId, s.reminderEnabled, s.reminderHour, s.reminderMinute) }
-                runCatching { configureUserPreferences.updatePronunciationStrictness(userId, s.pronunciationStrictness) }
-                runCatching { configureUserPreferences.updateDataSavingMode(userId, s.dataSavingMode) }
-                runCatching { configureUserPreferences.updateVoiceSettings(userId, s.voiceSpeed, s.germanVoiceSpeed, s.showTranscription) }
+                val updatedVoice = profile.voiceSettings.copy(
+                    voiceSpeed = s.voiceSpeed,
+                    germanVoiceSpeed = s.germanVoiceSpeed,
+                    showTranscription = s.showTranscription
+                )
+
+                configureUserPreferences.updatePreferences(userId, updatedPrefs)
+                configureUserPreferences.updateVoiceSettings(userId, updatedVoice)
 
                 preferencesDataStore.setSessionDuration(s.sessionDurationMinutes)
                 preferencesDataStore.setDailyGoal(s.dailyGoalWords)
@@ -207,8 +184,6 @@ class SettingsViewModel(
             .onFailure { e -> _uiState.update { it.copy(errorMessage = "❌ ${e.message}") } }
         }
     }
-
-    // ── Backup ────────────────────────────────────────────────────────────────
 
     private fun createCloudBackup() {
         viewModelScope.launch {
