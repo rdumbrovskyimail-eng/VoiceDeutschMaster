@@ -1,6 +1,7 @@
 package com.voicedeutsch.master.presentation.screen.session
 
 import android.content.Context
+import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -44,6 +45,12 @@ import kotlin.coroutines.cancellation.CancellationException
  * вызывает ForegroundServiceDidNotStartInTimeException или краш.
  * Остановка сервиса привязана строго к endSession().
  * При уничтожении процесса Android сам убьёт Foreground Service.
+ *
+ * ✅ FIX 4: ForegroundServiceStartNotAllowedException (Android 12+).
+ * startForegroundService() крашит приложение если оно свёрнуто в момент вызова.
+ * Оборачиваем в try-catch — если сервис не стартовал, сессия продолжает работать
+ * без foreground protection (микрофон может быть убит системой при уходе в фон,
+ * но краш не происходит). Ошибка логируется для диагностики.
  */
 class SessionViewModel(
     private val voiceCoreEngine: VoiceCoreEngine,
@@ -84,12 +91,26 @@ class SessionViewModel(
                 voiceCoreEngine.initialize(GeminiConfig())
                 voiceCoreEngine.startSession(userId)
 
-                // ✅ FIX 2: Стартуем foreground service — удерживает микрофон в фоне.
-                // Без него Android 14+ убивает AudioRecord когда экран гаснет.
-                ContextCompat.startForegroundService(
-                    context,
-                    VoiceSessionService.startIntent(context),
-                )
+                // ✅ FIX 4: Оборачиваем в try-catch против ForegroundServiceStartNotAllowedException.
+                // На Android 12+ (API 31) система бросает это исключение если приложение
+                // находится в фоне в момент вызова startForegroundService().
+                // Сессия голосового движка уже запущена — краш здесь недопустим.
+                // Без сервиса сессия продолжит работать, но Android может убить микрофон
+                // при уходе приложения в фон. Пользователь об этом не уведомляется —
+                // это деградация, а не краш.
+                try {
+                    ContextCompat.startForegroundService(
+                        context,
+                        VoiceSessionService.startIntent(context),
+                    )
+                } catch (e: Exception) {
+                    // ForegroundServiceStartNotAllowedException — API 31+, ловим через базовый Exception
+                    // чтобы не добавлять minSdk зависимость на конкретный класс исключения.
+                    android.util.Log.w(
+                        "SessionViewModel",
+                        "Could not start foreground service (app likely in background): ${e.message}"
+                    )
+                }
 
                 _uiState.update {
                     it.copy(isLoading = false, isSessionActive = true, showHint = false)
@@ -115,7 +136,12 @@ class SessionViewModel(
 
             // ✅ FIX 2: Останавливаем foreground service вместе с сессией.
             // Единственное место остановки сервиса — здесь, не в onCleared().
-            context.startService(VoiceSessionService.stopIntent(context))
+            // stopService() безопасен даже если сервис не был запущен.
+            runCatching {
+                context.startService(VoiceSessionService.stopIntent(context))
+            }.onFailure { e ->
+                android.util.Log.w("SessionViewModel", "Could not stop foreground service: ${e.message}")
+            }
 
             _uiState.update {
                 it.copy(
