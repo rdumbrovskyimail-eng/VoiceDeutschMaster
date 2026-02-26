@@ -4,11 +4,9 @@ import android.util.Log
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.FunctionCallPart
-import com.google.firebase.ai.type.FunctionDeclaration
 import com.google.firebase.ai.type.FunctionResponsePart
 import com.google.firebase.ai.type.InlineDataPart
 import com.google.firebase.ai.type.LiveServerContent
-import com.google.firebase.ai.type.LiveServerMessage
 import com.google.firebase.ai.type.LiveSession
 import com.google.firebase.ai.type.PublicPreviewAPI
 import com.google.firebase.ai.type.ResponseModality
@@ -18,6 +16,7 @@ import com.google.firebase.ai.type.TextPart
 import com.google.firebase.ai.type.Tool
 import com.google.firebase.ai.type.Voice
 import com.google.firebase.ai.type.content
+import com.google.firebase.ai.type.defineFunction
 import com.google.firebase.ai.type.liveGenerationConfig
 import com.voicedeutsch.master.voicecore.context.ContextBuilder
 import com.voicedeutsch.master.voicecore.functions.GeminiFunctionDeclaration
@@ -42,6 +41,7 @@ import kotlinx.serialization.json.buildJsonObject
 //    - LiveServerContent    (com.google.firebase.ai.type) — подтип LiveServerMessage
 //    - FunctionCallPart, FunctionResponsePart, FunctionDeclaration
 //    - InlineDataPart, TextPart, Tool, Schema, Voice, SpeechConfig
+//    - defineFunction       (com.google.firebase.ai.type) — хелпер-билдер
 //
 // ❌ НЕ СУЩЕСТВУЮТ (подтверждено компилятором):
 //    - LiveContentResponse  → ФАНТОМ, нет в SDK
@@ -84,11 +84,20 @@ import kotlinx.serialization.json.buildJsonObject
 //   7. GeminiResponse.functionCall → functionCalls: List<GeminiFunctionCall>
 //   8. sendFunctionResults(List<Pair>) — отправляет все ответы одним батчем.
 // ════════════════════════════════════════════════════════════════════════════
-// ИЗМЕНЕНИЯ (Empty parameters_json_schema fix):
-//   9. FIX: mapToFirebaseDeclaration() — для функций без параметров вызываем
-//      двухаргументный FunctionDeclaration(name, description) без parameters.
-//      Старый код передавал emptyMap() → SDK генерировал пустую
-//      parameters_json_schema → сервер отклонял WebSocket handshake.
+// ИЗМЕНЕНИЯ (parameters_json_schema fix):
+//   9. FIX: mapToFirebaseDeclaration() переписан на defineFunction().
+//      БЫЛО: FunctionDeclaration(name, desc, parameters, optional) — прямой конструктор.
+//        Проблема 1: для функций без параметров emptyMap() генерировал пустую
+//                     parameters_json_schema, сервер отклонял handshake.
+//        Проблема 2: FunctionDeclaration не имеет 2-аргументного конструктора,
+//                     нельзя опустить parameters.
+//      СТАЛО: defineFunction() — SDK-хелпер, который корректно обрабатывает
+//             сериализацию parameters_json_schema для Live API, включая случай
+//             без параметров (не генерирует поле вообще).
+//   10. УДАЛЁН import FunctionDeclaration (больше не используется напрямую).
+//   11. УДАЛЁН import LiveServerMessage (не используется — receive() → LiveServerContent).
+//   12. ДОБАВЛЕН import defineFunction (com.google.firebase.ai.type).
+//   13. ДОБАВЛЕНО логирование деклараций при connect() для диагностики.
 // ════════════════════════════════════════════════════════════════════════════
 
 /**
@@ -131,6 +140,9 @@ class GeminiClient(
                     .onFailure { Log.w(TAG, "Skipping invalid function ${decl.name}: ${it.message}") }
                     .getOrNull()
             }
+
+            Log.d(TAG, "Function declarations (${firebaseDeclarations.size}): " +
+                    firebaseDeclarations.joinToString { it.name })
 
             val tools = firebaseDeclarations
                 .takeIf { it.isNotEmpty() }
@@ -341,18 +353,33 @@ class GeminiClient(
     /**
      * Маппит GeminiFunctionDeclaration → Firebase AI SDK FunctionDeclaration.
      *
-     * ✅ FIX: для функций без параметров вызываем двухаргументный конструктор
-     * FunctionDeclaration(name, description) без parameters. Старый код
-     * передавал emptyMap() → SDK генерировал пустую parameters_json_schema
-     * → сервер отклонял WebSocket handshake с ошибкой:
-     * "parameters_json_schema must not be specified for functions with no parameters"
+     * ✅ FIX: используем defineFunction() вместо конструктора FunctionDeclaration().
+     *
+     * БЫЛО: FunctionDeclaration(name, desc, parameters, optionalParameters)
+     *   Проблема 1: для функций без параметров emptyMap() генерировал пустую
+     *               parameters_json_schema → сервер отклонял WebSocket handshake.
+     *   Проблема 2: конструктор не имеет 2-аргументного варианта (parameters обязателен),
+     *               нельзя просто опустить parameters.
+     *
+     * СТАЛО: defineFunction() — SDK-хелпер с optional parameters.
+     *   - Для функций без параметров: defineFunction(name, description)
+     *     → SDK НЕ генерирует parameters_json_schema вообще.
+     *   - Для функций с параметрами: defineFunction(name, description, params, optional)
+     *     → SDK генерирует корректную JSON Schema.
      */
-    private fun mapToFirebaseDeclaration(decl: GeminiFunctionDeclaration): FunctionDeclaration {
+    private fun mapToFirebaseDeclaration(decl: GeminiFunctionDeclaration) =
+        mapToFirebaseDeclarationViaDefine(decl)
+
+    /**
+     * Основной путь: через defineFunction() SDK-хелпер.
+     */
+    private fun mapToFirebaseDeclarationViaDefine(decl: GeminiFunctionDeclaration): com.google.firebase.ai.type.FunctionDeclaration {
         val params = decl.parameters
 
-        // Функции без параметров — не передаём parameters вообще
+        // Функции без параметров — defineFunction(name, description) без parameters
         if (params == null || params.properties.isEmpty()) {
-            return FunctionDeclaration(
+            Log.d(TAG, "  ⚙ ${decl.name} — no parameters")
+            return defineFunction(
                 name        = decl.name,
                 description = decl.description,
             )
@@ -364,7 +391,10 @@ class GeminiClient(
 
         val optionalProperties = properties.keys.filter { it !in params.required }
 
-        return FunctionDeclaration(
+        Log.d(TAG, "  ⚙ ${decl.name} — params: ${properties.keys}, " +
+                "required: ${params.required}, optional: $optionalProperties")
+
+        return defineFunction(
             name               = decl.name,
             description        = decl.description,
             parameters         = properties,
