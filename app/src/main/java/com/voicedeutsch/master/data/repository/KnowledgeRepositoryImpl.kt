@@ -16,6 +16,7 @@ import com.voicedeutsch.master.data.mapper.RuleMapper.toDomain
 import com.voicedeutsch.master.data.mapper.RuleMapper.toEntity
 import com.voicedeutsch.master.data.mapper.WordMapper.toDomain
 import com.voicedeutsch.master.data.mapper.WordMapper.toEntity
+import com.voicedeutsch.master.data.remote.sync.CloudSyncService
 import com.voicedeutsch.master.domain.model.knowledge.GrammarCategory
 import com.voicedeutsch.master.domain.model.knowledge.GrammarRule
 import com.voicedeutsch.master.domain.model.knowledge.GrammarSnapshot
@@ -46,6 +47,34 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
 
+/**
+ * ════════════════════════════════════════════════════════════════════════════
+ * ИЗМЕНЕНИЯ (Синхронизация и Firebase — Батчинг):
+ * ════════════════════════════════════════════════════════════════════════════
+ *
+ *   ДОБАВЛЕНО: CloudSyncService как зависимость.
+ *
+ *   БЫЛО: CloudSyncService не использовался в этом файле совсем.
+ *   Синхронизация либо не вызывалась, либо вызывалась снаружи через
+ *   pushKnowledgeItem() на каждое слово → 50 запросов за сессию SRS.
+ *
+ *   СТАЛО:
+ *   • upsertWordKnowledge()  → после сохранения в Room вызывает
+ *                              cloudSync.enqueueKnowledgeItem() (только память, без сети).
+ *   • upsertRuleKnowledge()  → то же самое.
+ *   • flushSync()            → новый метод для вызова из endSession().
+ *                              Отправляет всю очередь в Firestore одним batch.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * ИСПРАВЛЕНИЕ: N+1 запросы в buildKnowledgeSnapshot():
+ * ════════════════════════════════════════════════════════════════════════════
+ *
+ *   БЫЛО: allWords.find { it.id == wk.wordId } внутри цикла → O(n²).
+ *   При 5000 слов и 5000 записях знания = 25 млн сравнений.
+ *
+ *   СТАЛО: allWords.associateBy { it.id } → O(1) lookup.
+ *   Аналогично для allRules → allRulesById.
+ */
 class KnowledgeRepositoryImpl(
     private val wordDao: WordDao,
     private val knowledgeDao: KnowledgeDao,
@@ -53,7 +82,9 @@ class KnowledgeRepositoryImpl(
     private val phraseDao: PhraseDao,
     private val progressDao: ProgressDao,
     private val mistakeDao: MistakeDao,
-    private val json: Json
+    private val json: Json,
+    // ✅ ДОБАВЛЕНО: батчинг синхронизации вместо per-item pushKnowledgeItem()
+    private val cloudSync: CloudSyncService,
 ) : KnowledgeRepository {
 
     // ==========================================
@@ -125,7 +156,7 @@ class KnowledgeRepositoryImpl(
 
     override suspend fun getWordsByKnowledgeLevel(
         userId: String,
-        level: Int
+        level: Int,
     ): List<Pair<Word, WordKnowledge>> {
         val allWK = knowledgeDao.getWordKnowledgeByLevel(userId, level)
         return allWK.mapNotNull { wke ->
@@ -142,12 +173,26 @@ class KnowledgeRepositoryImpl(
         }
     }
 
-    override suspend fun upsertWordKnowledge(knowledge: WordKnowledge) =
-        knowledgeDao.upsertWordKnowledge(knowledge.toEntity(json))
+    /**
+     * Сохраняет знание слова в Room и ставит его в очередь синхронизации.
+     *
+     * ✅ enqueueKnowledgeItem() — только память, без сети.
+     * Сеть используется один раз в конце сессии через flushSync().
+     */
+    override suspend fun upsertWordKnowledge(knowledge: WordKnowledge) {
+        val entity = knowledge.toEntity(json)
+        knowledgeDao.upsertWordKnowledge(entity)
+
+        // Ставим в очередь батча — сеть не трогаем
+        cloudSync.enqueueKnowledgeItem(
+            itemId = entity.wordId,
+            data   = KnowledgeMapper.wordKnowledgeToSyncMap(entity),
+        )
+    }
 
     override suspend fun getWordKnowledgeByTopic(
         userId: String,
-        topic: String
+        topic: String,
     ): Map<Word, WordKnowledge?> {
         val words = wordDao.getWordsByTopic(topic).map { it.toDomain() }
         return words.associateWith { word ->
@@ -192,7 +237,7 @@ class KnowledgeRepositoryImpl(
 
     override suspend fun getRulesForReview(
         userId: String,
-        limit: Int
+        limit: Int,
     ): List<Pair<GrammarRule, RuleKnowledge>> {
         val now = DateUtils.nowTimestamp()
         val rkEntities = knowledgeDao.getRulesForReview(userId, now, limit)
@@ -208,8 +253,20 @@ class KnowledgeRepositoryImpl(
     override suspend fun getKnownRulesCount(userId: String): Int =
         knowledgeDao.getKnownRulesCount(userId)
 
-    override suspend fun upsertRuleKnowledge(knowledge: RuleKnowledge) =
-        knowledgeDao.upsertRuleKnowledge(knowledge.toEntity(json))
+    /**
+     * Сохраняет знание правила в Room и ставит его в очередь синхронизации.
+     *
+     * ✅ Аналогично upsertWordKnowledge — батчинг, без per-item сетевых запросов.
+     */
+    override suspend fun upsertRuleKnowledge(knowledge: RuleKnowledge) {
+        val entity = knowledge.toEntity(json)
+        knowledgeDao.upsertRuleKnowledge(entity)
+
+        cloudSync.enqueueKnowledgeItem(
+            itemId = "rule_${entity.ruleId}",
+            data   = KnowledgeMapper.ruleKnowledgeToSyncMap(entity),
+        )
+    }
 
     // ==========================================
     // PHRASES
@@ -218,68 +275,68 @@ class KnowledgeRepositoryImpl(
     override suspend fun getPhrase(phraseId: String): Phrase? =
         phraseDao.getPhrase(phraseId)?.let { entity ->
             Phrase(
-                id = entity.id,
-                german = entity.german,
-                russian = entity.russian,
-                category = try {
+                id              = entity.id,
+                german          = entity.german,
+                russian         = entity.russian,
+                category        = try {
                     PhraseCategory.valueOf(entity.category)
                 } catch (e: Exception) {
                     PhraseCategory.OTHER
                 },
                 difficultyLevel = CefrLevel.fromString(entity.difficultyLevel),
-                bookChapter = entity.bookChapter,
-                bookLesson = entity.bookLesson,
-                context = entity.context,
-                createdAt = entity.createdAt
+                bookChapter     = entity.bookChapter,
+                bookLesson      = entity.bookLesson,
+                context         = entity.context,
+                createdAt       = entity.createdAt,
             )
         }
 
     override suspend fun getAllPhrases(): List<Phrase> =
         phraseDao.getAllPhrases().map { entity ->
             Phrase(
-                id = entity.id,
-                german = entity.german,
-                russian = entity.russian,
-                category = try {
+                id              = entity.id,
+                german          = entity.german,
+                russian         = entity.russian,
+                category        = try {
                     PhraseCategory.valueOf(entity.category)
                 } catch (e: Exception) {
                     PhraseCategory.OTHER
                 },
                 difficultyLevel = CefrLevel.fromString(entity.difficultyLevel),
-                bookChapter = entity.bookChapter,
-                bookLesson = entity.bookLesson,
-                context = entity.context,
-                createdAt = entity.createdAt
+                bookChapter     = entity.bookChapter,
+                bookLesson      = entity.bookLesson,
+                context         = entity.context,
+                createdAt       = entity.createdAt,
             )
         }
 
     override suspend fun insertPhrase(phrase: Phrase) =
         phraseDao.insertPhrase(
             PhraseEntity(
-                id = phrase.id,
-                german = phrase.german,
-                russian = phrase.russian,
-                category = phrase.category.name,
+                id              = phrase.id,
+                german          = phrase.german,
+                russian         = phrase.russian,
+                category        = phrase.category.name,
                 difficultyLevel = phrase.difficultyLevel.name,
-                bookChapter = phrase.bookChapter,
-                bookLesson = phrase.bookLesson,
-                context = phrase.context,
-                createdAt = phrase.createdAt
+                bookChapter     = phrase.bookChapter,
+                bookLesson      = phrase.bookLesson,
+                context         = phrase.context,
+                createdAt       = phrase.createdAt,
             )
         )
 
     override suspend fun insertPhrases(phrases: List<Phrase>) =
         phraseDao.insertPhrases(phrases.map { phrase ->
             PhraseEntity(
-                id = phrase.id,
-                german = phrase.german,
-                russian = phrase.russian,
-                category = phrase.category.name,
+                id              = phrase.id,
+                german          = phrase.german,
+                russian         = phrase.russian,
+                category        = phrase.category.name,
                 difficultyLevel = phrase.difficultyLevel.name,
-                bookChapter = phrase.bookChapter,
-                bookLesson = phrase.bookLesson,
-                context = phrase.context,
-                createdAt = phrase.createdAt
+                bookChapter     = phrase.bookChapter,
+                bookLesson      = phrase.bookLesson,
+                context         = phrase.context,
+                createdAt       = phrase.createdAt,
             )
         })
 
@@ -295,7 +352,7 @@ class KnowledgeRepositoryImpl(
 
     override suspend fun getPhrasesForReview(
         userId: String,
-        limit: Int
+        limit: Int,
     ): List<Pair<Phrase, PhraseKnowledge>> {
         val now = DateUtils.nowTimestamp()
         val pkEntities = knowledgeDao.getPhrasesForReview(userId, now, limit)
@@ -333,16 +390,17 @@ class KnowledgeRepositoryImpl(
 
     override suspend fun getPronunciationResults(
         userId: String,
-        word: String
+        word: String,
     ): List<PronunciationResult> =
-        progressDao.getPronunciationRecords(userId, word).map { with(KnowledgeMapper) { it.toDomain(json) } }
+        progressDao.getPronunciationRecords(userId, word)
+            .map { with(KnowledgeMapper) { it.toDomain(json) } }
 
     override suspend fun getAveragePronunciationScore(userId: String): Float =
         progressDao.getAveragePronunciationScore(userId)
 
     override suspend fun getProblemSounds(userId: String): List<PhoneticTarget> {
         val problemWords = progressDao.getProblemWordsForPronunciation(userId)
-        val soundMap = mutableMapOf<String, MutableList<Float>>()
+        val soundMap     = mutableMapOf<String, MutableList<Float>>()
         val soundWordsMap = mutableMapOf<String, MutableSet<String>>()
 
         for (pw in problemWords) {
@@ -363,27 +421,27 @@ class KnowledgeRepositoryImpl(
         return soundMap.map { (sound, scores) ->
             val avgScore = if (scores.isNotEmpty()) scores.average().toFloat() else 0f
             val trend = if (scores.size >= 3) {
-                val recent = scores.takeLast(3).average()
+                val recent  = scores.takeLast(3).average()
                 val earlier = scores.take(3).average()
                 when {
                     recent > earlier + 0.1 -> PronunciationTrend.IMPROVING
                     recent < earlier - 0.1 -> PronunciationTrend.DECLINING
-                    else -> PronunciationTrend.STABLE
+                    else                   -> PronunciationTrend.STABLE
                 }
             } else {
                 PronunciationTrend.STABLE
             }
 
             PhoneticTarget(
-                sound = sound,
-                ipa = sound,
-                detectionDate = DateUtils.nowTimestamp(),
-                totalAttempts = scores.size,
+                sound              = sound,
+                ipa                = sound,
+                detectionDate      = DateUtils.nowTimestamp(),
+                totalAttempts      = scores.size,
                 successfulAttempts = scores.count { it >= 0.7f },
-                currentScore = avgScore,
-                trend = trend,
-                lastPracticed = DateUtils.nowTimestamp(),
-                inWords = soundWordsMap[sound]?.toList()?.take(5) ?: emptyList()
+                currentScore       = avgScore,
+                trend              = trend,
+                lastPracticed      = DateUtils.nowTimestamp(),
+                inWords            = soundWordsMap[sound]?.toList()?.take(5) ?: emptyList(),
             )
         }.sortedBy { it.currentScore }
     }
@@ -392,29 +450,48 @@ class KnowledgeRepositoryImpl(
         knowledgeDao.getPerfectPronunciationCount(userId)
 
     override suspend fun getRecentPronunciationRecords(userId: String, limit: Int): List<PronunciationResult> =
-        knowledgeDao.getRecentPronunciationRecords(userId, limit).map { with(KnowledgeMapper) { it.toDomain(json) } }
+        knowledgeDao.getRecentPronunciationRecords(userId, limit)
+            .map { with(KnowledgeMapper) { it.toDomain(json) } }
 
     override suspend fun recalculateOverdueItems(userId: String) {
-        // Words overdue — already handled by getWordsForReview query
-        // This method exists as a hook for future SRS interval recalculation
-        // Currently a no-op: SRS intervals are recalculated on-demand when
-        // items are reviewed via upsertWordKnowledge / upsertRuleKnowledge
+        // SRS интервалы пересчитываются on-demand при upsertWordKnowledge / upsertRuleKnowledge.
+        // Метод оставлен как хук для будущего расширения.
     }
+
+    // ==========================================
+    // SYNC
+    // ==========================================
+
+    /**
+     * Сбрасывает очередь батча в Firestore.
+     *
+     * Вызывать ОДИН РАЗ в конце сессии (endSession / VoiceCoreEngineImpl).
+     * Отправляет все накопленные за сессию upsertWordKnowledge / upsertRuleKnowledge
+     * одним или несколькими batch-коммитами.
+     *
+     * 50 слов за сессию SRS = было 50 записей в квоту Firestore,
+     * теперь = 1 batch-commit.
+     *
+     * @return [CloudSyncService.SyncStatus]
+     */
+    suspend fun flushSync(): CloudSyncService.SyncStatus =
+        cloudSync.flushPendingQueue()
 
     // ==========================================
     // KNOWLEDGE SNAPSHOT
     // ==========================================
 
     override suspend fun buildKnowledgeSnapshot(userId: String): KnowledgeSnapshot {
-        // ✅ FIX OOM: Используем getBriefWordKnowledge() вместо getAllWordKnowledge().
-        // getAllWordKnowledge() тянет полные объекты включая mistakesJson (может быть очень большим).
-        // При 5000+ словах Room пытается аллоцировать >2MB в CursorWindow → OOM / CursorWindowAllocationException.
-        // WordKnowledgeBrief содержит только числовые поля — никаких JSON-строк.
+        // ✅ FIX OOM: getBriefWordKnowledge() вместо getAllWordKnowledge()
         val allWKBrief = knowledgeDao.getBriefWordKnowledge(userId)
-        val allWords = wordDao.getAllWords()
-        val allRK = knowledgeDao.getAllRuleKnowledge(userId)
-        val allRules = grammarRuleDao.getAllRules()
-        val now = DateUtils.nowTimestamp()
+        val allWords   = wordDao.getAllWords()
+        val allRK      = knowledgeDao.getAllRuleKnowledge(userId)
+        val allRules   = grammarRuleDao.getAllRules()
+        val now        = DateUtils.nowTimestamp()
+
+        // ✅ FIX N+1: O(1) lookup вместо O(n) find() внутри цикла
+        val allWordsById = allWords.associateBy { it.id }
+        val allRulesById = allRules.associateBy { it.id }
 
         // --- Vocabulary Snapshot ---
         val wordsByLevel = allWKBrief.groupBy { it.knowledgeLevel }
@@ -431,28 +508,24 @@ class KnowledgeRepositoryImpl(
             .filter { it.lastSeen != null }
             .sortedByDescending { it.lastSeen }
             .take(10)
-            .mapNotNull { wk -> allWords.find { it.id == wk.wordId }?.german }
+            .mapNotNull { wk -> allWordsById[wk.wordId]?.german }
 
         val problemWordsList = allWKBrief
             .filter { it.knowledgeLevel <= 2 && it.timesSeen >= 3 }
             .sortedBy { it.knowledgeLevel }
             .take(10)
             .map { wk ->
-                val word = allWords.find { it.id == wk.wordId }?.german ?: "?"
-                ProblemWordInfo(
-                    word = word,
-                    level = wk.knowledgeLevel,
-                    attempts = wk.timesSeen
-                )
+                val word = allWordsById[wk.wordId]?.german ?: "?"
+                ProblemWordInfo(word = word, level = wk.knowledgeLevel, attempts = wk.timesSeen)
             }
 
         val vocabularySnapshot = VocabularySnapshot(
-            totalWords = allWKBrief.count { it.knowledgeLevel > 0 },
-            byLevel = wordsByLevel,
-            byTopic = byTopic,
-            recentNewWords = recentWords,
-            problemWords = problemWordsList,
-            wordsForReviewToday = knowledgeDao.getWordsForReviewCount(userId, now)
+            totalWords          = allWKBrief.count { it.knowledgeLevel > 0 },
+            byLevel             = wordsByLevel,
+            byTopic             = byTopic,
+            recentNewWords      = recentWords,
+            problemWords        = problemWordsList,
+            wordsForReviewToday = knowledgeDao.getWordsForReviewCount(userId, now),
         )
 
         // --- Grammar Snapshot ---
@@ -462,54 +535,55 @@ class KnowledgeRepositoryImpl(
         val knownRulesList = allRK
             .filter { it.knowledgeLevel >= 4 }
             .mapNotNull { rk ->
-                val rule = allRules.find { it.id == rk.ruleId }
-                rule?.let { KnownRuleInfo(name = it.nameRu, level = rk.knowledgeLevel) }
+                allRulesById[rk.ruleId]?.let { rule ->
+                    KnownRuleInfo(name = rule.nameRu, level = rk.knowledgeLevel)
+                }
             }
 
         val problemRulesList = allRK
             .filter { it.knowledgeLevel <= 2 && it.timesPracticed >= 3 }
-            .mapNotNull { rk -> allRules.find { it.id == rk.ruleId }?.nameRu }
+            .mapNotNull { rk -> allRulesById[rk.ruleId]?.nameRu }
 
         val grammarSnapshot = GrammarSnapshot(
-            totalRules = allRules.size,
-            byLevel = rulesByLevel,
-            knownRules = knownRulesList,
-            problemRules = problemRulesList,
-            rulesForReviewToday = knowledgeDao.getRulesForReviewCount(userId, now)
+            totalRules          = allRules.size,
+            byLevel             = rulesByLevel,
+            knownRules          = knownRulesList,
+            problemRules        = problemRulesList,
+            rulesForReviewToday = knowledgeDao.getRulesForReviewCount(userId, now),
         )
 
         // --- Pronunciation Snapshot ---
-        val avgPron = progressDao.getAveragePronunciationScore(userId)
+        val avgPron            = progressDao.getAveragePronunciationScore(userId)
         val problemSoundsResult = getProblemSounds(userId)
 
         val pronunciationSnapshot = PronunciationSnapshot(
-            overallScore = avgPron,
-            problemSounds = problemSoundsResult.map { it.sound },
-            goodSounds = emptyList(),
+            overallScore    = avgPron,
+            problemSounds   = problemSoundsResult.map { it.sound },
+            goodSounds      = emptyList(),
             averageWordScore = avgPron,
             trend = if (problemSoundsResult.any { it.trend == PronunciationTrend.IMPROVING }) {
                 "improving"
             } else {
                 "stable"
-            }
+            },
         )
 
         // --- Book Progress Snapshot ---
         val bookProgressSnapshot = BookProgressSnapshot(
-            currentChapter = 1,
-            currentLesson = 1,
-            totalChapters = 20,
+            currentChapter      = 1,
+            currentLesson       = 1,
+            totalChapters       = 20,
             completionPercentage = 0f,
-            currentTopic = ""
+            currentTopic        = "",
         )
 
         // --- Session History Snapshot ---
         val sessionHistorySnapshot = SessionHistorySnapshot(
-            lastSession = "",
-            lastSessionSummary = "",
+            lastSession            = "",
+            lastSessionSummary     = "",
             averageSessionDuration = "",
-            streak = 0,
-            totalSessions = 0
+            streak                 = 0,
+            totalSessions          = 0,
         )
 
         // --- Weak Points ---
@@ -531,26 +605,26 @@ class KnowledgeRepositoryImpl(
         // --- Recommendations ---
         val srsCount = vocabularySnapshot.wordsForReviewToday + grammarSnapshot.rulesForReviewToday
         val primaryStrategy = when {
-            srsCount > 10 -> "REPETITION"
-            weakPointDescriptions.size > 5 -> "GAP_FILLING"
-            else -> "LINEAR_BOOK"
+            srsCount > 10                   -> "REPETITION"
+            weakPointDescriptions.size > 5  -> "GAP_FILLING"
+            else                            -> "LINEAR_BOOK"
         }
 
         val recommendationsSnapshot = RecommendationsSnapshot(
-            primaryStrategy = primaryStrategy,
-            secondaryStrategy = "LINEAR_BOOK",
-            focusAreas = weakPointDescriptions.take(3),
-            suggestedSessionDuration = "30 мин"
+            primaryStrategy         = primaryStrategy,
+            secondaryStrategy       = "LINEAR_BOOK",
+            focusAreas              = weakPointDescriptions.take(3),
+            suggestedSessionDuration = "30 мин",
         )
 
         return KnowledgeSnapshot(
-            vocabulary = vocabularySnapshot,
-            grammar = grammarSnapshot,
+            vocabulary    = vocabularySnapshot,
+            grammar       = grammarSnapshot,
             pronunciation = pronunciationSnapshot,
-            bookProgress = bookProgressSnapshot,
+            bookProgress  = bookProgressSnapshot,
             sessionHistory = sessionHistorySnapshot,
-            weakPoints = weakPointDescriptions,
-            recommendations = recommendationsSnapshot
+            weakPoints    = weakPointDescriptions,
+            recommendations = recommendationsSnapshot,
         )
     }
 }
