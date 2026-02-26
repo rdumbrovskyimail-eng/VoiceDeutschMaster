@@ -1,5 +1,7 @@
+// app/src/main/java/com/voicedeutsch/master/data/local/database/dao/KnowledgeDao.kt
 package com.voicedeutsch.master.data.local.database.dao
 
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -178,13 +180,13 @@ interface KnowledgeDao {
      * CursorWindow Android ограничен ~2MB — без этой оптимизации OOM гарантирован.
      */
     data class WordKnowledgeBrief(
-        val wordId: String,
-        val knowledgeLevel: Int,
-        val timesSeen: Int,
-        val timesCorrect: Int,
-        val timesIncorrect: Int,
-        val lastSeen: Long?,
-        val nextReview: Long?,
+        @ColumnInfo(name = "word_id") val wordId: String,
+        @ColumnInfo(name = "knowledge_level") val knowledgeLevel: Int,
+        @ColumnInfo(name = "times_seen") val timesSeen: Int,
+        @ColumnInfo(name = "times_correct") val timesCorrect: Int,
+        @ColumnInfo(name = "times_incorrect") val timesIncorrect: Int,
+        @ColumnInfo(name = "last_seen") val lastSeen: Long?,
+        @ColumnInfo(name = "next_review") val nextReview: Long?,
     )
 
     @Query(
