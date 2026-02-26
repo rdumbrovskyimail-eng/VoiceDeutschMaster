@@ -84,6 +84,12 @@ import kotlinx.serialization.json.buildJsonObject
 //   7. GeminiResponse.functionCall → functionCalls: List<GeminiFunctionCall>
 //   8. sendFunctionResults(List<Pair>) — отправляет все ответы одним батчем.
 // ════════════════════════════════════════════════════════════════════════════
+// ИЗМЕНЕНИЯ (Empty parameters_json_schema fix):
+//   9. FIX: mapToFirebaseDeclaration() — для функций без параметров вызываем
+//      двухаргументный FunctionDeclaration(name, description) без parameters.
+//      Старый код передавал emptyMap() → SDK генерировал пустую
+//      parameters_json_schema → сервер отклонял WebSocket handshake.
+// ════════════════════════════════════════════════════════════════════════════
 
 /**
  * GeminiClient — обёртка над Firebase AI Logic Live API SDK.
@@ -332,15 +338,31 @@ class GeminiClient(
 
     // ── Нативный маппинг функций ──────────────────────────────────────────────
 
+    /**
+     * Маппит GeminiFunctionDeclaration → Firebase AI SDK FunctionDeclaration.
+     *
+     * ✅ FIX: для функций без параметров вызываем двухаргументный конструктор
+     * FunctionDeclaration(name, description) без parameters. Старый код
+     * передавал emptyMap() → SDK генерировал пустую parameters_json_schema
+     * → сервер отклонял WebSocket handshake с ошибкой:
+     * "parameters_json_schema must not be specified for functions with no parameters"
+     */
     private fun mapToFirebaseDeclaration(decl: GeminiFunctionDeclaration): FunctionDeclaration {
         val params = decl.parameters
-        val properties = params?.properties?.mapValues { (_, prop) ->
-            mapPropertyToSchema(prop)
-        } ?: emptyMap()
 
-        val optionalProperties = params?.let { p ->
-            properties.keys.filter { it !in p.required }
-        } ?: emptyList()
+        // Функции без параметров — не передаём parameters вообще
+        if (params == null || params.properties.isEmpty()) {
+            return FunctionDeclaration(
+                name        = decl.name,
+                description = decl.description,
+            )
+        }
+
+        val properties = params.properties.mapValues { (_, prop) ->
+            mapPropertyToSchema(prop)
+        }
+
+        val optionalProperties = properties.keys.filter { it !in params.required }
 
         return FunctionDeclaration(
             name               = decl.name,
