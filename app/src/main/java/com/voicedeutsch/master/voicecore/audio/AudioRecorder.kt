@@ -32,7 +32,7 @@ class AudioRecorder {
 
     companion object {
         const val SAMPLE_RATE = Constants.AUDIO_INPUT_SAMPLE_RATE // 16 000 Hz
-        const val FRAME_SIZE_SAMPLES = 320 // 20ms at 16kHz
+        const val FRAME_SIZE_SAMPLES = 4000 // 250ms at 16kHz (Оптимально для Gemini Live)
 
         private val MIN_BUFFER_SIZE: Int = AudioRecord.getMinBufferSize(
             SAMPLE_RATE,
