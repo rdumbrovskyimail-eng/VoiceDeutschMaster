@@ -490,22 +490,35 @@ class GeminiClient(
     private fun mapToFirebaseDeclaration(decl: GeminiFunctionDeclaration): FunctionDeclaration? {
         val params = decl.parameters
 
-        // ✅ ИСПРАВЛЕНИЕ: Убрали пропуск пустых параметров.
-        // Теперь все функции будут иметь как минимум один dummy-параметр.
-        val properties = params?.properties?.mapValues { (_, prop) ->
-            mapPropertyToSchema(prop)
-        } ?: emptyMap()
+        // Если параметров нет вообще, возвращаем декларацию без них
+        if (params == null || params.properties.isEmpty()) {
+            Log.d(TAG, "  ⚙ ${decl.name} — no params")
+            return FunctionDeclaration(
+                name = decl.name,
+                description = decl.description
+            )
+        }
 
-        val optionalProperties = properties.keys.filter { it !in (params?.required ?: emptyList()) }
+        val properties = params.properties.mapValues { (_, prop) ->
+            mapPropertyToSchema(prop)
+        }
+
+        val optionalProperties = properties.keys.filter { it !in params.required }
 
         Log.d(TAG, "  ⚙ ${decl.name} — params: ${properties.keys}, " +
-                "required: ${params?.required}, optional: $optionalProperties")
+                "required: ${params.required}, optional: $optionalProperties")
+
+        // ✅ ИСПРАВЛЕНИЕ: Оборачиваем свойства в корневой Schema.object
+        // Это критически важно для Gemini Live API
+        val schema = Schema.`object`(
+            properties = properties,
+            optionalProperties = optionalProperties
+        )
 
         return FunctionDeclaration(
-            name               = decl.name,
-            description        = decl.description,
-            parameters         = properties,
-            optionalParameters = optionalProperties,
+            name = decl.name,
+            description = decl.description,
+            parameters = schema // Передаем объект Schema, а не Map
         )
     }
 
