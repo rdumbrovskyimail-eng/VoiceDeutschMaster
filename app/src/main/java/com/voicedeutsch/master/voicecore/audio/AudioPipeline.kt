@@ -171,8 +171,17 @@ class AudioPipeline(private val context: Context) {
                             player.write(chunk)
                         }
                     } finally {
-                        player.stop()
-                        stateMutex.withLock { _isPlaying = false }
+                        // ✅ FIX Deadlock: NonCancellable гарантирует, что finally-блок
+                        // выполнится до конца даже при отмене корутины.
+                        // withLock внутри finally без NonCancellable может быть отменён
+                        // в момент ожидания мьютекса, оставив _isPlaying = true навсегда.
+                        // flushPlayback/stopPlayback уже сбрасывают _isPlaying = false
+                        // до cancelAndJoin(), поэтому повторный withLock здесь идемпотентен
+                        // и не вызывает deadlock (мьютекс уже свободен к этому моменту).
+                        withContext(NonCancellable) {
+                            player.stop()
+                            stateMutex.withLock { _isPlaying = false }
+                        }
                     }
                 }
             }
