@@ -271,6 +271,9 @@ class VoiceCoreEngineImpl(
                     runCatching { geminiClient.disconnect() }
                         .onFailure { Log.w(TAG, "disconnect() warning: ${it.message}") }
 
+                    // ✅ НОВОЕ: сбрасываем resumption handle при завершении сессии
+                    geminiClient.clearResumptionHandle()
+
                     val result = endLearningSession(sessionId)
 
                     val syncOk = runCatching { flushKnowledgeSync() }.getOrElse { e ->
