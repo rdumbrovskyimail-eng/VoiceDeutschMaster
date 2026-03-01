@@ -399,7 +399,6 @@ class GeminiClient(
             .filterIsInstance<InlineDataPart>()
             .firstOrNull()
             ?.inlineData
-            ?.blob
             ?.takeIf { it.isNotEmpty() }
 
         val textContent = parts
