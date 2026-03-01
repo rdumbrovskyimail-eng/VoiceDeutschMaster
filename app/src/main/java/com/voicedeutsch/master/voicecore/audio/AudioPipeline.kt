@@ -3,6 +3,7 @@ package com.voicedeutsch.master.voicecore.audio
 import android.content.Context
 import com.voicedeutsch.master.util.AudioUtils
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -28,8 +29,10 @@ class AudioPipeline(private val context: Context) {
     val incomingAudioFlow: kotlinx.coroutines.flow.SharedFlow<ByteArray> = _audioSharedFlow
     fun audioChunks(): kotlinx.coroutines.flow.Flow<ByteArray> = _audioSharedFlow
 
-    // 🔥 FIX: Заменили DROP_OLDEST на UNLIMITED для плавности речи ИИ
-    private var playbackQueue = Channel<ByteArray>(capacity = Channel.UNLIMITED)
+    // 🔥 FIX #13: Ограниченный буфер вместо UNLIMITED во избежание OOM.
+    // При 24kHz 16-bit mono ~48 KB/сек; 128 чанков ≈ несколько секунд буфера.
+    // DROP_OLDEST отбрасывает устаревшие данные при переполнении вместо роста очереди.
+    private var playbackQueue = Channel<ByteArray>(capacity = 128, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
     private var scopeJob = SupervisorJob()
     private var pipelineScope = CoroutineScope(Dispatchers.IO + scopeJob)
@@ -107,7 +110,7 @@ class AudioPipeline(private val context: Context) {
                 playbackJob = null
                 _isPlaying = false
                 playbackQueue.cancel()
-                playbackQueue = Channel(capacity = Channel.UNLIMITED)
+                playbackQueue = Channel(capacity = 128, onBufferOverflow = BufferOverflow.DROP_OLDEST)
                 job
             }
 
@@ -128,7 +131,7 @@ class AudioPipeline(private val context: Context) {
                 playbackJob = null
                 _isPlaying = false
                 playbackQueue.cancel()
-                playbackQueue = Channel(capacity = Channel.UNLIMITED)
+                playbackQueue = Channel(capacity = 128, onBufferOverflow = BufferOverflow.DROP_OLDEST)
                 job
             }
 
