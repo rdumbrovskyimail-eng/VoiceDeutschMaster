@@ -65,6 +65,26 @@ val voiceCoreModule = module {
             topK        = 40,
             audioInputFormat  = GeminiConfig.AudioFormat.PCM_16KHZ_16BIT_MONO,
             audioOutputFormat = GeminiConfig.AudioFormat.PCM_24KHZ_16BIT_MONO,
+            // ✅ НОВОЕ: Live API capabilities
+            contextWindowCompression = true,
+            sessionResumptionEnabled = true,
+            vadConfig = GeminiConfig.VadConfig(
+                disabled = false,
+                startSensitivity = GeminiConfig.VadConfig.Sensitivity.DEFAULT,
+                endSensitivity   = GeminiConfig.VadConfig.Sensitivity.DEFAULT,
+                prefixPaddingMs  = 20,
+                silenceDurationMs = 100,
+            ),
+            transcriptionConfig = GeminiConfig.TranscriptionConfig(
+                inputTranscriptionEnabled  = true,
+                outputTranscriptionEnabled = true,
+            ),
+            affectiveDialogEnabled  = true,
+            proactiveAudioEnabled   = false,
+            thinkingBudget          = 1024,
+            includeThoughts         = false,
+            enableSearchGrounding   = false,
+            functionCallingMode     = GeminiConfig.FunctionCallingMode.AUTO,
         )
     }
 
