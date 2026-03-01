@@ -76,8 +76,8 @@ val voiceCoreModule = module {
                 silenceDurationMs = 100,
             ),
             transcriptionConfig = GeminiConfig.TranscriptionConfig(
-                inputTranscriptionEnabled  = true,
-                outputTranscriptionEnabled = true,
+                inputTranscriptionEnabled  = false,
+                outputTranscriptionEnabled = false,
             ),
             affectiveDialogEnabled  = true,
             proactiveAudioEnabled   = false,
