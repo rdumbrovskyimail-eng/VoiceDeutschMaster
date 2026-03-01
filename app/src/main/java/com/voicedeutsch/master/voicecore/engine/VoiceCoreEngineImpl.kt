@@ -355,6 +355,12 @@ class VoiceCoreEngineImpl(
         audioForwardJob = null
         audioPipeline.stopRecording()
         transitionAudio(AudioState.IDLE)
+
+        // ✅ НОВОЕ: сигнал паузы аудиопотока для серверного VAD
+        engineScope.launch {
+            runCatching { geminiClient.sendAudioStreamEnd() }
+                .onFailure { Log.w(TAG, "sendAudioStreamEnd failed: ${it.message}") }
+        }
     }
 
     override fun pausePlayback() {
