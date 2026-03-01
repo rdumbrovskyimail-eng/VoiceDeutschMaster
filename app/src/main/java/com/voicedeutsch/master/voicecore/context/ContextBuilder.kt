@@ -150,7 +150,7 @@ class ContextBuilder(
          * Бюджет для системного контекста (Setup-сообщение).
          * Увеличен до 90_000 (25.02.2026) — оставляем ~41k на историю разговора.
          */
-        const val SAFE_CONTEXT_TOKEN_BUDGET = 90_000
+        const val SAFE_CONTEXT_TOKEN_BUDGET = 16_000 // Безопасный размер для стартового WS-фрейма
 
         /** Порог предупреждения (>85% от общего лимита) */
         private const val WARN_TOKEN_THRESHOLD = (LIVE_API_TOTAL_TOKEN_LIMIT * 0.85).toInt()
