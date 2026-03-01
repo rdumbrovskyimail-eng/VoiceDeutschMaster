@@ -98,8 +98,6 @@ class GeminiClient(
 
     // ── Состояние ─────────────────────────────────────────────────────────────
 
-    private val clientScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
     @Volatile private var liveSession: LiveSession? = null
 
     /** Мьютекс для безопасного доступа к liveSession из разных корутин */
@@ -381,7 +379,6 @@ class GeminiClient(
         sessionResumptionHandle = null
         lastTokenUsage = null
         consecutiveSendErrors.set(0)
-        clientScope.cancel()
     }
 
     /** Сброс токена возобновления (при полном завершении сессии) */
