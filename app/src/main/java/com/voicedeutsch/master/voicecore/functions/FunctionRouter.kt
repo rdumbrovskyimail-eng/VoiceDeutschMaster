@@ -420,10 +420,14 @@ class FunctionRouter(
         args:      JsonObject,
         sessionId: String?,
     ): FunctionCallResult {
+        val eventType = args.str("event_type") ?: "unknown"
+        val details   = args.str("details") ?: ""
+        // ✅ ДОБАВЛЕНО: логирование событий сессии
+        android.util.Log.d("FunctionRouter", "Session event: type=$eventType, details=$details, session=$sessionId")
         return FunctionCallResult(
             functionName = "log_session_event",
             success      = true,
-            resultJson   = """{"status":"logged","session_id":"${sessionId ?: ""}"}""",
+            resultJson   = """{"status":"logged","session_id":"${sessionId ?: ""}","event_type":"$eventType"}""",
         )
     }
 
