@@ -175,7 +175,7 @@ class GeminiClient(
 
             Log.d(TAG, "Live config: transcription enabled")
 
-            val liveModel = Firebase.ai.liveModel(
+            val liveModel = Firebase.ai(backend = GenerativeBackend.googleAI()).liveModel(
                 modelName = config.modelName,
                 generationConfig = liveConfig,
                 systemInstruction = content(role = "system") { text(context.fullContext) },
