@@ -6,6 +6,7 @@ import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.FunctionCallPart
 import com.google.firebase.ai.type.FunctionDeclaration
 import com.google.firebase.ai.type.FunctionResponsePart
+import com.google.firebase.ai.type.InlineData
 import com.google.firebase.ai.type.InlineDataPart
 import com.google.firebase.ai.type.LiveServerContent
 import com.google.firebase.ai.type.LiveServerMessage
@@ -250,7 +251,7 @@ class GeminiClient(
         runCatching {
             // ✅ Оптимизированная отправка через sendAudioRealtime
             // Оптимизирован для быстрого отклика, работает с серверным VAD
-            session.sendAudioRealtime(pcmBytes)
+            session.sendAudioRealtime(InlineData(pcmBytes, AUDIO_INPUT_MIME))
         }.onFailure { e ->
             Log.e(TAG, "sendAudioChunk error: ${e.message}")
             liveSession = null
