@@ -13,6 +13,7 @@ import com.google.firebase.ai.type.LiveSession
 import com.google.firebase.ai.type.PublicPreviewAPI
 import com.google.firebase.ai.type.ResponseModality
 import com.google.firebase.ai.type.Schema
+import com.google.firebase.ai.type.AudioTranscriptionConfig
 import com.google.firebase.ai.type.SpeechConfig
 import com.google.firebase.ai.type.TextPart
 import com.google.firebase.ai.type.Tool
@@ -119,12 +120,11 @@ class GeminiClient(
                 if (firebaseDeclarations.isNotEmpty()) {
                     add(Tool.functionDeclarations(firebaseDeclarations))
                 }
-                // ✅ Google Search Grounding
-                if (config.enableSearchGrounding) {
-                    // TODO: verify Firebase AI SDK API for googleSearch tool
-                    // add(Tool.googleSearch())
-                    Log.d(TAG, "Google Search grounding requested (verify SDK support)")
-                }
+            // ✅ Google Search Grounding
+            if (config.enableSearchGrounding) {
+                add(Tool.googleSearch())
+                Log.d(TAG, "Google Search grounding enabled")
+            }
             }
 
             // ── Live Generation Config ────────────────────────────────────────
@@ -157,12 +157,12 @@ class GeminiClient(
                 // }
 
                 // ✅ Audio transcription
-                // if (config.transcriptionConfig.outputTranscriptionEnabled) {
-                //     outputAudioTranscription = OutputAudioTranscription()
-                // }
-                // if (config.transcriptionConfig.inputTranscriptionEnabled) {
-                //     inputAudioTranscription = InputAudioTranscription()
-                // }
+                if (config.transcriptionConfig.outputTranscriptionEnabled) {
+                    outputAudioTranscription = AudioTranscriptionConfig()
+                }
+                if (config.transcriptionConfig.inputTranscriptionEnabled) {
+                    inputAudioTranscription = AudioTranscriptionConfig()
+                }
 
                 // ✅ Affective dialog
                 // if (config.affectiveDialogEnabled) {
@@ -248,15 +248,9 @@ class GeminiClient(
         if (pcmBytes.isEmpty()) return
 
         runCatching {
-            // Попытка использовать оптимизированный sendRealtimeInput
-            // TODO: раскомментировать когда Firebase AI SDK поддержит метод
-            // session.sendRealtimeInput(
-            //     audio = pcmBytes,
-            //     mimeType = AUDIO_INPUT_MIME
-            // )
-
-            // Fallback: стандартная отправка через send(content)
-            session.send(content { inlineData(pcmBytes, AUDIO_INPUT_MIME) })
+            // ✅ Оптимизированная отправка через sendAudioRealtime
+            // Оптимизирован для быстрого отклика, работает с серверным VAD
+            session.sendAudioRealtime(pcmBytes)
         }.onFailure { e ->
             Log.e(TAG, "sendAudioChunk error: ${e.message}")
             liveSession = null
