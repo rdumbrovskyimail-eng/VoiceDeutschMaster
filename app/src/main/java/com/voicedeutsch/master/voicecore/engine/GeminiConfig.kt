@@ -4,11 +4,16 @@ package com.voicedeutsch.master.voicecore.engine
  * Complete configuration for Gemini Live API connection.
  *
  * ════════════════════════════════════════════════════════════════════════════
- * ИЗМЕНЕНИЯ (Live API Capabilities — полная реализация):
+ * СТАТУС ПОДДЕРЖКИ Firebase AI Logic SDK (март 2026):
  * ════════════════════════════════════════════════════════════════════════════
- *   ДОБАВЛЕНО: vadConfig, sessionResumption, contextWindowCompression,
- *              transcriptionConfig, affectiveDialog, proactiveAudio,
- *              thinkingBudget, enableSearchGrounding
+ *   ПОДДЕРЖИВАЕТСЯ и передаётся в SDK:
+ *     temperature, topP, topK → liveGenerationConfig { }
+ *
+ *   PLANNED (зарезервировано, но Firebase AI Logic SDK не поддерживает):
+ *     vadConfig, contextWindowCompression, sessionResumptionEnabled,
+ *     affectiveDialogEnabled, proactiveAudioEnabled, thinkingBudget,
+ *     functionCallingMode, enableSearchGrounding
+ * ════════════════════════════════════════════════════════════════════════════
  */
 data class GeminiConfig(
     val modelName: String = MODEL_GEMINI_LIVE,
@@ -24,38 +29,47 @@ data class GeminiConfig(
     val voiceName: String = DEFAULT_VOICE,
 
     // ── Live API Session Management ──────────────────────────────────────
-    /** Включить сжатие контекстного окна (sliding window) для неограниченных сессий */
+    // PLANNED: contextWindowCompression — NOT_YET_SUPPORTED by Firebase AI Logic SDK
+    /** [PLANNED] Сжатие контекстного окна (sliding window) для неограниченных сессий */
     val contextWindowCompression: Boolean = true,
 
-    /** Включить возобновление сессии при разрыве WebSocket */
+    // PLANNED: sessionResumptionEnabled — NOT_YET_SUPPORTED by Firebase AI Logic SDK
+    /** [PLANNED] Возобновление сессии при разрыве WebSocket */
     val sessionResumptionEnabled: Boolean = true,
 
     // ── Voice Activity Detection ─────────────────────────────────────────
+    // PLANNED: vadConfig — NOT_YET_SUPPORTED by Firebase AI Logic SDK
+    /** [PLANNED] Конфигурация VAD. Поля не передаются в SDK до появления поддержки */
     val vadConfig: VadConfig = VadConfig(),
 
     // ── Audio Transcription ──────────────────────────────────────────────
     val transcriptionConfig: TranscriptionConfig = TranscriptionConfig(),
 
     // ── Native Audio Features ────────────────────────────────────────────
-    /** Эмоциональный диалог — модель адаптирует тон к эмоциям пользователя */
+    // PLANNED: affectiveDialogEnabled — NOT_YET_SUPPORTED by Firebase AI Logic SDK
+    /** [PLANNED] Эмоциональный диалог — модель адаптирует тон к эмоциям пользователя */
     val affectiveDialogEnabled: Boolean = true,
 
-    /** Проактивное аудио — модель решает, когда отвечать, а когда молчать */
+    // PLANNED: proactiveAudioEnabled — NOT_YET_SUPPORTED by Firebase AI Logic SDK
+    /** [PLANNED] Проактивное аудио — модель решает, когда отвечать, а когда молчать */
     val proactiveAudioEnabled: Boolean = false,
 
     // ── Thinking ─────────────────────────────────────────────────────────
-    /** Бюджет токенов мышления. 0 = отключить, null = модель решает сама */
+    // PLANNED: thinkingBudget — NOT_YET_SUPPORTED by Firebase AI Logic SDK
+    /** [PLANNED] Бюджет токенов мышления. 0 = отключить, null = модель решает сама */
     val thinkingBudget: Int? = null,
 
-    /** Включить краткие обзоры мыслей в ответы */
+    /** [PLANNED] Включить краткие обзоры мыслей в ответы */
     val includeThoughts: Boolean = false,
 
     // ── Grounding ────────────────────────────────────────────────────────
-    /** Включить Google Search для проверки фактов */
+    // PLANNED: enableSearchGrounding — NOT_YET_SUPPORTED by Firebase AI Logic SDK
+    /** [PLANNED] Включить Google Search для проверки фактов */
     val enableSearchGrounding: Boolean = false,
 
     // ── Async Function Calling ───────────────────────────────────────────
-    /** Режим вызова функций: AUTO, ANY, NONE, VALIDATED */
+    // PLANNED: functionCallingMode — NOT_YET_SUPPORTED by Firebase AI Logic SDK
+    /** [PLANNED] Режим вызова функций: AUTO, ANY, NONE, VALIDATED */
     val functionCallingMode: FunctionCallingMode = FunctionCallingMode.AUTO,
 ) {
     init {
