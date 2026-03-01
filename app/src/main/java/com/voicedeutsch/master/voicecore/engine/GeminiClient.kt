@@ -470,18 +470,11 @@ class GeminiClient(
     private fun mapToFirebaseDeclaration(decl: GeminiFunctionDeclaration): FunctionDeclaration? {
         val params = decl.parameters
 
-        // Если параметров нет, создаем фиктивный параметр,
-        // чтобы избежать ошибки "parameters_json_schema must not be empty"
         if (params == null || params.properties.isEmpty()) {
-            Log.d(TAG, "  ⚙ ${decl.name} — injecting dummy param")
-            val dummyProps = mapOf(
-                "dummy" to Schema.string(description = "Игнорируемый параметр")
-            )
+            Log.d(TAG, "  ⚙ ${decl.name} — no parameters")
             return FunctionDeclaration(
                 name = decl.name,
                 description = decl.description,
-                parameters = dummyProps,
-                optionalParameters = listOf("dummy")
             )
         }
 
