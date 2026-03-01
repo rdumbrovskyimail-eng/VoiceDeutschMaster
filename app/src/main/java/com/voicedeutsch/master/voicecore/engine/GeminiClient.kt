@@ -353,28 +353,24 @@ class GeminiClient(
      * может отклонить входящие данные с ошибкой.
      */
     fun receiveFlow(): Flow<GeminiResponse> = flow {
-        val session = liveSession
+        // Читаем сессию в момент collect(), а не в момент создания Flow
+        val session = sessionMutex.withLock { liveSession }
             ?: throw GeminiConnectionException("receiveFlow: no active session")
 
-        try {
-            session.receive().collect { message ->
-                when (message) {
-                    is LiveServerContent -> {
-                        // Session resumption — не поддерживается Firebase SDK.
-                        // GoAway — не поддерживается Firebase SDK.
-                        // UsageMetadata — не поддерживается Firebase SDK.
+        session.receive().collect { message ->
+            when (message) {
+                is LiveServerContent -> {
+                    // Session resumption — не поддерживается Firebase SDK.
+                    // GoAway — не поддерживается Firebase SDK.
+                    // UsageMetadata — не поддерживается Firebase SDK.
 
-                        mapServerContent(message)?.let { emit(it) }
-                    }
-                    // Другие типы LiveServerMessage (если появятся)
-                    else -> {
-                        Log.d(TAG, "Unknown message type: ${message::class.simpleName}")
-                    }
+                    mapServerContent(message)?.let { emit(it) }
+                }
+                // Другие типы LiveServerMessage (если появятся)
+                else -> {
+                    Log.d(TAG, "Unknown message type: ${message::class.simpleName}")
                 }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "receiveFlow error: ${e.message}", e)
-            throw e
         }
     }
 
