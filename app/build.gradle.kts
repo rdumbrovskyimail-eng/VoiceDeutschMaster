@@ -45,7 +45,12 @@ android {
             isMinifyEnabled = false
             buildConfigField("Boolean", "DEBUG_MODE", "true")
             buildConfigField("Boolean", "USE_DEBUG_APP_CHECK", "true")
-            buildConfigField("String", "APP_CHECK_DEBUG_TOKEN", "\"\"")
+            // ✅ ИСПРАВЛЕНИЕ: Читаем токен из свойств проекта!
+            buildConfigField(
+                "String",
+                "APP_CHECK_DEBUG_TOKEN",
+                "\"${project.findProperty("appCheckDebugToken") ?: ""}\""
+            )
         }
 
         create("releaseDebug") {
