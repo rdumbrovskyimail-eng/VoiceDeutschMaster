@@ -472,8 +472,8 @@ class GeminiClient(
             return FunctionDeclaration(
                 name = decl.name,
                 description = decl.description,
-                parameters = emptyMap(),
-                optionalParameters = emptyList(),
+                parameters = null,
+                optionalParameters = null,
             )
         }
 
