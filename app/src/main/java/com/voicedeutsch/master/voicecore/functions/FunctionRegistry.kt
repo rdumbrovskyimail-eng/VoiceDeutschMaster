@@ -25,17 +25,16 @@ object FunctionRegistry {
     fun declare(
         name: String,
         description: String,
-        params: Map<String, Pair<String, String>> = emptyMap(), // name -> (type, description)
+        params: Map<String, Pair<String, String>> = emptyMap(),
         required: List<String> = emptyList(),
-        // ✅ ДОБАВЛЕНО: behavior для async function calling
-        behavior: FunctionBehavior = FunctionBehavior.BLOCKING,
     ) = GeminiFunctionDeclaration(
         name = name,
         description = description,
-        parameters = if (params.isEmpty()) null else GeminiParameters(
-            properties = params.mapValues { (_, v) -> GeminiProperty(type = v.first, description = v.second) },
+        parameters = GeminiParameters(
+            properties = params.mapValues { (_, v) ->
+                GeminiProperty(type = v.first, description = v.second)
+            },
             required = required,
         ),
-        behavior = behavior,
     )
 }
