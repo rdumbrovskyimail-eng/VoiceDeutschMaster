@@ -22,6 +22,7 @@ object ProgressFunctions {
         FunctionRegistry.declare(
             name = "get_user_statistics",
             description = "Получить сводную статистику пользователя.",
+            behavior = FunctionBehavior.NON_BLOCKING, // ✅ Не блокирует диалог
         ),
     )
 }
