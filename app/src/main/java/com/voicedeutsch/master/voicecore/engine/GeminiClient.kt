@@ -471,23 +471,35 @@ class GeminiClient(
     // ── Нативный маппинг функций ──────────────────────────────────────────────
 
     /**
-     * ✅ ИЗМЕНЕНО: маппинг behavior (NON_BLOCKING) в Firebase FunctionDeclaration.
+     * Маппит GeminiFunctionDeclaration → Firebase FunctionDeclaration.
+     *
+     * ════════════════════════════════════════════════════════════════
+     * FIX: Два бага вызывали `parameters_json_schema must not...` ошибку:
+     *
+     *   Баг A: Для функций без параметров инжектился dummy_param.
+     *          Live API отклоняет такую схему.
+     *   FIX A: Функции без параметров создаются БЕЗ parameters вообще.
+     *
+     *   Баг B: Когда required=[], optionalParameters возвращал emptyList(),
+     *          что SDK трактовал как "все параметры required" — конфликт.
+     *   FIX B: optionalProperties всегда вычисляется как
+     *          properties.keys.filter { it !in params.required }.
+     *          Если required пуст → все optional. Корректно.
+     * ════════════════════════════════════════════════════════════════
      */
     private fun mapToFirebaseDeclaration(decl: GeminiFunctionDeclaration): FunctionDeclaration {
         val params = decl.parameters
 
-        // Функции без параметров: хак для обхода бага валидации схемы Live API
+        // ──────────────────────────────────────────────────────────────────
+        // FIX A: Функции БЕЗ параметров — НЕ инжектируем dummy_param.
+        // Создаём FunctionDeclaration без parameters/optionalParameters.
+        // Live API корректно принимает такие декларации.
+        // ──────────────────────────────────────────────────────────────────
         if (params == null || params.properties.isEmpty()) {
-            Log.d(TAG, "  ⚙ ${decl.name} — no params, injecting REQUIRED dummy param")
+            Log.d(TAG, "  ⚙ ${decl.name} — no params, creating without parameters")
             return FunctionDeclaration(
-                name               = decl.name,
-                description        = decl.description,
-                parameters         = mapOf(
-                    "dummy_param" to Schema.boolean(
-                        description = "Required dummy parameter for execution. Always pass true."
-                    )
-                ),
-                optionalParameters = emptyList(),
+                name        = decl.name,
+                description = decl.description,
             )
         }
 
@@ -495,11 +507,21 @@ class GeminiClient(
             mapPropertyToSchema(prop)
         }
 
-        val optionalProperties = if (params.required.isEmpty()) {
-            emptyList()
-        } else {
-            properties.keys.filter { it !in params.required }
-        }
+        // ──────────────────────────────────────────────────────────────────
+        // FIX B: optionalParameters ВСЕГДА = properties \ required.
+        //
+        // БЫЛО (баг):
+        //   val optionalProperties = if (params.required.isEmpty()) {
+        //       emptyList()   // ← ВСЕ становились required!
+        //   } else {
+        //       properties.keys.filter { it !in params.required }
+        //   }
+        //
+        // СТАЛО:
+        //   Единая формула — если required пуст, все свойства optional.
+        //   Если required не пуст — только те, что не в списке.
+        // ──────────────────────────────────────────────────────────────────
+        val optionalProperties = properties.keys.filter { it !in params.required }
 
         Log.d(TAG, "  ⚙ ${decl.name} — params: ${properties.keys}, " +
                 "required: ${params.required}, optional: $optionalProperties")
