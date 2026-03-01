@@ -30,7 +30,12 @@ object FunctionRegistry {
     ) = GeminiFunctionDeclaration(
         name = name,
         description = description,
-        parameters = GeminiParameters(
+        // ════════════════════════════════════════════════════════════════
+        // FIX: Если params пуст → parameters = null (не пустой объект).
+        // Это гарантирует, что mapToFirebaseDeclaration() создаст
+        // FunctionDeclaration без параметров, а не с пустой схемой.
+        // ════════════════════════════════════════════════════════════════
+        parameters = if (params.isEmpty()) null else GeminiParameters(
             properties = params.mapValues { (_, v) ->
                 GeminiProperty(type = v.first, description = v.second)
             },
