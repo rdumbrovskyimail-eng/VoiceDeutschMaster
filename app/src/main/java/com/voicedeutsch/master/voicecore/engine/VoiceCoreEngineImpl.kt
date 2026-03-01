@@ -562,7 +562,15 @@ class VoiceCoreEngineImpl(
 
         cancelActiveJobs()
         audioPipeline.stopAll()
-        runCatching { geminiClient.disconnect() }
+
+        // ✅ ИЗМЕНЕНО: НЕ вызываем disconnect() — чтобы сохранить resumption handle
+        // Если handle есть, GeminiClient передаст его при reconnect
+        val hasResumptionHandle = geminiClient.sessionResumptionHandle != null
+        if (!hasResumptionHandle) {
+            runCatching { geminiClient.disconnect() }
+        }
+
+        Log.d(TAG, "Reconnecting (resumption=${hasResumptionHandle})")
 
         val snapshot = withContext(Dispatchers.IO) { buildKnowledgeSummary(uid) }
         val strategy = strategySelector.selectStrategy(snapshot)
@@ -591,7 +599,7 @@ class VoiceCoreEngineImpl(
             .launchIn(engineScope)
 
         startListening()
-        Log.d(TAG, "✅ Reconnected successfully")
+        Log.d(TAG, "✅ Reconnected successfully (resumption=$hasResumptionHandle)")
     }
 
     /**
