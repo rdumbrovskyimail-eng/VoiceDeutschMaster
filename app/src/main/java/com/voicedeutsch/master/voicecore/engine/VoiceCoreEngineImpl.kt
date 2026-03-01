@@ -133,6 +133,7 @@ class VoiceCoreEngineImpl(
     @Volatile private var activeUserId:    String? = null
     private val reconnectAttempts = AtomicInteger(0)
     @Volatile private var sessionStartMs: Long = 0L
+    private val reconnectMutex = Mutex()
 
     // ── State helpers ─────────────────────────────────────────────────────────
 
@@ -565,23 +566,39 @@ class VoiceCoreEngineImpl(
         Log.e(TAG, "Session error [attempts=${reconnectAttempts.get()}/$maxAttempts]: ${error.message}", error)
 
         engineScope.launch {
-            transitionEngine(VoiceEngineState.ERROR)
-            updateState { copy(errorMessage = error.message) }
+            // Guard: only one reconnect flow may proceed at a time.
+            // tryLock() returns false if another coroutine already holds the lock,
+            // so duplicate calls from receiveFlow + audioForwardJob are silently dropped.
+            if (!reconnectMutex.tryLock()) {
+                Log.w(TAG, "handleSessionError: reconnect already in progress — ignoring duplicate call")
+                return@launch
+            }
+            try {
+                transitionEngine(VoiceEngineState.ERROR)
+                updateState { copy(errorMessage = error.message) }
 
-            if (reconnectAttempts.get() < maxAttempts) {
-                val attempt = reconnectAttempts.incrementAndGet()
-                val delayMs = (config?.reconnectDelayMs ?: GeminiConfig.DEFAULT_RECONNECT_DELAY_MS) * attempt
+                if (reconnectAttempts.get() < maxAttempts) {
+                    val attempt = reconnectAttempts.incrementAndGet()
+                    val delayMs = (config?.reconnectDelayMs ?: GeminiConfig.DEFAULT_RECONNECT_DELAY_MS) * attempt
 
-                Log.d(TAG, "Reconnecting in ${delayMs}ms [attempt $attempt/$maxAttempts]")
-                transitionEngine(VoiceEngineState.RECONNECTING)
-                transitionConnection(ConnectionState.RECONNECTING)
-                delay(delayMs)
+                    Log.d(TAG, "Reconnecting in ${delayMs}ms [attempt $attempt/$maxAttempts]")
+                    transitionEngine(VoiceEngineState.RECONNECTING)
+                    transitionConnection(ConnectionState.RECONNECTING)
+                    delay(delayMs)
 
-                runCatching { reconnectInternal() }.onFailure { handleSessionError(it) }
-            } else {
-                Log.e(TAG, "Max reconnect attempts reached — giving up")
-                transitionConnection(ConnectionState.FAILED)
-                transitionEngine(VoiceEngineState.IDLE)
+                    runCatching { reconnectInternal() }.onFailure { cause ->
+                        // Release the lock before re-entering so the recursive call can acquire it.
+                        reconnectMutex.unlock()
+                        handleSessionError(cause)
+                        return@launch
+                    }
+                } else {
+                    Log.e(TAG, "Max reconnect attempts reached — giving up")
+                    transitionConnection(ConnectionState.FAILED)
+                    transitionEngine(VoiceEngineState.IDLE)
+                }
+            } finally {
+                if (reconnectMutex.isLocked) reconnectMutex.unlock()
             }
         }
     }
