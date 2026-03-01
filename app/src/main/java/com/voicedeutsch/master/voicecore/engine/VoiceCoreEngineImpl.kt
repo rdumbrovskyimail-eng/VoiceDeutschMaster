@@ -588,6 +588,22 @@ class VoiceCoreEngineImpl(
         Log.d(TAG, "✅ Reconnected successfully")
     }
 
+    /**
+     * ✅ НОВОЕ: Определяет FunctionResponseScheduling на основе behavior деклараций.
+     *
+     * Если хотя бы одна функция в batch — NON_BLOCKING, используем INTERRUPT.
+     * Это гарантирует, что модель получит результат как можно скорее.
+     */
+    private fun determineFunctionScheduling(
+        calls: List<GeminiFunctionCall>,
+    ): FunctionResponseScheduling? {
+        val allDeclarations = com.voicedeutsch.master.voicecore.functions.FunctionRegistry.getAllDeclarations()
+        val hasNonBlocking = calls.any { call ->
+            allDeclarations.find { it.name == call.name }?.behavior == FunctionBehavior.NON_BLOCKING
+        }
+        return if (hasNonBlocking) FunctionResponseScheduling.WHEN_IDLE else null
+    }
+
     private fun buildStrategyChangeMessage(strategy: LearningStrategy): String =
         "Пожалуйста, переключись на стратегию ${strategy.displayNameRu} (${strategy.name})."
 
