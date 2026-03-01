@@ -59,10 +59,25 @@ class VoiceDeutschApp : Application() {
 
     private fun initFirebase() {
         try {
+            // 1. Устанавливаем токен ДО инициализации Firebase
+            if (BuildConfig.USE_DEBUG_APP_CHECK) {
+                val token = BuildConfig.APP_CHECK_DEBUG_TOKEN
+                if (token.isNotEmpty()) {
+                    System.setProperty("firebase.test.token", token)
+                    Log.d(TAG, "✅ App Check debug token set from BuildConfig: ${token.take(8)}...")
+                } else {
+                    Log.w(TAG, "⚠️ APP_CHECK_DEBUG_TOKEN is empty in BuildConfig!")
+                }
+            }
+
+            // 2. Инициализируем Firebase
             FirebaseApp.initializeApp(this)
             Log.d(TAG, "✅ FirebaseApp initialized")
             
+            // 3. НЕМЕДЛЕННО настраиваем App Check
             initAppCheck()
+            
+            // 4. Остальные сервисы
             initCrashlytics()
             initAnalytics()
         } catch (e: Exception) {
@@ -72,14 +87,15 @@ class VoiceDeutschApp : Application() {
 
     private fun initAppCheck() {
         try {
-            if (BuildConfig.DEBUG_MODE) {
-                // В Debug-режиме полностью отключаем App Check, 
-                // чтобы он не блокировал запросы к Gemini
-                Log.d(TAG, "✅ App Check is DISABLED in Debug mode")
-                return
+            if (BuildConfig.USE_DEBUG_APP_CHECK) {
+                // Явно используем Debug провайдер
+                val debugProviderFactory = com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory.getInstance()
+                FirebaseAppCheck.getInstance().installAppCheckProviderFactory(debugProviderFactory)
+                Log.d(TAG, "✅ App Check initialized [DEBUG_PROVIDER]")
             } else {
+                // В релизе используем Play Integrity
                 FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
-                    PlayIntegrityAppCheckProviderFactory.getInstance()
+                    com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory.getInstance()
                 )
                 Log.d(TAG, "✅ App Check initialized [PLAY_INTEGRITY]")
             }
