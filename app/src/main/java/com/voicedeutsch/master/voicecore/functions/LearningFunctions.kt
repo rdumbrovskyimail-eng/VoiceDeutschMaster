@@ -24,6 +24,8 @@ object LearningFunctions {
         FunctionRegistry.declare(
             name = "get_pronunciation_targets",
             description = "Получить звуки и слова для тренировки произношения.",
+            // ✅ ИСПРАВЛЕНИЕ: Добавлен dummy-параметр
+            params = mapOf("dummy" to ("string" to "Игнорируемый параметр, передай 'ok'")),
         ),
     )
 }
