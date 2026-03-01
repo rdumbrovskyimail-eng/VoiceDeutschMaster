@@ -40,7 +40,6 @@ object UIFunctions {
                 "message" to ("string" to "Текст поздравления"),
             ),
             required = listOf("type", "message"),
-            behavior = FunctionBehavior.NON_BLOCKING, // ✅ Не блокирует — анимация мгновенная
         ),
     )
 }
