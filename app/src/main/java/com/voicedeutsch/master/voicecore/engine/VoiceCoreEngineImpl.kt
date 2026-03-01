@@ -260,17 +260,17 @@ class VoiceCoreEngineImpl(
             // Раньше: launchIn (async) → startListening() (сразу) → race.
             // Теперь: launchIn → receive() подписка → onStart → startListening()
             // ════════════════════════════════════════════════════════════════
+            var audioStarted = false
             sessionJob = geminiClient
                 .receiveFlow()
-                .onStart {
-                    Log.d(TAG, "receiveFlow started collecting — scheduling audio start")
-                    // Обязательно запускаем в отдельной корутине, чтобы не блокировать чтение сокета!
-                    engineScope.launch {
-                        kotlinx.coroutines.delay(1500) // Даем серверу 1.5 сек на обработку Setup
+                .onEach { response ->
+                    if (!audioStarted) {
+                        audioStarted = true
+                        Log.d(TAG, "First server response received — starting audio")
                         startListening()
                     }
+                    handleGeminiResponse(response)
                 }
-                .onEach  { response -> handleGeminiResponse(response) }
                 .catch   { error    -> handleSessionError(error) }
                 .launchIn(engineScope)
 
@@ -624,18 +624,18 @@ class VoiceCoreEngineImpl(
         reconnectAttempts.set(0)
         updateState { copy(errorMessage = null, currentStrategy = strategy) }
 
-        // FIX: startListening() в onStart — гарантирует порядок receive → send
+        // FIX: startListening() triggered by first server response — guarantees receive → send order
+        var audioStarted = false
         sessionJob = geminiClient
             .receiveFlow()
-            .onStart {
-                Log.d(TAG, "receiveFlow started collecting (reconnect) — scheduling audio start")
-                // Обязательно запускаем в отдельной корутине, чтобы не блокировать чтение сокета!
-                engineScope.launch {
-                    kotlinx.coroutines.delay(1500) // Даем серверу 1.5 сек на обработку Setup
+            .onEach { response ->
+                if (!audioStarted) {
+                    audioStarted = true
+                    Log.d(TAG, "First server response received (reconnect) — starting audio")
                     startListening()
                 }
+                handleGeminiResponse(response)
             }
-            .onEach  { response -> handleGeminiResponse(response) }
             .catch   { err      -> handleSessionError(err) }
             .launchIn(engineScope)
 
