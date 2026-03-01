@@ -147,6 +147,17 @@ class AudioPipeline(private val context: Context) {
 
     fun getCurrentAmplitude(): Float = recorder.currentAmplitude
 
+    /**
+     * ✅ НОВОЕ: Уведомление о приостановке аудиопотока.
+     * Вызывается VoiceCoreEngineImpl при stopListening().
+     * Позволяет серверному VAD корректно обработать паузу.
+     */
+    fun notifyStreamPaused() {
+        // Аудиопоток приостановлен — серверный VAD должен быть уведомлён
+        // через GeminiClient.sendAudioStreamEnd() (вызывается выше по стеку)
+        android.util.Log.d("AudioPipeline", "Audio stream paused notification")
+    }
+
     private fun ensurePlaybackRunning() {
         pipelineScope.launch {
             stateMutex.withLock {
