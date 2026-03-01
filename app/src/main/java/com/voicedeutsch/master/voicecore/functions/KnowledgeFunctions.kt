@@ -52,12 +52,10 @@ object KnowledgeFunctions {
                 "limit" to ("integer" to "Максимальное количество слов (по умолчанию 10)"),
             ),
             required = listOf("limit"), // ✅ ФИКС: делаем параметр обязательным, чтобы required не был пустым
-            behavior = FunctionBehavior.NON_BLOCKING, // ✅ Не блокирует диалог
         ),
         FunctionRegistry.declare(
             name = "get_weak_points",
             description = "Получить слабые места пользователя для GAP_FILLING стратегии.",
-            behavior = FunctionBehavior.NON_BLOCKING, // ✅ Не блокирует диалог
         ),
     )
 }
