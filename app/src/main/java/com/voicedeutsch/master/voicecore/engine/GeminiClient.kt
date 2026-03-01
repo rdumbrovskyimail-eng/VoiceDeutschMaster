@@ -139,8 +139,6 @@ class GeminiClient(
         try {
             Log.d(TAG, "Connecting to Gemini Live API [model=${config.modelName}]")
 
-            // 🔥 ВРЕМЕННО ОТКЛЮЧАЕМ ВСЕ ФУНКЦИИ ДЛЯ ТЕСТА СОЕДИНЕНИЯ
-            /*
             val declNames = context.functionDeclarations.map { it.name }
             Log.d(TAG, "Function declarations to register (${declNames.size}): $declNames")
 
@@ -161,7 +159,6 @@ class GeminiClient(
                     Log.d(TAG, "Google Search grounding enabled")
                 }
             }
-            */
 
             // ── Live Generation Config ────────────────────────────────────────
             val liveConfig = liveGenerationConfig {
@@ -191,7 +188,7 @@ class GeminiClient(
                 consecutiveSendErrors.set(0)
             }
 
-            Log.d(TAG, "✅ LiveSession established (TOOLS DISABLED FOR TESTING)")
+            Log.d(TAG, "✅ LiveSession established")
         } catch (e: Exception) {
             Log.e(TAG, "❌ connect() failed: ${e.message}")
             Log.e(TAG, "❌ Exception class: ${e.javaClass.name}")
