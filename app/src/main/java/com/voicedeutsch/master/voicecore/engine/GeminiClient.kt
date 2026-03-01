@@ -490,11 +490,7 @@ class GeminiClient(
     private fun mapToFirebaseDeclaration(decl: GeminiFunctionDeclaration): FunctionDeclaration {
         val params = decl.parameters
 
-        // ──────────────────────────────────────────────────────────────────
-        // FIX A: Функции БЕЗ параметров — НЕ инжектируем dummy_param.
-        // Создаём FunctionDeclaration без parameters/optionalParameters.
-        // Live API корректно принимает такие декларации.
-        // ──────────────────────────────────────────────────────────────────
+        // FIX: параметры null ИЛИ пустые → декларация без параметров
         if (params == null || params.properties.isEmpty()) {
             Log.d(TAG, "  ⚙ ${decl.name} — no params, creating without parameters")
             return FunctionDeclaration(
@@ -507,20 +503,7 @@ class GeminiClient(
             mapPropertyToSchema(prop)
         }
 
-        // ──────────────────────────────────────────────────────────────────
-        // FIX B: optionalParameters ВСЕГДА = properties \ required.
-        //
-        // БЫЛО (баг):
-        //   val optionalProperties = if (params.required.isEmpty()) {
-        //       emptyList()   // ← ВСЕ становились required!
-        //   } else {
-        //       properties.keys.filter { it !in params.required }
-        //   }
-        //
-        // СТАЛО:
-        //   Единая формула — если required пуст, все свойства optional.
-        //   Если required не пуст — только те, что не в списке.
-        // ──────────────────────────────────────────────────────────────────
+        // FIX B: единая формула — required \ all = optional
         val optionalProperties = properties.keys.filter { it !in params.required }
 
         Log.d(TAG, "  ⚙ ${decl.name} — params: ${properties.keys}, " +
