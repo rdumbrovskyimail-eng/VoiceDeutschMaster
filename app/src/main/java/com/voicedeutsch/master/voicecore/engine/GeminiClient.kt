@@ -260,8 +260,9 @@ class GeminiClient(
 
             if (errorCount >= MAX_CONSECUTIVE_SEND_ERRORS) {
                 Log.e(TAG, "❌ Too many consecutive send errors — session is dead")
-                // @Volatile liveSession — атомарная запись, безопасна без mutex
-                liveSession = null
+                sessionMutex.withLock {
+                    liveSession = null
+                }
             }
             // НЕ обнуляем liveSession при единичных ошибках — просто пропускаем чанк
         }
