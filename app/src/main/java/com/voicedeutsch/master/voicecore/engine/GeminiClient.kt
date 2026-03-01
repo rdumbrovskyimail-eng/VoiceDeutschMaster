@@ -17,6 +17,7 @@ import com.google.firebase.ai.type.Schema
 import com.google.firebase.ai.type.AudioTranscriptionConfig
 import com.google.firebase.ai.type.SpeechConfig
 import com.google.firebase.ai.type.TextPart
+import com.google.firebase.ai.type.GenerativeBackend
 import com.google.firebase.ai.type.Tool
 import com.google.firebase.ai.type.Voice
 import com.google.firebase.ai.type.content
@@ -398,7 +399,7 @@ class GeminiClient(
             .filterIsInstance<InlineDataPart>()
             .firstOrNull()
             ?.inlineData
-            ?.bytes
+            ?.data
             ?.takeIf { it.isNotEmpty() }
 
         val textContent = parts
@@ -472,6 +473,8 @@ class GeminiClient(
             return FunctionDeclaration(
                 name = decl.name,
                 description = decl.description,
+                parameters = emptyMap(),
+                optionalParameters = emptyList(),
             )
         }
 
