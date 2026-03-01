@@ -70,19 +70,24 @@ jobs:
     - name: Create local.properties
       run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
+    - name: Download dependencies
+      run: |
+        ./gradlew dependencies \
+          --configuration debugRuntimeClasspath \
+          --no-daemon \
+          --quiet || true
+
     - name: Inspect InlineData fields
       run: |
         echo "=== Searching for firebase-ai JAR ==="
-        JAR=$(find ~/.gradle/caches -name "firebase-ai-*.jar" 2>/dev/null | grep -v sources | head -1)
-        echo "JAR found: $JAR"
+        JAR=$(find ~/.gradle/caches -name "firebase-ai-*.jar" 2>/dev/null | grep -v sources | grep -v javadoc | head -1)
+        echo "JAR: $JAR"
         if [ -n "$JAR" ]; then
-          echo "=== Classes in JAR containing InlineData ==="
-          jar tf "$JAR" | grep -i "InlineData" || echo "InlineData not found in jar listing"
           echo "=== javap output ==="
-          javap -classpath "$JAR" com.google.firebase.ai.type.InlineData 2>&1 || echo "javap failed"
+          javap -classpath "$JAR" com.google.firebase.ai.type.InlineData 2>&1
         else
-          echo "JAR not found, searching all firebase jars..."
-          find ~/.gradle/caches -name "*.jar" 2>/dev/null | grep firebase | head -10
+          echo "JAR not found, all firebase jars:"
+          find ~/.gradle/caches -name "*.jar" 2>/dev/null | grep -i firebase | grep -v sources | grep -v javadoc
         fi
 
     - name: Run Unit Tests
