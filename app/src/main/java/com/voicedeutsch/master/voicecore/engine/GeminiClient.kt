@@ -490,18 +490,18 @@ class GeminiClient(
     private fun mapToFirebaseDeclaration(decl: GeminiFunctionDeclaration): FunctionDeclaration? {
         val params = decl.parameters
 
-        // Если параметров нет, мы ДОЛЖНЫ передать пустую схему типа OBJECT
+        // Если параметров нет, создаем фиктивный параметр, 
+        // чтобы избежать ошибки "parameters_json_schema must not be empty"
         if (params == null || params.properties.isEmpty()) {
-            Log.d(TAG, "  ⚙ ${decl.name} — no params")
-            val emptySchema = Schema(
-                type = com.google.firebase.ai.type.Type.OBJECT,
-                description = "Empty parameters",
-                properties = emptyMap()
+            Log.d(TAG, "  ⚙ ${decl.name} — injecting dummy param")
+            val dummyProps = mapOf(
+                "dummy" to Schema.string(description = "Игнорируемый параметр")
             )
             return FunctionDeclaration(
                 name = decl.name,
                 description = decl.description,
-                parameters = emptySchema
+                parameters = dummyProps,
+                optionalParameters = listOf("dummy")
             )
         }
 
@@ -514,48 +514,28 @@ class GeminiClient(
         Log.d(TAG, "  ⚙ ${decl.name} — params: ${properties.keys}, " +
                 "required: ${params.required}, optional: $optionalProperties")
 
-        // Создаем схему типа OBJECT вручную
-        val schema = Schema(
-            type = com.google.firebase.ai.type.Type.OBJECT,
-            description = "Parameters for ${decl.name}",
-            properties = properties,
-            optionalProperties = optionalProperties
-        )
-
         return FunctionDeclaration(
             name = decl.name,
             description = decl.description,
-            parameters = schema
+            parameters = properties,
+            optionalParameters = optionalProperties
         )
     }
 
     private fun mapPropertyToSchema(prop: GeminiProperty): Schema {
-        val type = when (prop.type.uppercase()) {
-            "STRING" -> com.google.firebase.ai.type.Type.STRING
-            "INTEGER" -> com.google.firebase.ai.type.Type.INTEGER
-            "NUMBER" -> com.google.firebase.ai.type.Type.NUMBER
-            "BOOLEAN" -> com.google.firebase.ai.type.Type.BOOLEAN
-            "ARRAY" -> com.google.firebase.ai.type.Type.ARRAY
-            else -> com.google.firebase.ai.type.Type.STRING
-        }
-
-        return if (type == com.google.firebase.ai.type.Type.ARRAY) {
-            Schema(
-                type = type,
-                description = prop.description,
-                items = Schema(type = com.google.firebase.ai.type.Type.STRING)
-            )
-        } else if (prop.enum != null) {
-            Schema(
-                type = type,
-                description = prop.description,
-                enumValues = prop.enum
-            )
-        } else {
-            Schema(
-                type = type,
-                description = prop.description
-            )
+        return when (prop.type.uppercase()) {
+            "STRING" -> {
+                if (prop.enum != null) {
+                    Schema.enumeration(values = prop.enum, description = prop.description)
+                } else {
+                    Schema.string(description = prop.description)
+                }
+            }
+            "INTEGER" -> Schema.integer(description = prop.description)
+            "NUMBER"  -> Schema.double(description = prop.description)
+            "BOOLEAN" -> Schema.boolean(description = prop.description)
+            "ARRAY"   -> Schema.array(items = Schema.string(), description = prop.description)
+            else      -> Schema.string(description = prop.description)
         }
     }
 }
