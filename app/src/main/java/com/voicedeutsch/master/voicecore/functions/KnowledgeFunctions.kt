@@ -57,8 +57,6 @@ object KnowledgeFunctions {
         FunctionRegistry.declare(
             name = "get_weak_points",
             description = "Получить слабые места пользователя для GAP_FILLING стратегии.",
-            // ✅ ИСПРАВЛЕНИЕ: Добавлен dummy-параметр
-            params = mapOf("dummy" to ("string" to "Игнорируемый параметр, передай 'ok'")),
         ),
     )
 }
