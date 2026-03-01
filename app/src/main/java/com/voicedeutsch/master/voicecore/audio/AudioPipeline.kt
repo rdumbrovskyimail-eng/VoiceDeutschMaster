@@ -47,7 +47,8 @@ class AudioPipeline(private val context: Context) {
 
     fun release() {
         if (!_isInitialized) return
-        stopAll()
+        flushPlayback()   // ✅ запускает корутину внутри
+        stopRecording()   // ✅ запускает корутину внутри
         pipelineScope.cancel()
         _isInitialized = false
     }
