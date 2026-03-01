@@ -2,7 +2,13 @@ package com.voicedeutsch.master.voicecore.engine
 
 /**
  * Complete configuration for Gemini Live API connection.
- * Updated: 2026-02-25 — Gemini 2.5 Flash Live 128K context support
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * ИЗМЕНЕНИЯ (Live API Capabilities — полная реализация):
+ * ════════════════════════════════════════════════════════════════════════════
+ *   ДОБАВЛЕНО: vadConfig, sessionResumption, contextWindowCompression,
+ *              transcriptionConfig, affectiveDialog, proactiveAudio,
+ *              thinkingBudget, enableSearchGrounding
  */
 data class GeminiConfig(
     val modelName: String = MODEL_GEMINI_LIVE,
@@ -16,12 +22,84 @@ data class GeminiConfig(
     val reconnectMaxAttempts: Int = DEFAULT_RECONNECT_ATTEMPTS,
     val reconnectDelayMs: Long = DEFAULT_RECONNECT_DELAY_MS,
     val voiceName: String = DEFAULT_VOICE,
+
+    // ── Live API Session Management ──────────────────────────────────────
+    /** Включить сжатие контекстного окна (sliding window) для неограниченных сессий */
+    val contextWindowCompression: Boolean = true,
+
+    /** Включить возобновление сессии при разрыве WebSocket */
+    val sessionResumptionEnabled: Boolean = true,
+
+    // ── Voice Activity Detection ─────────────────────────────────────────
+    val vadConfig: VadConfig = VadConfig(),
+
+    // ── Audio Transcription ──────────────────────────────────────────────
+    val transcriptionConfig: TranscriptionConfig = TranscriptionConfig(),
+
+    // ── Native Audio Features ────────────────────────────────────────────
+    /** Эмоциональный диалог — модель адаптирует тон к эмоциям пользователя */
+    val affectiveDialogEnabled: Boolean = true,
+
+    /** Проактивное аудио — модель решает, когда отвечать, а когда молчать */
+    val proactiveAudioEnabled: Boolean = false,
+
+    // ── Thinking ─────────────────────────────────────────────────────────
+    /** Бюджет токенов мышления. 0 = отключить, null = модель решает сама */
+    val thinkingBudget: Int? = null,
+
+    /** Включить краткие обзоры мыслей в ответы */
+    val includeThoughts: Boolean = false,
+
+    // ── Grounding ────────────────────────────────────────────────────────
+    /** Включить Google Search для проверки фактов */
+    val enableSearchGrounding: Boolean = false,
+
+    // ── Async Function Calling ───────────────────────────────────────────
+    /** Режим вызова функций: AUTO, ANY, NONE, VALIDATED */
+    val functionCallingMode: FunctionCallingMode = FunctionCallingMode.AUTO,
 ) {
     init {
         require(temperature in 0f..2f) { "temperature must be in [0, 2]" }
         require(topP in 0f..1f) { "topP must be in [0, 1]" }
         require(topK > 0) { "topK must be positive" }
         require(reconnectMaxAttempts > 0) { "reconnectMaxAttempts must be positive" }
+        require(thinkingBudget == null || thinkingBudget >= 0) { "thinkingBudget must be >= 0 or null" }
+    }
+
+    /** Конфигурация VAD (Voice Activity Detection) */
+    data class VadConfig(
+        /** Отключить автоматический VAD (ручное управление activityStart/activityEnd) */
+        val disabled: Boolean = false,
+        /** Чувствительность начала речи: LOW или HIGH */
+        val startSensitivity: Sensitivity = Sensitivity.DEFAULT,
+        /** Чувствительность конца речи: LOW или HIGH */
+        val endSensitivity: Sensitivity = Sensitivity.DEFAULT,
+        /** Padding до начала речи (мс) */
+        val prefixPaddingMs: Int = 20,
+        /** Длительность тишины для определения конца речи (мс) */
+        val silenceDurationMs: Int = 100,
+    ) {
+        enum class Sensitivity { DEFAULT, LOW, HIGH }
+    }
+
+    /** Конфигурация транскрипции аудио */
+    data class TranscriptionConfig(
+        /** Транскрипция входящего аудио (речь пользователя) */
+        val inputTranscriptionEnabled: Boolean = true,
+        /** Транскрипция исходящего аудио (речь модели) */
+        val outputTranscriptionEnabled: Boolean = true,
+    )
+
+    /** Режим вызова функций */
+    enum class FunctionCallingMode {
+        /** Модель сама решает, вызывать функцию или отвечать текстом */
+        AUTO,
+        /** Модель обязана вызвать функцию */
+        ANY,
+        /** Модель НЕ может вызывать функции */
+        NONE,
+        /** Как AUTO, но с валидацией схемы */
+        VALIDATED,
     }
 
     enum class AudioFormat(
@@ -34,16 +112,8 @@ data class GeminiConfig(
     }
 
     companion object {
-        /** Полное имя модели Gemini Live API (синхронизировано с Constants.GEMINI_MODEL_NAME) */
         const val MODEL_GEMINI_LIVE = "gemini-2.5-flash-native-audio-preview-12-2025"
-
-        /**
-         * Максимальный размер контекста для Gemini 2.5 Flash Live API.
-         * Поддерживается 131 072 токена (128K).
-         * КРИТИЧЕСКОЕ обновление: старое значение 32K было ошибкой ранних preview-версий.
-         */
         const val MAX_CONTEXT_TOKENS = 131_072
-
         const val DEFAULT_TEMPERATURE = 0.5f
         const val DEFAULT_TOP_P = 0.95f
         const val DEFAULT_TOP_K = 40
