@@ -59,7 +59,7 @@ val voiceCoreModule = module {
     factory {
         GeminiConfig(
             modelName   = "gemini-2.5-flash-native-audio-preview-12-2025",
-            voiceName   = "Aoede",
+            voiceName   = "Kore", // Aoede не поддерживается! Допустимы: Puck, Charon, Kore, Fenrir, Zephyr
             temperature = 0.8f,
             topP        = 0.95f,
             topK        = 40,
