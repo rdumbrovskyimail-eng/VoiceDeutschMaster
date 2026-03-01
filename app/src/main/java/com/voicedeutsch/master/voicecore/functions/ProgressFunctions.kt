@@ -22,6 +22,8 @@ object ProgressFunctions {
         FunctionRegistry.declare(
             name = "get_user_statistics",
             description = "Получить сводную статистику пользователя.",
+            // ✅ ИСПРАВЛЕНИЕ: Добавлен dummy-параметр
+            params = mapOf("dummy" to ("string" to "Игнорируемый параметр, передай 'ok'")),
         ),
     )
 }
