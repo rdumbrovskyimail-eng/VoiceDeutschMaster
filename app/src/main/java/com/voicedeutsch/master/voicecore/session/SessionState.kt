@@ -27,6 +27,8 @@ data class VoiceSessionState(
     val userWaveformData: FloatArray = FloatArray(0),
     val errorMessage: String? = null,
     val sessionId: String? = null,
+    // ✅ НОВОЕ: количество использованных токенов
+    val tokenUsage: Int = 0,
 ) {
     /** Derived: user is active in a session. */
     val isSessionActive: Boolean
@@ -57,7 +59,8 @@ data class VoiceSessionState(
                 voiceWaveformData.contentEquals(other.voiceWaveformData) &&
                 userWaveformData.contentEquals(other.userWaveformData) &&
                 errorMessage == other.errorMessage &&
-                sessionId == other.sessionId
+                sessionId == other.sessionId &&
+                tokenUsage == other.tokenUsage
     }
 
     /**
@@ -90,6 +93,7 @@ data class VoiceSessionState(
         hash = 31 * hash + isSpeaking.hashCode()
         hash = 31 * hash + isProcessing.hashCode()
         hash = 31 * hash + (errorMessage?.hashCode() ?: 0)
+        hash = 31 * hash + tokenUsage  // ✅ ДОБАВЛЕНО
         return hash
     }
 }
