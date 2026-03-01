@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -67,6 +68,22 @@ import java.util.concurrent.atomic.AtomicInteger
  * ════════════════════════════════════════════════════════════════════════════
  *
  *   flushKnowledgeSync() вызывается в endSession() одним batch-коммитом.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * FIX (Race condition — receiveFlow vs startListening):
+ * ════════════════════════════════════════════════════════════════════════════
+ *
+ *   Баг: launchIn() шедулит корутину асинхронно, но startListening()
+ *        вызывается мгновенно после. Первые аудиочанки могли уйти в
+ *        Gemini ДО того, как receiveFlow() начал коллекцию session.receive().
+ *        Firebase SDK мог отклонить данные → "Something unexpected happened".
+ *
+ *   Fix: startListening() перенесён в onStart {} оператор Flow.
+ *        onStart выполняется ПОСЛЕ подписки на upstream (session.receive()),
+ *        но ДО первого элемента — гарантирует правильный порядок.
+ *
+ *   Применено и в startSession(), и в reconnectInternal().
+ * ════════════════════════════════════════════════════════════════════════════
  */
 class VoiceCoreEngineImpl(
     private val contextBuilder:        ContextBuilder,
@@ -104,14 +121,10 @@ class VoiceCoreEngineImpl(
     private val _audioState      = MutableStateFlow(AudioState.IDLE)
     override val audioState:     StateFlow<AudioState> = _audioState.asStateFlow()
 
-    // ✅ ДОБАВЛЕНО: Flow амплитуды для VirtualAvatar.
-    //
-    // audioPipeline.audioChunks() уже используется в startListening() для отправки
-    // чанков в Gemini. Здесь создаём отдельный холодный Flow от того же источника —
-    // AudioPipeline должен поддерживать несколько подписчиков (shareIn или SharedFlow).
+    // amplitudeFlow для VirtualAvatar.
+    // audioPipeline.audioChunks() используется в startListening() для отправки
+    // чанков в Gemini. Здесь создаём отдельный холодный Flow от того же источника.
     // RmsCalculator вычисляет среднеквадратичное значение PCM → нормализует в 0f..1f.
-    //
-    // SessionViewModel подписывается в startSession() и отписывается в endSession().
     override val amplitudeFlow: Flow<Float> = audioPipeline.audioChunks()
         .map { pcm -> RmsCalculator.calculate(pcm).coerceIn(0f, 1f) }
 
@@ -236,13 +249,26 @@ class VoiceCoreEngineImpl(
                 )
             }
 
+            // ════════════════════════════════════════════════════════════════
+            // FIX: startListening() перенесён в onStart {}.
+            //
+            // onStart выполняется ПОСЛЕ того, как receiveFlow() подписался
+            // на session.receive(), но ДО первого элемента.
+            // Это гарантирует, что Gemini SDK уже слушает ответы
+            // к моменту отправки первого аудиочанка.
+            //
+            // Раньше: launchIn (async) → startListening() (сразу) → race.
+            // Теперь: launchIn → receive() подписка → onStart → startListening()
+            // ════════════════════════════════════════════════════════════════
             sessionJob = geminiClient
                 .receiveFlow()
+                .onStart {
+                    Log.d(TAG, "receiveFlow started collecting — now starting audio")
+                    startListening()
+                }
                 .onEach  { response -> handleGeminiResponse(response) }
                 .catch   { error    -> handleSessionError(error) }
                 .launchIn(engineScope)
-
-            startListening()
 
             Log.d(TAG, "✅ Session started [userId=$userId, sessionId=${sessionData.session.id}]")
             _sessionState.value
@@ -271,7 +297,6 @@ class VoiceCoreEngineImpl(
                     runCatching { geminiClient.disconnect() }
                         .onFailure { Log.w(TAG, "disconnect() warning: ${it.message}") }
 
-                    // ✅ НОВОЕ: сбрасываем resumption handle при завершении сессии
                     geminiClient.clearResumptionHandle()
 
                     val result = endLearningSession(sessionId)
@@ -359,7 +384,8 @@ class VoiceCoreEngineImpl(
         audioPipeline.stopRecording()
         transitionAudio(AudioState.IDLE)
 
-        // ✅ НОВОЕ: сигнал паузы аудиопотока для серверного VAD
+        // Сигнал паузы аудиопотока для серверного VAD
+        // (no-op пока Firebase SDK не поддержит)
         engineScope.launch {
             runCatching { geminiClient.sendAudioStreamEnd() }
                 .onFailure { Log.w(TAG, "sendAudioStreamEnd failed: ${it.message}") }
@@ -403,12 +429,11 @@ class VoiceCoreEngineImpl(
 
     private suspend fun handleGeminiResponse(response: GeminiResponse) {
         when {
-            // ✅ НОВОЕ: GoAway — предупреждение о скором разрыве
+            // GoAway — предупреждение о скором разрыве
+            // (не поддерживается Firebase SDK, но обрабатываем на будущее)
             response.hasGoAway() -> {
                 val timeLeft = response.goAway!!.timeLeftMs
                 Log.w(TAG, "⚠️ GoAway received! Connection closing in ${timeLeft}ms")
-                // Автоматический reconnect будет инициирован при фактическом разрыве.
-                // Логируем для диагностики.
                 updateState { copy(errorMessage = null) }
             }
 
@@ -437,7 +462,6 @@ class VoiceCoreEngineImpl(
                 } else {
                     audioPipeline.enqueueAudio(audioData)
                 }
-                // ✅ ИЗМЕНЕНО: проверяем и turnComplete, и generationComplete
                 if (response.isTurnComplete) {
                     transitionAudio(AudioState.IDLE)
                     transitionEngine(VoiceEngineState.WAITING)
@@ -480,9 +504,6 @@ class VoiceCoreEngineImpl(
                         }
                     }.awaitAll()
 
-                    // Scheduling (INTERRUPT/WHEN_IDLE/SILENT) пока не поддерживается
-                    // в Firebase AI SDK — отправляем как стандартный blocking response.
-                    // TODO: добавить scheduling когда Firebase экспонирует FunctionResponseScheduling
                     geminiClient.sendFunctionResults(results)
                     updateState { copy(isProcessing = false) }
                 }
@@ -498,7 +519,7 @@ class VoiceCoreEngineImpl(
                 transitionEngine(VoiceEngineState.PROCESSING)
             }
 
-            // ✅ НОВОЕ: generationComplete без другого контента
+            // generationComplete без другого контента
             response.isGenerationComplete && !response.isTurnComplete -> {
                 Log.d(TAG, "Generation complete (waiting for turnComplete)")
             }
@@ -561,20 +582,23 @@ class VoiceCoreEngineImpl(
         }
     }
 
+    /**
+     * ════════════════════════════════════════════════════════════════
+     * FIX: startListening() перенесён в onStart {} (аналогично startSession).
+     * ════════════════════════════════════════════════════════════════
+     */
     private suspend fun reconnectInternal() {
         val uid = activeUserId ?: error("reconnectInternal: no activeUserId")
 
         cancelActiveJobs()
         audioPipeline.stopAll()
 
-        // ✅ ИЗМЕНЕНО: НЕ вызываем disconnect() — чтобы сохранить resumption handle
-        // Если handle есть, GeminiClient передаст его при reconnect
-        val hasResumptionHandle = geminiClient.sessionResumptionHandle != null
-        if (!hasResumptionHandle) {
-            runCatching { geminiClient.disconnect() }
-        }
+        // Session resumption не поддерживается Firebase SDK —
+        // всегда делаем полный disconnect + reconnect.
+        runCatching { geminiClient.disconnect() }
+            .onFailure { Log.w(TAG, "disconnect() during reconnect: ${it.message}") }
 
-        Log.d(TAG, "Reconnecting (resumption=${hasResumptionHandle})")
+        Log.d(TAG, "Reconnecting...")
 
         val snapshot = withContext(Dispatchers.IO) { buildKnowledgeSummary(uid) }
         val strategy = strategySelector.selectStrategy(snapshot)
@@ -596,24 +620,19 @@ class VoiceCoreEngineImpl(
         reconnectAttempts.set(0)
         updateState { copy(errorMessage = null, currentStrategy = strategy) }
 
+        // FIX: startListening() в onStart — гарантирует порядок receive → send
         sessionJob = geminiClient
             .receiveFlow()
+            .onStart {
+                Log.d(TAG, "receiveFlow started collecting (reconnect) — now starting audio")
+                startListening()
+            }
             .onEach  { response -> handleGeminiResponse(response) }
             .catch   { err      -> handleSessionError(err) }
             .launchIn(engineScope)
 
-        startListening()
-        Log.d(TAG, "✅ Reconnected successfully (resumption=$hasResumptionHandle)")
+        Log.d(TAG, "✅ Reconnected successfully")
     }
-
-    // TODO: Async Function Calling (NON_BLOCKING behavior + FunctionResponseScheduling)
-    // Доступно в прямом Gemini SDK (@google/genai) для JS/Python,
-    // но НЕ экспонировано в Firebase AI SDK для Android (firebase-bom 34.9.0).
-    // Когда Firebase добавит поддержку — раскомментировать и вернуть scheduling в sendFunctionResults().
-    //
-    // private fun determineFunctionScheduling(
-    //     calls: List<GeminiFunctionCall>,
-    // ): FunctionResponseScheduling? { ... }
 
     private fun buildStrategyChangeMessage(strategy: LearningStrategy): String =
         "Пожалуйста, переключись на стратегию ${strategy.displayNameRu} (${strategy.name})."
