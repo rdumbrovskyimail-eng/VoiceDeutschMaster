@@ -178,7 +178,6 @@ class GeminiClient(
             val liveModel = Firebase.ai.liveModel(
                 modelName = config.modelName,
                 generationConfig = liveConfig,
-                tools = toolsList,
                 systemInstruction = content(role = "system") { text(context.fullContext) },
             )
 
