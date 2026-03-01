@@ -411,7 +411,7 @@ class GeminiClient(
             .filterIsInstance<FunctionCallPart>()
             .map { fc ->
                 GeminiFunctionCall(
-                    id       = fc.name,
+                    id       = fc.id ?: fc.name,
                     name     = fc.name,
                     argsJson = fc.args.toString(),
                 )
