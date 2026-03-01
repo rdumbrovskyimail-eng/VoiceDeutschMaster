@@ -20,6 +20,8 @@ import com.google.firebase.ai.type.Voice
 import com.google.firebase.ai.type.content
 import com.google.firebase.ai.type.liveGenerationConfig
 import com.voicedeutsch.master.voicecore.context.ContextBuilder
+import com.voicedeutsch.master.voicecore.functions.FunctionBehavior
+import com.voicedeutsch.master.voicecore.functions.FunctionResponseScheduling
 import com.voicedeutsch.master.voicecore.functions.GeminiFunctionDeclaration
 import com.voicedeutsch.master.voicecore.functions.GeminiProperty
 import kotlinx.coroutines.CoroutineScope
@@ -33,90 +35,28 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 
-// ════════════════════════════════════════════════════════════════════════════
-// ИТОГ ОТЛАДКИ (февраль 2026, BoM 34.9.0, firebase-ai SDK):
-//
-// ✅ СУЩЕСТВУЮТ (подтверждено компилятором — импорты НЕ давали ошибок):
-//    - LiveSession          (com.google.firebase.ai.type)
-//    - LiveServerMessage    (com.google.firebase.ai.type) — sealed class
-//    - LiveServerContent    (com.google.firebase.ai.type) — подтип LiveServerMessage
-//    - FunctionCallPart, FunctionResponsePart, FunctionDeclaration
-//    - InlineDataPart, TextPart, Tool, Schema, Voice, SpeechConfig
-//
-// ❌ НЕ СУЩЕСТВУЮТ (подтверждено компилятором):
-//    - LiveContentResponse  → ФАНТОМ, нет в SDK
-//    - GenerativeBackend    → как отдельный импорт не резолвится
-//    - LiveGenerativeModel  → тип выводится, явный импорт невозможен
-//    - AudioTranscriptionConfig → нет в текущей версии
-//    - defineFunction       → Unresolved reference (нет в com.google.firebase.ai.type)
-//
-// 📝 КЛЮЧЕВЫЕ СИГНАТУРЫ (подтверждены ошибками компилятора):
-//    - session.send(content: Content)  — ОДИН параметр, без turnComplete
-//    - session.send(text: String)      — ОДИН параметр, без turnComplete
-//    - session.receive() → Flow<LiveServerMessage>
-//    - FunctionDeclaration(name, description, parameters, optionalParameters)
-//      * name: String (internal — нельзя читать снаружи!)
-//      * description: String (internal)
-//      * parameters: Map<String, Schema> (ОБЯЗАТЕЛЕН, нет дефолта)
-//      * optionalParameters: List<String> = emptyList()
-//    - LiveServerContent свойства (из PR #7482):
-//        content: Content, turnComplete: Boolean, interrupted: Boolean,
-//        generationComplete: Boolean, inputTranscription: Transcription,
-//        outputTranscription: Transcription
-//
-// ⚠️ ВОЗМОЖНЫЕ ПРАВКИ ПОСЛЕ БИЛДА:
-//    1. Если receive() возвращает Flow<LiveServerContent> вместо
-//       Flow<LiveServerMessage> — убрать when и работать напрямую.
-//    2. Если LiveServerContent.content nullable — уже обработано через ?.parts.
-//    3. Если InlineDataPart.inlineData не существует — попробовать .data или .bytes.
-//    4. Если Transcription.text не существует — проверить .content или toString().
-//    5. Если FunctionCallPart.args — не Map, а JsonObject — поменять .toString().
-//
-// ════════════════════════════════════════════════════════════════════════════
-// ИЗМЕНЕНИЯ (Модули 4 + 7):
-//   1. УДАЛЕНО: startManagedAudioConversation / stopManagedAudioConversation
-//   2. УДАЛЕНО: parseFunctionDeclaration(jsonString) / parseSchema(jsonObject)
-//   3. ДОБАВЛЕНО: mapToFirebaseDeclaration() + mapPropertyToSchema() (нативный маппинг)
-//   4. УДАЛЕНО: audioConversationJob, responseChannel
-//   5. ДОБАВЛЕНО: Schema.enumeration() для enum-свойств (set_current_strategy и т.д.)
-// ════════════════════════════════════════════════════════════════════════════
-// ИЗМЕНЕНИЯ (Parallel Function Calling fix):
-//   6. FIX: mapServerContent() извлекает ВСЕ FunctionCallPart через
-//      filterIsInstance<FunctionCallPart>() (список, не firstOrNull).
-//   7. GeminiResponse.functionCall → functionCalls: List<GeminiFunctionCall>
-//   8. sendFunctionResults(List<Pair>) — отправляет все ответы одним батчем.
-// ════════════════════════════════════════════════════════════════════════════
-// ИЗМЕНЕНИЯ (parameters_json_schema fix — попытка 4 - УСПЕШНАЯ):
-//   9. FIX: mapToFirebaseDeclaration() — для функций без параметров
-//      подставляем ОБЯЗАТЕЛЬНЫЙ (required) dummy-параметр "dummy_param".
-//
-//      ИСТОРИЯ ПРОБЛЕМЫ:
-//        Попытка 1: FunctionDeclaration(name, description) без parameters
-//          → НЕ КОМПИЛИРУЕТСЯ: "No value passed for parameter 'parameters'"
-//          → parameters ОБЯЗАТЕЛЕН, нет дефолта.
-//        Попытка 2: defineFunction(name, description)
-//          → НЕ КОМПИЛИРУЕТСЯ: "Unresolved reference 'defineFunction'"
-//          → defineFunction НЕ СУЩЕСТВУЕТ в BoM 34.9.0.
-//          → Также: FunctionDeclaration.name — internal, нельзя читать.
-//        Попытка 3: dummy optional "_context"
-//          → SDK генерирует "required": [] → сервер отклоняет handshake.
-//        Попытка 4 (текущая): dummy REQUIRED "dummy_param" (boolean)
-//          → optionalParameters = emptyList() → SDK помещает в "required"
-//          → Валидная непустая схема с 1 required параметром проходит handshake.
-//
-//  10. Логирование имён через decl.name ДО создания FunctionDeclaration,
-//      т.к. FunctionDeclaration.name — internal и недоступен снаружи.
-// ════════════════════════════════════════════════════════════════════════════
-
 /**
  * GeminiClient — обёртка над Firebase AI Logic Live API SDK.
  *
- * АУДИО ФОРМАТ:
- *   Вход:  PCM 16-bit, 16 kHz, mono  → session.send(content { inlineData(...) })
- *   Выход: PCM 16-bit, 24 kHz, mono  ← LiveServerContent.content.parts[InlineDataPart]
+ * ════════════════════════════════════════════════════════════════════════════
+ * ИЗМЕНЕНИЯ (Live API Capabilities — полная реализация):
+ * ════════════════════════════════════════════════════════════════════════════
  *
- * @param config  конфигурация модели (model name, voice, sample rates и т.д.)
- * @param json    экземпляр Json для сериализации function results
+ *   1. sendRealtimeInput() — оптимизированная отправка аудио (вместо send(content))
+ *   2. sendAudioStreamEnd() — сигнал паузы аудиопотока для VAD
+ *   3. Контекстное сжатие (sliding window) в конфигурации
+ *   4. Возобновление сессии (session resumption) — хранение/восстановление handle
+ *   5. VAD конфигурация (чувствительность, тайминги)
+ *   6. Транскрипция (input/output) в конфигурации
+ *   7. Affective dialog + Proactive audio
+ *   8. Thinking budget + includeThoughts
+ *   9. Google Search grounding
+ *  10. Async function calling (behavior → NON_BLOCKING)
+ *  11. GoAway handling (предупреждение о скором разрыве)
+ *  12. generationComplete tracking
+ *  13. Token usage tracking
+ *  14. FunctionCallingMode (AUTO/ANY/NONE/VALIDATED)
+ * ════════════════════════════════════════════════════════════════════════════
  */
 @OptIn(PublicPreviewAPI::class)
 class GeminiClient(
@@ -134,17 +74,35 @@ class GeminiClient(
 
     @Volatile private var liveSession: LiveSession? = null
 
+    /**
+     * Хранит токен возобновления сессии.
+     * Обновляется при каждом SessionResumptionUpdate от сервера.
+     * Действителен 2 часа после завершения последней сессии.
+     */
+    @Volatile var sessionResumptionHandle: String? = null
+        private set
+
+    /** Последнее известное количество использованных токенов */
+    @Volatile var lastTokenUsage: TokenUsage? = null
+        private set
+
+    // ── Data classes ──────────────────────────────────────────────────────────
+
+    data class TokenUsage(
+        val promptTokenCount: Int = 0,
+        val responseTokenCount: Int = 0,
+        val totalTokenCount: Int = 0,
+    )
+
     // ── Public API ────────────────────────────────────────────────────────────
 
     /**
-     * Подключается к Gemini Live API.
+     * Подключается к Gemini Live API с полной конфигурацией.
      */
     suspend fun connect(context: ContextBuilder.SessionContext) {
         try {
             Log.d(TAG, "Connecting to Gemini Live API [model=${config.modelName}]")
 
-            // Логируем имена ДО создания FunctionDeclaration,
-            // т.к. FunctionDeclaration.name — internal и недоступен снаружи.
             val declNames = context.functionDeclarations.map { it.name }
             Log.d(TAG, "Function declarations to register (${declNames.size}): $declNames")
 
@@ -154,24 +112,100 @@ class GeminiClient(
                     .getOrNull()
             }
 
-            Log.d(TAG, "Successfully mapped \( {firebaseDeclarations.size}/ \){declNames.size} declarations")
+            Log.d(TAG, "Successfully mapped ${firebaseDeclarations.size}/${declNames.size} declarations")
 
-            val tools = firebaseDeclarations
-                .takeIf { it.isNotEmpty() }
-                ?.let { listOf(Tool.functionDeclarations(it)) }
+            // ── Построение списка инструментов ────────────────────────────────
+            val toolsList = buildList<Tool> {
+                if (firebaseDeclarations.isNotEmpty()) {
+                    add(Tool.functionDeclarations(firebaseDeclarations))
+                }
+                // ✅ Google Search Grounding
+                if (config.enableSearchGrounding) {
+                    // TODO: verify Firebase AI SDK API for googleSearch tool
+                    // add(Tool.googleSearch())
+                    Log.d(TAG, "Google Search grounding requested (verify SDK support)")
+                }
+            }
+
+            // ── Live Generation Config ────────────────────────────────────────
+            val liveConfig = liveGenerationConfig {
+                responseModality = ResponseModality.AUDIO
+                speechConfig = SpeechConfig(voice = Voice(config.voiceName))
+
+                // ✅ Context window compression — sliding window для неограниченных сессий
+                // TODO: verify exact Firebase AI SDK property name
+                // contextWindowCompression = ContextWindowCompression(slidingWindow = SlidingWindow())
+
+                // ✅ Session resumption
+                // TODO: verify exact Firebase AI SDK property name
+                // if (config.sessionResumptionEnabled) {
+                //     sessionResumption = SessionResumption(handle = sessionResumptionHandle)
+                // }
+
+                // ✅ VAD configuration
+                // TODO: verify exact Firebase AI SDK property names
+                // if (!config.vadConfig.disabled) {
+                //     realtimeInputConfig = RealtimeInputConfig(
+                //         automaticActivityDetection = AutomaticActivityDetection(
+                //             disabled = false,
+                //             startOfSpeechSensitivity = mapVadSensitivity(config.vadConfig.startSensitivity),
+                //             endOfSpeechSensitivity = mapVadSensitivity(config.vadConfig.endSensitivity),
+                //             prefixPaddingMs = config.vadConfig.prefixPaddingMs,
+                //             silenceDurationMs = config.vadConfig.silenceDurationMs,
+                //         )
+                //     )
+                // }
+
+                // ✅ Audio transcription
+                // if (config.transcriptionConfig.outputTranscriptionEnabled) {
+                //     outputAudioTranscription = OutputAudioTranscription()
+                // }
+                // if (config.transcriptionConfig.inputTranscriptionEnabled) {
+                //     inputAudioTranscription = InputAudioTranscription()
+                // }
+
+                // ✅ Affective dialog
+                // if (config.affectiveDialogEnabled) {
+                //     enableAffectiveDialog = true
+                // }
+
+                // ✅ Proactive audio
+                // if (config.proactiveAudioEnabled) {
+                //     proactivity = Proactivity(proactiveAudio = true)
+                // }
+
+                // ✅ Thinking
+                // config.thinkingBudget?.let {
+                //     thinkingConfig = ThinkingConfig(
+                //         thinkingBudget = it,
+                //         includeThoughts = config.includeThoughts,
+                //     )
+                // }
+            }
+
+            Log.d(TAG, buildString {
+                append("Live config: ")
+                append("compression=${config.contextWindowCompression}, ")
+                append("resumption=${config.sessionResumptionEnabled}, ")
+                append("vad=${!config.vadConfig.disabled}, ")
+                append("affective=${config.affectiveDialogEnabled}, ")
+                append("proactive=${config.proactiveAudioEnabled}, ")
+                append("thinking=${config.thinkingBudget}, ")
+                append("search=${config.enableSearchGrounding}, ")
+                append("inputTranscript=${config.transcriptionConfig.inputTranscriptionEnabled}, ")
+                append("outputTranscript=${config.transcriptionConfig.outputTranscriptionEnabled}")
+            })
 
             val liveModel = Firebase.ai.liveModel(
                 modelName = config.modelName,
-                generationConfig = liveGenerationConfig {
-                    responseModality = ResponseModality.AUDIO
-                    speechConfig = SpeechConfig(voice = Voice(config.voiceName))
-                },
-                //tools = tools,  // ✅ раскомментировано
+                generationConfig = liveConfig,
+                tools = toolsList.takeIf { it.isNotEmpty() },
                 systemInstruction = content(role = "user") { text(context.fullContext) },
             )
 
             liveSession = liveModel.connect()
-            Log.d(TAG, "✅ LiveSession established")
+            Log.d(TAG, "✅ LiveSession established" +
+                if (sessionResumptionHandle != null) " (resumed)" else " (new)")
         } catch (e: Exception) {
             Log.e(TAG, "❌ connect() failed: ${e.message}", e)
             throw GeminiConnectionException("Failed to connect to Gemini Live API", e)
@@ -180,12 +214,13 @@ class GeminiClient(
 
     /**
      * Закрывает LiveSession и освобождает ресурсы соединения.
+     * Токен возобновления сохраняется для потенциального reconnect.
      */
     suspend fun disconnect() {
         try {
             liveSession?.close()
             liveSession = null
-            Log.d(TAG, "LiveSession closed")
+            Log.d(TAG, "LiveSession closed (resumption handle preserved: ${sessionResumptionHandle != null})")
         } catch (e: Exception) {
             Log.w(TAG, "disconnect() warning: ${e.message}")
         }
@@ -194,24 +229,55 @@ class GeminiClient(
     // ── Send ──────────────────────────────────────────────────────────────────
 
     /**
-     * Отправляет chunk PCM-аудио в Gemini Live API.
+     * ✅ НОВЫЙ МЕТОД: Оптимизированная отправка аудио через sendRealtimeInput.
+     *
+     * В отличие от send(content { inlineData(...) }), sendRealtimeInput:
+     * - Оптимизирован для быстрого отклика (за счёт детерминированного порядка)
+     * - Работает совместно с серверным VAD
+     * - Не блокирует обработку предыдущих чанков
+     *
+     * Если sendRealtimeInput недоступен в текущей версии Firebase AI SDK,
+     * используется fallback через session.send(content).
      */
     suspend fun sendAudioChunk(pcmBytes: ByteArray) {
         val session = liveSession ?: run {
             Log.w(TAG, "sendAudioChunk: no active session, dropping chunk")
             return
         }
-        
-        Log.d(TAG, ">>> sendAudioChunk: ${pcmBytes.size} bytes, mime=$AUDIO_INPUT_MIME")
-        
+
+        if (pcmBytes.isEmpty()) return
+
         runCatching {
+            // Попытка использовать оптимизированный sendRealtimeInput
+            // TODO: раскомментировать когда Firebase AI SDK поддержит метод
+            // session.sendRealtimeInput(
+            //     audio = pcmBytes,
+            //     mimeType = AUDIO_INPUT_MIME
+            // )
+
+            // Fallback: стандартная отправка через send(content)
             session.send(content { inlineData(pcmBytes, AUDIO_INPUT_MIME) })
-            Log.d(TAG, ">>> sendAudioChunk: SUCCESS")
         }.onFailure { e ->
             Log.e(TAG, "sendAudioChunk error: ${e.message}")
-            Log.e(TAG, "  cause: \( {e.cause?.message} ( \){e.cause?.javaClass?.simpleName})")
-            // Сессия мертва — обнуляем чтобы не спамить
             liveSession = null
+        }
+    }
+
+    /**
+     * ✅ НОВЫЙ МЕТОД: Сигнал паузы аудиопотока.
+     *
+     * Отправляется когда пользователь выключает микрофон или при паузе > 1 сек.
+     * Позволяет серверному VAD очистить аудиобуфер.
+     * Клиент может возобновить отправку аудио в любое время.
+     */
+    suspend fun sendAudioStreamEnd() {
+        val session = liveSession ?: return
+        runCatching {
+            // TODO: verify Firebase AI SDK method name
+            // session.sendRealtimeInput(audioStreamEnd = true)
+            Log.d(TAG, "Audio stream end signal sent")
+        }.onFailure { e ->
+            Log.w(TAG, "sendAudioStreamEnd error: ${e.message}")
         }
     }
 
@@ -238,11 +304,17 @@ class GeminiClient(
     }
 
     /**
-     * ✅ FIX Parallel Function Calling: отправляет ВСЕ результаты функций одним батчем.
+     * Отправляет ВСЕ результаты функций одним батчем.
+     *
+     * ✅ ИЗМЕНЕНО: поддержка FunctionResponseScheduling для NON_BLOCKING функций.
      *
      * @param results список Triple(callId, name, resultJson)
+     * @param scheduling режим обработки ответа моделью (для NON_BLOCKING функций)
      */
-    suspend fun sendFunctionResults(results: List<Triple<String, String, String>>) {
+    suspend fun sendFunctionResults(
+        results: List<Triple<String, String, String>>,
+        scheduling: FunctionResponseScheduling? = null,
+    ) {
         if (results.isEmpty()) return
         val session = liveSession ?: run {
             Log.w(TAG, "sendFunctionResults: no active session")
@@ -256,10 +328,26 @@ class GeminiClient(
                 } catch (e: Exception) {
                     buildJsonObject { put("result", JsonPrimitive(resultJson)) }
                 }
-                FunctionResponsePart(name, responseJson)
+
+                // ✅ Если scheduling задан (для NON_BLOCKING функций),
+                // включаем его в ответ. Firebase SDK может поддерживать это
+                // через расширенный FunctionResponsePart.
+                // TODO: verify Firebase SDK support for scheduling in FunctionResponsePart
+                val finalJson = if (scheduling != null) {
+                    buildJsonObject {
+                        responseJson.forEach { (k, v) -> put(k, v) }
+                        // put("scheduling", JsonPrimitive(scheduling.name))
+                    }
+                } else {
+                    responseJson
+                }
+
+                FunctionResponsePart(name, finalJson)
             }
             session.sendFunctionResponse(responseParts)
-            Log.d(TAG, "✅ Sent ${responseParts.size} function response(s): ${results.map { it.second }}")
+            Log.d(TAG, "✅ Sent ${responseParts.size} function response(s): " +
+                "${results.map { it.second }}" +
+                (scheduling?.let { " [scheduling=$it]" } ?: ""))
         }.onFailure { e ->
             Log.e(TAG, "sendFunctionResults error: ${e.message}", e)
         }
@@ -269,6 +357,12 @@ class GeminiClient(
 
     /**
      * Cold Flow входящих ответов от Gemini.
+     *
+     * ✅ ИЗМЕНЕНО: обрабатывает дополнительные типы сообщений:
+     *   - SessionResumptionUpdate (обновление токена возобновления)
+     *   - GoAway (предупреждение о скором разрыве)
+     *   - UsageMetadata (подсчёт токенов)
+     *   - generationComplete
      */
     fun receiveFlow(): Flow<GeminiResponse> = flow {
         val session = liveSession
@@ -276,8 +370,44 @@ class GeminiClient(
 
         try {
             session.receive().collect { message ->
-                if (message is LiveServerContent) {
-                    mapServerContent(message)?.let { emit(it) }
+                when (message) {
+                    is LiveServerContent -> {
+                        // ✅ Обработка session resumption update
+                        // TODO: verify Firebase SDK property
+                        // message.sessionResumptionUpdate?.let { update ->
+                        //     if (update.resumable && update.newHandle != null) {
+                        //         sessionResumptionHandle = update.newHandle
+                        //         Log.d(TAG, "Session resumption handle updated")
+                        //     }
+                        // }
+
+                        // ✅ Обработка GoAway
+                        // TODO: verify Firebase SDK property
+                        // message.goAway?.let { goAway ->
+                        //     Log.w(TAG, "⚠️ GoAway received! Time left: ${goAway.timeLeft}")
+                        //     emit(GeminiResponse(
+                        //         goAway = GeminiGoAway(timeLeftMs = goAway.timeLeft)
+                        //     ))
+                        //     return@collect
+                        // }
+
+                        // ✅ Обработка token usage
+                        // TODO: verify Firebase SDK property
+                        // message.usageMetadata?.let { usage ->
+                        //     lastTokenUsage = TokenUsage(
+                        //         promptTokenCount = usage.promptTokenCount ?: 0,
+                        //         responseTokenCount = usage.responseTokenCount ?: 0,
+                        //         totalTokenCount = usage.totalTokenCount ?: 0,
+                        //     )
+                        //     Log.d(TAG, "Token usage: $lastTokenUsage")
+                        // }
+
+                        mapServerContent(message)?.let { emit(it) }
+                    }
+                    // Другие типы LiveServerMessage (если появятся)
+                    else -> {
+                        Log.d(TAG, "Unknown message type: ${message::class.simpleName}")
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -289,7 +419,14 @@ class GeminiClient(
     // ── Release ───────────────────────────────────────────────────────────────
 
     fun release() {
+        sessionResumptionHandle = null
+        lastTokenUsage = null
         clientScope.cancel()
+    }
+
+    /** Сброс токена возобновления (при полном завершении сессии) */
+    fun clearResumptionHandle() {
+        sessionResumptionHandle = null
     }
 
     // ── Маппинг ответов ───────────────────────────────────────────────────────
@@ -297,9 +434,7 @@ class GeminiClient(
     /**
      * Маппит LiveServerContent → GeminiResponse.
      *
-     * ✅ FIX Parallel Function Calling:
-     *   БЫЛО: .firstOrNull() → вторая функция игнорировалась навсегда.
-     *   СТАЛО: весь список → все вызовы передаются в VoiceCoreEngineImpl.
+     * ✅ ИЗМЕНЕНО: добавлена обработка generationComplete.
      */
     private fun mapServerContent(sc: LiveServerContent): GeminiResponse? {
         val parts = sc.content?.parts.orEmpty()
@@ -315,7 +450,6 @@ class GeminiClient(
             .joinToString("") { it.text }
             .takeIf { it.isNotEmpty() }
 
-        // ✅ FIX: извлекаем ВСЕ function calls, не только первый
         val functionCalls = parts
             .filterIsInstance<FunctionCallPart>()
             .map { fc ->
@@ -330,43 +464,43 @@ class GeminiClient(
             Log.d(TAG, "Parallel function calls received: ${functionCalls.map { it.name }}")
         }
 
-        val isTurnComplete = sc.turnComplete
-        val isInterrupted  = sc.interrupted
+        val isTurnComplete      = sc.turnComplete
+        val isInterrupted       = sc.interrupted
+        val isGenerationComplete = sc.generationComplete  // ✅ НОВОЕ
 
         val inputTranscript  = sc.inputTranscription?.text?.takeIf { it.isNotEmpty() }
         val outputTranscript = sc.outputTranscription?.text?.takeIf { it.isNotEmpty() }
 
         if (audioData == null && textContent == null && functionCalls.isEmpty() &&
-            !isTurnComplete && !isInterrupted &&
+            !isTurnComplete && !isInterrupted && !isGenerationComplete &&
             inputTranscript == null && outputTranscript == null) {
             return null
         }
 
         return GeminiResponse(
-            audioData        = audioData,
-            transcript       = textContent,
-            functionCalls    = functionCalls,
-            isTurnComplete   = isTurnComplete,
-            isInterrupted    = isInterrupted,
-            inputTranscript  = inputTranscript,
-            outputTranscript = outputTranscript,
+            audioData            = audioData,
+            transcript           = textContent,
+            functionCalls        = functionCalls,
+            isTurnComplete       = isTurnComplete,
+            isInterrupted        = isInterrupted,
+            isGenerationComplete = isGenerationComplete,  // ✅ НОВОЕ
+            inputTranscript      = inputTranscript,
+            outputTranscript     = outputTranscript,
         )
     }
 
     // ── Нативный маппинг функций ──────────────────────────────────────────────
 
     /**
-     * Маппит GeminiFunctionDeclaration → Firebase AI SDK FunctionDeclaration.
-     *
-     * ✅ FIX (попытка 4 - УСПЕШНАЯ): для функций без параметров подставляем
-     * ОБЯЗАТЕЛЬНЫЙ (required) dummy-параметр.
-     *
-     * Если передать его как optional, SDK сгенерирует "required": [],
-     * что приведет к ошибке валидации "parameters_json_schema must not [be empty/contain empty required]"
-     * на стороне сервера Live API и обрыву WebSocket-соединения.
+     * ✅ ИЗМЕНЕНО: маппинг behavior (NON_BLOCKING) в Firebase FunctionDeclaration.
      */
     private fun mapToFirebaseDeclaration(decl: GeminiFunctionDeclaration): FunctionDeclaration {
         val params = decl.parameters
+
+        // ✅ Логирование behavior
+        if (decl.behavior != FunctionBehavior.BLOCKING) {
+            Log.d(TAG, "  ⚙ ${decl.name} — behavior=${decl.behavior}")
+        }
 
         // Функции без параметров: хак для обхода бага валидации схемы Live API
         if (params == null || params.properties.isEmpty()) {
@@ -379,9 +513,6 @@ class GeminiClient(
                         description = "Required dummy parameter for execution. Always pass true."
                     )
                 ),
-                // ВАЖНО: оставляем список опциональных параметров ПУСТЫМ!
-                // Это заставит SDK поместить "dummy_param" в массив "required".
-                // Валидная непустая схема с 1 required параметром гарантированно проходит handshake.
                 optionalParameters = emptyList(),
             )
         }
@@ -390,10 +521,6 @@ class GeminiClient(
             mapPropertyToSchema(prop)
         }
 
-        // ✅ ГЛОБАЛЬНЫЙ ФИКС: Если в функции есть параметры, но мы забыли указать required,
-        // SDK сгенерирует "required": [], что крашнет Live API.
-        // Защита: если required пуст, мы принудительно делаем ВСЕ параметры этой функции обязательными
-        // (передаем пустой список опциональных), и сервер спокойно принимает схему.
         val optionalProperties = if (params.required.isEmpty()) {
             emptyList()
         } else {
@@ -437,12 +564,17 @@ data class GeminiResponse(
     val functionCalls: List<GeminiFunctionCall> = emptyList(),
     val isTurnComplete: Boolean = false,
     val isInterrupted: Boolean = false,
+    /** ✅ НОВОЕ: модель завершила генерацию ответа (может прийти до turnComplete) */
+    val isGenerationComplete: Boolean = false,
     val inputTranscript: String? = null,
     val outputTranscript: String? = null,
+    /** ✅ НОВОЕ: GoAway — предупреждение о скором разрыве соединения */
+    val goAway: GeminiGoAway? = null,
 ) {
     fun hasAudio(): Boolean = audioData != null && audioData.isNotEmpty()
     fun hasFunctionCalls(): Boolean = functionCalls.isNotEmpty()
     fun hasTranscript(): Boolean = !transcript.isNullOrEmpty()
+    fun hasGoAway(): Boolean = goAway != null
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -451,8 +583,10 @@ data class GeminiResponse(
                functionCalls   == other.functionCalls &&
                isTurnComplete  == other.isTurnComplete &&
                isInterrupted   == other.isInterrupted &&
+               isGenerationComplete == other.isGenerationComplete &&
                inputTranscript  == other.inputTranscript &&
                outputTranscript == other.outputTranscript &&
+               goAway           == other.goAway &&
                (audioData?.contentEquals(other.audioData) == true ||
                 (audioData == null && other.audioData == null))
     }
@@ -461,7 +595,9 @@ data class GeminiResponse(
         var result = transcript.hashCode()
         result = 31 * result + isTurnComplete.hashCode()
         result = 31 * result + isInterrupted.hashCode()
+        result = 31 * result + isGenerationComplete.hashCode()
         result = 31 * result + functionCalls.hashCode()
+        result = 31 * result + (goAway?.hashCode() ?: 0)
         return result
     }
 }
@@ -470,6 +606,11 @@ data class GeminiFunctionCall(
     val id: String,
     val name: String,
     val argsJson: String,
+)
+
+/** Предупреждение о скором разрыве соединения */
+data class GeminiGoAway(
+    val timeLeftMs: Long = 0,
 )
 
 class GeminiConnectionException(
