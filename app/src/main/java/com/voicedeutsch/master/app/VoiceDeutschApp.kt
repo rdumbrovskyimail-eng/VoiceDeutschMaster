@@ -29,7 +29,7 @@ class VoiceDeutschApp : Application() {
             if (BuildConfig.USE_DEBUG_APP_CHECK) {
                 val token = BuildConfig.APP_CHECK_DEBUG_TOKEN
                 if (token.isNotEmpty()) {
-                    System.setProperty("firebase.test.token", token)
+                    System.setProperty("firebase.app-check.debug-token", token)
                     Log.d("VoiceDeutschApp", "✅ App Check debug token set in attachBaseContext")
                 }
             }
