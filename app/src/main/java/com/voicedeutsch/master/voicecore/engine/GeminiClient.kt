@@ -22,8 +22,7 @@ import com.google.firebase.ai.type.Voice
 import com.google.firebase.ai.type.content
 import com.google.firebase.ai.type.liveGenerationConfig
 import com.voicedeutsch.master.voicecore.context.ContextBuilder
-import com.voicedeutsch.master.voicecore.functions.FunctionBehavior
-import com.voicedeutsch.master.voicecore.functions.FunctionResponseScheduling
+
 import com.voicedeutsch.master.voicecore.functions.GeminiFunctionDeclaration
 import com.voicedeutsch.master.voicecore.functions.GeminiProperty
 import kotlinx.coroutines.CoroutineScope
@@ -308,7 +307,6 @@ class GeminiClient(
      */
     suspend fun sendFunctionResults(
         results: List<Triple<String, String, String>>,
-        scheduling: FunctionResponseScheduling? = null,
     ) {
         if (results.isEmpty()) return
         val session = liveSession ?: run {
@@ -324,25 +322,11 @@ class GeminiClient(
                     buildJsonObject { put("result", JsonPrimitive(resultJson)) }
                 }
 
-                // ✅ Если scheduling задан (для NON_BLOCKING функций),
-                // включаем его в ответ. Firebase SDK может поддерживать это
-                // через расширенный FunctionResponsePart.
-                // TODO: verify Firebase SDK support for scheduling in FunctionResponsePart
-                val finalJson = if (scheduling != null) {
-                    buildJsonObject {
-                        responseJson.forEach { (k, v) -> put(k, v) }
-                        // put("scheduling", JsonPrimitive(scheduling.name))
-                    }
-                } else {
-                    responseJson
-                }
-
-                FunctionResponsePart(name, finalJson)
+                FunctionResponsePart(name, responseJson)
             }
             session.sendFunctionResponse(responseParts)
             Log.d(TAG, "✅ Sent ${responseParts.size} function response(s): " +
-                "${results.map { it.second }}" +
-                (scheduling?.let { " [scheduling=$it]" } ?: ""))
+                "${results.map { it.second }}")
         }.onFailure { e ->
             Log.e(TAG, "sendFunctionResults error: ${e.message}", e)
         }
@@ -491,11 +475,6 @@ class GeminiClient(
      */
     private fun mapToFirebaseDeclaration(decl: GeminiFunctionDeclaration): FunctionDeclaration {
         val params = decl.parameters
-
-        // ✅ Логирование behavior
-        if (decl.behavior != FunctionBehavior.BLOCKING) {
-            Log.d(TAG, "  ⚙ ${decl.name} — behavior=${decl.behavior}")
-        }
 
         // Функции без параметров: хак для обхода бага валидации схемы Live API
         if (params == null || params.properties.isEmpty()) {
