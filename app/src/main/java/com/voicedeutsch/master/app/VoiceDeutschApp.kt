@@ -23,18 +23,22 @@ class VoiceDeutschApp : Application() {
 
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
-        try {
-            CrashLogger.init(base).apply {
-                cleanOldLogs(keepCount = 20)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ CrashLogger init failed", e)
-        }
+        // FIX: CrashLogger NOT initialized here.
+        // ApplicationContext may still be null at this stage.
+        // Moved to onCreate().
     }
 
     override fun onCreate() {
         initAppLogger()
         super.onCreate()
+
+        try {
+            CrashLogger.init(this).apply {
+                cleanOldLogs(keepCount = 20)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ CrashLogger init failed", e)
+        }
 
         startKoin {
             androidLogger(if (BuildConfig.DEBUG) Level.DEBUG else Level.NONE)
