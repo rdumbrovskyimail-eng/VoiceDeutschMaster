@@ -51,7 +51,8 @@ object KnowledgeFunctions {
             params = mapOf(
                 "limit" to ("integer" to "Максимальное количество слов (по умолчанию 10)"),
             ),
-            required = listOf("limit"), // ✅ ФИКС: делаем параметр обязательным, чтобы required не был пустым
+            // FIX: required убран — limit необязателен, есть default в handler
+            required = emptyList(),
         ),
         FunctionRegistry.declare(
             name = "get_weak_points",
