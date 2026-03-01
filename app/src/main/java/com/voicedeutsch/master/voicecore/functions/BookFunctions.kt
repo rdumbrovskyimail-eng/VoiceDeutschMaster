@@ -24,6 +24,8 @@ object BookFunctions {
         FunctionRegistry.declare(
             name        = "get_current_lesson",
             description = "Получить текущий урок, его содержание и словарь.",
+            // ✅ ИСПРАВЛЕНИЕ: Добавлен dummy-параметр
+            params      = mapOf("dummy" to ("string" to "Игнорируемый параметр, передай 'ok'")),
         ),
         FunctionRegistry.declare(
             name        = "advance_to_next_lesson",
