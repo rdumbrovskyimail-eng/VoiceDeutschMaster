@@ -140,8 +140,8 @@ class AudioPipeline(private val context: Context) {
         }
     }
 
-    fun stopAll() {
-        runBlocking { flushPlayback() }
+    suspend fun stopAll() {
+        flushPlayback()
         stopRecording()
     }
 
