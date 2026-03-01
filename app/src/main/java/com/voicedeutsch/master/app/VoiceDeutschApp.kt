@@ -23,6 +23,19 @@ class VoiceDeutschApp : Application() {
 
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
+        // 🔥 КРИТИЧЕСКИ ВАЖНО: Устанавливаем токен ЗДЕСЬ!
+        // Это происходит ДО инициализации FirebaseInitProvider
+        try {
+            if (BuildConfig.USE_DEBUG_APP_CHECK) {
+                val token = BuildConfig.APP_CHECK_DEBUG_TOKEN
+                if (token.isNotEmpty()) {
+                    System.setProperty("firebase.test.token", token)
+                    Log.d("VoiceDeutschApp", "✅ App Check debug token set in attachBaseContext")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("VoiceDeutschApp", "Failed to set debug token", e)
+        }
     }
 
     override fun onCreate() {
@@ -59,25 +72,15 @@ class VoiceDeutschApp : Application() {
 
     private fun initFirebase() {
         try {
-            // 1. Устанавливаем токен ДО инициализации Firebase
-            if (BuildConfig.USE_DEBUG_APP_CHECK) {
-                val token = BuildConfig.APP_CHECK_DEBUG_TOKEN
-                if (token.isNotEmpty()) {
-                    System.setProperty("firebase.test.token", token)
-                    Log.d(TAG, "✅ App Check debug token set from BuildConfig: ${token.take(8)}...")
-                } else {
-                    Log.w(TAG, "⚠️ APP_CHECK_DEBUG_TOKEN is empty in BuildConfig!")
-                }
+            // Проверяем, инициализировал ли уже провайдер Firebase
+            if (FirebaseApp.getApps(this).isEmpty()) {
+                FirebaseApp.initializeApp(this)
+                Log.d(TAG, "✅ FirebaseApp initialized manually")
+            } else {
+                Log.d(TAG, "✅ FirebaseApp auto-initialized by provider")
             }
-
-            // 2. Инициализируем Firebase
-            FirebaseApp.initializeApp(this)
-            Log.d(TAG, "✅ FirebaseApp initialized")
             
-            // 3. НЕМЕДЛЕННО настраиваем App Check
             initAppCheck()
-            
-            // 4. Остальные сервисы
             initCrashlytics()
             initAnalytics()
         } catch (e: Exception) {
@@ -88,14 +91,12 @@ class VoiceDeutschApp : Application() {
     private fun initAppCheck() {
         try {
             if (BuildConfig.USE_DEBUG_APP_CHECK) {
-                // Явно используем Debug провайдер
                 val debugProviderFactory = com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory.getInstance()
                 FirebaseAppCheck.getInstance().installAppCheckProviderFactory(debugProviderFactory)
                 Log.d(TAG, "✅ App Check initialized [DEBUG_PROVIDER]")
             } else {
-                // В релизе используем Play Integrity
                 FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
-                    com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory.getInstance()
+                    PlayIntegrityAppCheckProviderFactory.getInstance()
                 )
                 Log.d(TAG, "✅ App Check initialized [PLAY_INTEGRITY]")
             }
