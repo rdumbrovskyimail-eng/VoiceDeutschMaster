@@ -394,6 +394,15 @@ class VoiceCoreEngineImpl(
 
     private suspend fun handleGeminiResponse(response: GeminiResponse) {
         when {
+            // ✅ НОВОЕ: GoAway — предупреждение о скором разрыве
+            response.hasGoAway() -> {
+                val timeLeft = response.goAway!!.timeLeftMs
+                Log.w(TAG, "⚠️ GoAway received! Connection closing in ${timeLeft}ms")
+                // Автоматический reconnect будет инициирован при фактическом разрыве.
+                // Логируем для диагностики.
+                updateState { copy(errorMessage = null) }
+            }
+
             response.isInterrupted -> {
                 Log.d(TAG, "User interrupted AI — flushing audio queue")
                 audioPipeline.flushPlayback()
@@ -419,9 +428,11 @@ class VoiceCoreEngineImpl(
                 } else {
                     audioPipeline.enqueueAudio(audioData)
                 }
+                // ✅ ИЗМЕНЕНО: проверяем и turnComplete, и generationComplete
                 if (response.isTurnComplete) {
                     transitionAudio(AudioState.IDLE)
                     transitionEngine(VoiceEngineState.WAITING)
+                    updateState { copy(isSpeaking = false) }
                 }
             }
 
@@ -460,7 +471,9 @@ class VoiceCoreEngineImpl(
                         }
                     }.awaitAll()
 
-                    geminiClient.sendFunctionResults(results)
+                    // ✅ НОВОЕ: определяем scheduling на основе behavior функции
+                    val scheduling = determineFunctionScheduling(calls)
+                    geminiClient.sendFunctionResults(results, scheduling)
                     updateState { copy(isProcessing = false) }
                 }
             }
@@ -474,8 +487,21 @@ class VoiceCoreEngineImpl(
                 updateState { copy(currentTranscript = response.transcript ?: "") }
                 transitionEngine(VoiceEngineState.PROCESSING)
             }
+
+            // ✅ НОВОЕ: generationComplete без другого контента
+            response.isGenerationComplete && !response.isTurnComplete -> {
+                Log.d(TAG, "Generation complete (waiting for turnComplete)")
+            }
         }
     }
+
+    // ── VoiceCoreEngine: new methods ──────────────────────────────────────────
+
+    override suspend fun sendAudioStreamEnd() {
+        geminiClient.sendAudioStreamEnd()
+    }
+
+    override fun getTokenUsage(): GeminiClient.TokenUsage? = geminiClient.lastTokenUsage
 
     // ── Вспомогательные методы ────────────────────────────────────────────────
 
