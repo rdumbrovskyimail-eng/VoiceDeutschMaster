@@ -480,9 +480,10 @@ class VoiceCoreEngineImpl(
                         }
                     }.awaitAll()
 
-                    // ✅ НОВОЕ: определяем scheduling на основе behavior функции
-                    val scheduling = determineFunctionScheduling(calls)
-                    geminiClient.sendFunctionResults(results, scheduling)
+                    // Scheduling (INTERRUPT/WHEN_IDLE/SILENT) пока не поддерживается
+                    // в Firebase AI SDK — отправляем как стандартный blocking response.
+                    // TODO: добавить scheduling когда Firebase экспонирует FunctionResponseScheduling
+                    geminiClient.sendFunctionResults(results)
                     updateState { copy(isProcessing = false) }
                 }
             }
@@ -605,21 +606,14 @@ class VoiceCoreEngineImpl(
         Log.d(TAG, "✅ Reconnected successfully (resumption=$hasResumptionHandle)")
     }
 
-    /**
-     * ✅ НОВОЕ: Определяет FunctionResponseScheduling на основе behavior деклараций.
-     *
-     * Если хотя бы одна функция в batch — NON_BLOCKING, используем INTERRUPT.
-     * Это гарантирует, что модель получит результат как можно скорее.
-     */
-    private fun determineFunctionScheduling(
-        calls: List<GeminiFunctionCall>,
-    ): FunctionResponseScheduling? {
-        val allDeclarations = com.voicedeutsch.master.voicecore.functions.FunctionRegistry.getAllDeclarations()
-        val hasNonBlocking = calls.any { call ->
-            allDeclarations.find { it.name == call.name }?.behavior == FunctionBehavior.NON_BLOCKING
-        }
-        return if (hasNonBlocking) FunctionResponseScheduling.WHEN_IDLE else null
-    }
+    // TODO: Async Function Calling (NON_BLOCKING behavior + FunctionResponseScheduling)
+    // Доступно в прямом Gemini SDK (@google/genai) для JS/Python,
+    // но НЕ экспонировано в Firebase AI SDK для Android (firebase-bom 34.9.0).
+    // Когда Firebase добавит поддержку — раскомментировать и вернуть scheduling в sendFunctionResults().
+    //
+    // private fun determineFunctionScheduling(
+    //     calls: List<GeminiFunctionCall>,
+    // ): FunctionResponseScheduling? { ... }
 
     private fun buildStrategyChangeMessage(strategy: LearningStrategy): String =
         "Пожалуйста, переключись на стратегию ${strategy.displayNameRu} (${strategy.name})."
