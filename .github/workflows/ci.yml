@@ -70,6 +70,21 @@ jobs:
     - name: Create local.properties
       run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
+    - name: Inspect InlineData fields
+      run: |
+        echo "=== Searching for firebase-ai JAR ==="
+        JAR=$(find ~/.gradle/caches -name "firebase-ai-*.jar" 2>/dev/null | grep -v sources | head -1)
+        echo "JAR found: $JAR"
+        if [ -n "$JAR" ]; then
+          echo "=== Classes in JAR containing InlineData ==="
+          jar tf "$JAR" | grep -i "InlineData" || echo "InlineData not found in jar listing"
+          echo "=== javap output ==="
+          javap -classpath "$JAR" com.google.firebase.ai.type.InlineData 2>&1 || echo "javap failed"
+        else
+          echo "JAR not found, searching all firebase jars..."
+          find ~/.gradle/caches -name "*.jar" 2>/dev/null | grep firebase | head -10
+        fi
+
     - name: Run Unit Tests
       run: |
         ./gradlew testDebugUnitTest \
@@ -83,9 +98,6 @@ jobs:
         ./gradlew printAppCheckToken \
           -PappCheckDebugToken="${{ secrets.APP_CHECK_DEBUG_TOKEN }}"
 
-    # 🔥 ИЗМЕНЕНО: Собираем Debug APK вместо ReleaseDebug
-    # Это отключает минификацию (R8), которая ломала парсинг JSON (grammar.json) 
-    # и сериализацию схем Gemini, а также вырезала установку токена App Check.
     - name: Build Debug APK
       run: |
         ./gradlew assembleDebug \
@@ -96,7 +108,6 @@ jobs:
           --configuration-cache \
           -Dlint.baselines.continue=true
 
-    # 🔥 ИЗМЕНЕНО: Загружаем артефакт из папки debug
     - name: Upload Debug APK
       uses: actions/upload-artifact@v4
       with:
