@@ -490,20 +490,16 @@ class GeminiClient(
     private fun mapToFirebaseDeclaration(decl: GeminiFunctionDeclaration): FunctionDeclaration? {
         val params = decl.parameters
 
-        // Live API отклоняет пустую schema — пропускаем функции без параметров
-        if (params == null || params.properties.isEmpty()) {
-            Log.w(TAG, "  ⚠ ${decl.name} — no params, skipping (empty schema rejected by server)")
-            return null
-        }
-
-        val properties = params.properties.mapValues { (_, prop) ->
+        // ✅ ИСПРАВЛЕНИЕ: Убрали пропуск пустых параметров.
+        // Теперь все функции будут иметь как минимум один dummy-параметр.
+        val properties = params?.properties?.mapValues { (_, prop) ->
             mapPropertyToSchema(prop)
-        }
+        } ?: emptyMap()
 
-        val optionalProperties = properties.keys.filter { it !in params.required }
+        val optionalProperties = properties.keys.filter { it !in (params?.required ?: emptyList()) }
 
         Log.d(TAG, "  ⚙ ${decl.name} — params: ${properties.keys}, " +
-                "required: ${params.required}, optional: $optionalProperties")
+                "required: ${params?.required}, optional: $optionalProperties")
 
         return FunctionDeclaration(
             name               = decl.name,
