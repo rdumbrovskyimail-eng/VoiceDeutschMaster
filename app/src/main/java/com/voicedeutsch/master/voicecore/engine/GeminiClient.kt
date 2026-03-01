@@ -104,6 +104,8 @@ class GeminiClient(
         try {
             Log.d(TAG, "Connecting to Gemini Live API [model=${config.modelName}]")
 
+            // 🔥 ВРЕМЕННО ОТКЛЮЧАЕМ ВСЕ ФУНКЦИИ ДЛЯ ТЕСТА СОЕДИНЕНИЯ
+            /*
             val declNames = context.functionDeclarations.map { it.name }
             Log.d(TAG, "Function declarations to register (${declNames.size}): $declNames")
 
@@ -115,99 +117,48 @@ class GeminiClient(
 
             Log.d(TAG, "Successfully mapped ${firebaseDeclarations.size}/${declNames.size} declarations")
 
-            // ── Построение списка инструментов ────────────────────────────────
             val toolsList = buildList<Tool> {
                 if (firebaseDeclarations.isNotEmpty()) {
                     add(Tool.functionDeclarations(firebaseDeclarations))
                 }
-            // ✅ Google Search Grounding
-            if (config.enableSearchGrounding) {
-                add(Tool.googleSearch())
-                Log.d(TAG, "Google Search grounding enabled")
+                if (config.enableSearchGrounding) {
+                    add(Tool.googleSearch())
+                    Log.d(TAG, "Google Search grounding enabled")
+                }
             }
-            }
+            */
 
             // ── Live Generation Config ────────────────────────────────────────
             val liveConfig = liveGenerationConfig {
                 responseModality = ResponseModality.AUDIO
                 speechConfig = SpeechConfig(voice = Voice(config.voiceName))
 
-                // ✅ Context window compression — sliding window для неограниченных сессий
-                // TODO: verify exact Firebase AI SDK property name
-                // contextWindowCompression = ContextWindowCompression(slidingWindow = SlidingWindow())
-
-                // ✅ Session resumption
-                // TODO: verify exact Firebase AI SDK property name
-                // if (config.sessionResumptionEnabled) {
-                //     sessionResumption = SessionResumption(handle = sessionResumptionHandle)
-                // }
-
-                // ✅ VAD configuration
-                // TODO: verify exact Firebase AI SDK property names
-                // if (!config.vadConfig.disabled) {
-                //     realtimeInputConfig = RealtimeInputConfig(
-                //         automaticActivityDetection = AutomaticActivityDetection(
-                //             disabled = false,
-                //             startOfSpeechSensitivity = mapVadSensitivity(config.vadConfig.startSensitivity),
-                //             endOfSpeechSensitivity = mapVadSensitivity(config.vadConfig.endSensitivity),
-                //             prefixPaddingMs = config.vadConfig.prefixPaddingMs,
-                //             silenceDurationMs = config.vadConfig.silenceDurationMs,
-                //         )
-                //     )
-                // }
-
-                // ✅ Audio transcription
                 if (config.transcriptionConfig.outputTranscriptionEnabled) {
                     outputAudioTranscription = AudioTranscriptionConfig()
                 }
                 if (config.transcriptionConfig.inputTranscriptionEnabled) {
                     inputAudioTranscription = AudioTranscriptionConfig()
                 }
-
-                // ✅ Affective dialog
-                // if (config.affectiveDialogEnabled) {
-                //     enableAffectiveDialog = true
-                // }
-
-                // ✅ Proactive audio
-                // if (config.proactiveAudioEnabled) {
-                //     proactivity = Proactivity(proactiveAudio = true)
-                // }
-
-                // ✅ Thinking
-                // config.thinkingBudget?.let {
-                //     thinkingConfig = ThinkingConfig(
-                //         thinkingBudget = it,
-                //         includeThoughts = config.includeThoughts,
-                //     )
-                // }
             }
 
-            Log.d(TAG, buildString {
-                append("Live config: ")
-                append("compression=${config.contextWindowCompression}, ")
-                append("resumption=${config.sessionResumptionEnabled}, ")
-                append("vad=${!config.vadConfig.disabled}, ")
-                append("affective=${config.affectiveDialogEnabled}, ")
-                append("proactive=${config.proactiveAudioEnabled}, ")
-                append("thinking=${config.thinkingBudget}, ")
-                append("search=${config.enableSearchGrounding}, ")
-                append("inputTranscript=${config.transcriptionConfig.inputTranscriptionEnabled}, ")
-                append("outputTranscript=${config.transcriptionConfig.outputTranscriptionEnabled}")
-            })
+            Log.d(TAG, "Live config: transcription enabled")
 
             val liveModel = Firebase.ai.liveModel(
                 modelName = config.modelName,
                 generationConfig = liveConfig,
-                tools = toolsList.takeIf { it.isNotEmpty() },
+                // 🔥 ПЕРЕДАЕМ NULL ВМЕСТО ИНСТРУМЕНТОВ
+                tools = null,
                 systemInstruction = content(role = "user") { text(context.fullContext) },
             )
 
             liveSession = liveModel.connect()
-            Log.d(TAG, "✅ LiveSession established" +
-                if (sessionResumptionHandle != null) " (resumed)" else " (new)")
+            Log.d(TAG, "✅ LiveSession established (TOOLS DISABLED FOR TESTING)")
         } catch (e: Exception) {
-            Log.e(TAG, "❌ connect() failed: ${e.message}", e)
+            Log.e(TAG, "❌ connect() failed: ${e.message}")
+            Log.e(TAG, "❌ Exception class: ${e.javaClass.name}")
+            e.cause?.let { cause ->
+                Log.e(TAG, "❌ Cause: ${cause.message}")
+            }
             throw GeminiConnectionException("Failed to connect to Gemini Live API", e)
         }
     }
