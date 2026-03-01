@@ -263,7 +263,8 @@ class VoiceCoreEngineImpl(
             sessionJob = geminiClient
                 .receiveFlow()
                 .onStart {
-                    Log.d(TAG, "receiveFlow started collecting — now starting audio")
+                    Log.d(TAG, "receiveFlow started collecting — waiting for SetupComplete")
+                    kotlinx.coroutines.delay(500) // Даем серверу 500мс на обработку Setup
                     startListening()
                 }
                 .onEach  { response -> handleGeminiResponse(response) }
@@ -624,7 +625,8 @@ class VoiceCoreEngineImpl(
         sessionJob = geminiClient
             .receiveFlow()
             .onStart {
-                Log.d(TAG, "receiveFlow started collecting (reconnect) — now starting audio")
+                Log.d(TAG, "receiveFlow started collecting (reconnect) — waiting for SetupComplete")
+                kotlinx.coroutines.delay(500) // Даем серверу 500мс на обработку Setup
                 startListening()
             }
             .onEach  { response -> handleGeminiResponse(response) }
