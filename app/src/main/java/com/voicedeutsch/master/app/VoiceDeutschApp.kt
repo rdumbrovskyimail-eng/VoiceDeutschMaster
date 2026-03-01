@@ -23,9 +23,6 @@ class VoiceDeutschApp : Application() {
 
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
-        // FIX: CrashLogger NOT initialized here.
-        // ApplicationContext may still be null at this stage.
-        // Moved to onCreate().
     }
 
     override fun onCreate() {
@@ -62,8 +59,19 @@ class VoiceDeutschApp : Application() {
 
     private fun initFirebase() {
         try {
+            // ВАЖНО: Устанавливаем токен ДО инициализации FirebaseApp, 
+            // иначе провайдер его не подхватит!
+            if (BuildConfig.USE_DEBUG_APP_CHECK) {
+                val token = BuildConfig.APP_CHECK_DEBUG_TOKEN
+                if (token.isNotEmpty()) {
+                    System.setProperty("firebase.test.token", token)
+                    Log.d(TAG, "✅ App Check debug token set from BuildConfig")
+                }
+            }
+
             FirebaseApp.initializeApp(this)
             Log.d(TAG, "✅ FirebaseApp initialized")
+            
             initAppCheck()
             initCrashlytics()
             initAnalytics()
@@ -75,18 +83,13 @@ class VoiceDeutschApp : Application() {
     private fun initAppCheck() {
         try {
             if (BuildConfig.USE_DEBUG_APP_CHECK) {
-                val token = BuildConfig.APP_CHECK_DEBUG_TOKEN
-                if (token.isNotEmpty()) {
-                    System.setProperty("firebase.test.token", token)
-                    Log.d(TAG, "✅ App Check debug token set from BuildConfig")
-                }
                 val debugProviderClass = Class.forName(
                     "com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory"
                 )
                 val provider = debugProviderClass.getMethod("getInstance")
                     .invoke(null) as com.google.firebase.appcheck.AppCheckProviderFactory
                 FirebaseAppCheck.getInstance().installAppCheckProviderFactory(provider)
-                Log.d(TAG, "✅ App Check initialized [DEBUG_PROVIDER] token=${token.ifEmpty { "auto" }}")
+                Log.d(TAG, "✅ App Check initialized [DEBUG_PROVIDER]")
             } else {
                 FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
                     PlayIntegrityAppCheckProviderFactory.getInstance()
