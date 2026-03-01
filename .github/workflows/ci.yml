@@ -83,9 +83,12 @@ jobs:
         ./gradlew printAppCheckToken \
           -PappCheckDebugToken="${{ secrets.APP_CHECK_DEBUG_TOKEN }}"
 
-    - name: Build ReleaseDebug APK
+    # 🔥 ИЗМЕНЕНО: Собираем Debug APK вместо ReleaseDebug
+    # Это отключает минификацию (R8), которая ломала парсинг JSON (grammar.json) 
+    # и сериализацию схем Gemini, а также вырезала установку токена App Check.
+    - name: Build Debug APK
       run: |
-        ./gradlew assembleReleaseDebug \
+        ./gradlew assembleDebug \
           -PappCheckDebugToken="${{ secrets.APP_CHECK_DEBUG_TOKEN }}" \
           --parallel \
           --build-cache \
@@ -93,10 +96,11 @@ jobs:
           --configuration-cache \
           -Dlint.baselines.continue=true
 
-    - name: Upload ReleaseDebug APK
+    # 🔥 ИЗМЕНЕНО: Загружаем артефакт из папки debug
+    - name: Upload Debug APK
       uses: actions/upload-artifact@v4
       with:
-        name: app-releaseDebug-${{ github.run_number }}
-        path: app/build/outputs/apk/releaseDebug/*.apk
+        name: app-debug-${{ github.run_number }}
+        path: app/build/outputs/apk/debug/*.apk
         if-no-files-found: error
         retention-days: 7
