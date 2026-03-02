@@ -128,7 +128,6 @@ class VoiceCoreEngineImpl(
     override val amplitudeFlow: Flow<Float> = audioPipeline.audioChunks()
         .map { pcm -> RmsCalculator.calculate(pcm).coerceIn(0f, 1f) }
 
-    @Volatile private var isServerReady = false
     @Volatile private var config: GeminiConfig? = null
     @Volatile private var activeSessionId: String? = null
     @Volatile private var activeUserId:    String? = null
@@ -225,8 +224,6 @@ class VoiceCoreEngineImpl(
             transitionEngine(VoiceEngineState.CONNECTING)
             transitionConnection(ConnectionState.CONNECTING)
 
-            isServerReady = false
-
             val connectResult = runCatching {
                 withContext(Dispatchers.IO) { geminiClient.connect(sessionContext) }
             }
@@ -253,29 +250,16 @@ class VoiceCoreEngineImpl(
                 )
             }
 
-            // ════════════════════════════════════════════════════════════════
-            // FIX: startListening() перенесён в onStart {}.
-            //
-            // onStart выполняется ПОСЛЕ того, как receiveFlow() подписался
-            // на session.receive(), но ДО первого элемента.
-            // Это гарантирует, что Gemini SDK уже слушает ответы
-            // к моменту отправки первого аудиочанка.
-            //
-            // Раньше: launchIn (async) → startListening() (сразу) → race.
-            // Теперь: launchIn → receive() подписка → onStart → startListening()
-            // ════════════════════════════════════════════════════════════════
             sessionJob = geminiClient
                 .receiveFlow()
                 .onEach { response ->
-                    if (!isServerReady) {
-                        isServerReady = true
-                        Log.d(TAG, "First server response received — SERVER IS READY!")
-                        startListening()
-                    }
                     handleGeminiResponse(response)
                 }
-                .catch   { error    -> handleSessionError(error) }
+                .catch { error -> handleSessionError(error) }
                 .launchIn(engineScope)
+
+            Log.d(TAG, "Session connected — starting audio immediately")
+            startListening()
 
             Log.d(TAG, "✅ Session started [userId=$userId, sessionId=${sessionData.session.id}]")
             _sessionState.value
@@ -357,12 +341,6 @@ class VoiceCoreEngineImpl(
 
     override fun startListening() {
         if (!_sessionState.value.isSessionActive || _sessionState.value.isListening) return
-
-        // БЛОКИРУЕМ отправку аудио, пока сервер не прислал SetupComplete!
-        if (!isServerReady) {
-            Log.w(TAG, "startListening ignored: waiting for server to be ready")
-            return
-        }
 
         runCatching {
             audioPipeline.startRecording()
@@ -611,11 +589,6 @@ class VoiceCoreEngineImpl(
         }
     }
 
-    /**
-     * ════════════════════════════════════════════════════════════════
-     * FIX: startListening() перенесён в onStart {} (аналогично startSession).
-     * ════════════════════════════════════════════════════════════════
-     */
     private suspend fun reconnectInternal() {
         val uid = activeUserId ?: error("reconnectInternal: no activeUserId")
 
@@ -649,19 +622,16 @@ class VoiceCoreEngineImpl(
         reconnectAttempts.set(0)
         updateState { copy(errorMessage = null, currentStrategy = strategy) }
 
-        // FIX: startListening() triggered by first server response — guarantees receive → send order
         sessionJob = geminiClient
             .receiveFlow()
             .onEach { response ->
-                if (!isServerReady) {
-                    isServerReady = true
-                    Log.d(TAG, "First server response received — SERVER IS READY!")
-                    startListening()
-                }
                 handleGeminiResponse(response)
             }
-            .catch   { err      -> handleSessionError(err) }
+            .catch { err -> handleSessionError(err) }
             .launchIn(engineScope)
+
+        Log.d(TAG, "Session reconnected — starting audio immediately")
+        startListening()
 
         Log.d(TAG, "✅ Reconnected successfully")
     }
