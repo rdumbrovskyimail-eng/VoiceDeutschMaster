@@ -32,7 +32,7 @@ coroutines = "1.10.2"
 serialization = "1.10.0"
 
 # Firebase
-firebase-bom = "34.9.0"
+firebase-bom = "34.10.0"
 firebase-crashlytics-plugin = "3.0.0"
 google-services = "4.4.4"          # ← обновлено с 4.4.3
 
