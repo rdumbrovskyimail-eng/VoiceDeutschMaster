@@ -264,13 +264,12 @@ class VoiceCoreEngineImpl(
             // Раньше: launchIn (async) → startListening() (сразу) → race.
             // Теперь: launchIn → receive() подписка → onStart → startListening()
             // ════════════════════════════════════════════════════════════════
-            var audioStarted = false
             sessionJob = geminiClient
                 .receiveFlow()
                 .onEach { response ->
-                    if (!audioStarted) {
-                        audioStarted = true
-                        Log.d(TAG, "First server response received — starting audio")
+                    if (!isServerReady) {
+                        isServerReady = true
+                        Log.d(TAG, "First server response received — SERVER IS READY!")
                         startListening()
                     }
                     handleGeminiResponse(response)
@@ -645,13 +644,12 @@ class VoiceCoreEngineImpl(
         updateState { copy(errorMessage = null, currentStrategy = strategy) }
 
         // FIX: startListening() triggered by first server response — guarantees receive → send order
-        var audioStarted = false
         sessionJob = geminiClient
             .receiveFlow()
             .onEach { response ->
-                if (!audioStarted) {
-                    audioStarted = true
-                    Log.d(TAG, "First server response received (reconnect) — starting audio")
+                if (!isServerReady) {
+                    isServerReady = true
+                    Log.d(TAG, "First server response received — SERVER IS READY!")
                     startListening()
                 }
                 handleGeminiResponse(response)
