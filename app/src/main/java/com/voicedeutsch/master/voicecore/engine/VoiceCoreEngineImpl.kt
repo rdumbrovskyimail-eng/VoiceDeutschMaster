@@ -128,6 +128,7 @@ class VoiceCoreEngineImpl(
     override val amplitudeFlow: Flow<Float> = audioPipeline.audioChunks()
         .map { pcm -> RmsCalculator.calculate(pcm).coerceIn(0f, 1f) }
 
+    @Volatile private var isServerReady = false
     @Volatile private var config: GeminiConfig? = null
     @Volatile private var activeSessionId: String? = null
     @Volatile private var activeUserId:    String? = null
