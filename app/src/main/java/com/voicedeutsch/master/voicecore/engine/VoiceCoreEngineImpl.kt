@@ -225,6 +225,8 @@ class VoiceCoreEngineImpl(
             transitionEngine(VoiceEngineState.CONNECTING)
             transitionConnection(ConnectionState.CONNECTING)
 
+            isServerReady = false
+
             val connectResult = runCatching {
                 withContext(Dispatchers.IO) { geminiClient.connect(sessionContext) }
             }
