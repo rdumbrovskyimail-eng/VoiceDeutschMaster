@@ -178,7 +178,7 @@ class GeminiClient(
                 modelName = config.modelName,
                 generationConfig = liveConfig,
                 systemInstruction = content(role = "system") { text(context.fullContext) },
-                tools = toolsList,
+                //tools = toolsList,
             )
 
             val session = liveModel.connect()
