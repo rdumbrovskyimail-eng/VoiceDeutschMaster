@@ -358,6 +358,12 @@ class VoiceCoreEngineImpl(
     override fun startListening() {
         if (!_sessionState.value.isSessionActive || _sessionState.value.isListening) return
 
+        // БЛОКИРУЕМ отправку аудио, пока сервер не прислал SetupComplete!
+        if (!isServerReady) {
+            Log.w(TAG, "startListening ignored: waiting for server to be ready")
+            return
+        }
+
         runCatching {
             audioPipeline.startRecording()
         }.onFailure { e ->
