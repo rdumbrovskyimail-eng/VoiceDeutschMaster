@@ -467,13 +467,17 @@ class GeminiClient(
     private fun mapToFirebaseDeclaration(decl: GeminiFunctionDeclaration): FunctionDeclaration? {
         val params = decl.parameters
 
+        // FIX A: Поскольку Firebase SDK не принимает null, а Live API отклоняет пустые схемы,
+        // мы создаем один валидный, но необязательный "dummy" параметр.
         if (params == null || params.properties.isEmpty()) {
-            Log.d(TAG, "  ⚙ ${decl.name} — no parameters")
+            Log.d(TAG, "  ⚙ ${decl.name} — no parameters (injecting dummy optional param)")
             return FunctionDeclaration(
                 name = decl.name,
                 description = decl.description,
-                parameters = null,
-                optionalParameters = null,
+                parameters = mapOf(
+                    "unused_parameter" to Schema.boolean("Ignored parameter for Live API compatibility")
+                ),
+                optionalParameters = listOf("unused_parameter")
             )
         }
 
