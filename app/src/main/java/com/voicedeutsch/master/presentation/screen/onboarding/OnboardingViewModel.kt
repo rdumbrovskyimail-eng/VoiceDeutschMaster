@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 
 // ── State / Event ─────────────────────────────────────────────────────────────
 
-enum class OnboardingStep { WELCOME, NAME, LEVEL, BOOK_LOAD, DONE }
+enum class OnboardingStep { WELCOME, NAME, LEVEL, DONE }
 
 data class OnboardingUiState(
     val step: OnboardingStep = OnboardingStep.WELCOME,
@@ -79,59 +79,31 @@ class OnboardingViewModel(
     private fun nextStep() {
         val current = _uiState.value
         val next = when (current.step) {
-            OnboardingStep.WELCOME   -> {
-                OnboardingStep.NAME
-            }
-            OnboardingStep.NAME      -> {
+            OnboardingStep.WELCOME -> OnboardingStep.NAME
+            OnboardingStep.NAME -> {
                 if (current.name.isBlank()) {
                     _uiState.update { it.copy(errorMessage = "Введите ваше имя") }
                     return
                 }
                 OnboardingStep.LEVEL
             }
-            OnboardingStep.LEVEL     -> OnboardingStep.BOOK_LOAD
-            OnboardingStep.BOOK_LOAD -> {
-                if (_uiState.value.bookLoaded) {
-                    completeOnboarding()
-                } else {
-                    loadBook()
-                }
+            OnboardingStep.LEVEL -> {
+                completeOnboarding()
                 return
             }
-            OnboardingStep.DONE      -> return
+            OnboardingStep.DONE -> return
         }
         _uiState.update { it.copy(step = next, errorMessage = null) }
     }
 
     private fun previousStep() {
         val prev = when (_uiState.value.step) {
-            OnboardingStep.WELCOME   -> return
-            OnboardingStep.NAME      -> OnboardingStep.WELCOME
-            OnboardingStep.LEVEL     -> OnboardingStep.NAME
-            OnboardingStep.BOOK_LOAD -> OnboardingStep.LEVEL
-            OnboardingStep.DONE      -> OnboardingStep.BOOK_LOAD
+            OnboardingStep.WELCOME -> return
+            OnboardingStep.NAME    -> OnboardingStep.WELCOME
+            OnboardingStep.LEVEL   -> OnboardingStep.NAME
+            OnboardingStep.DONE    -> OnboardingStep.LEVEL
         }
         _uiState.update { it.copy(step = prev, errorMessage = null) }
-    }
-
-    private fun loadBook() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoadingBook = true, errorMessage = null) }
-            runCatching {
-                if (!bookRepository.isBookLoaded()) {
-                    bookRepository.loadBookIntoDatabase()
-                }
-            }.onSuccess {
-                completeOnboarding()
-            }.onFailure { e ->
-                _uiState.update {
-                    it.copy(
-                        isLoadingBook = false,
-                        errorMessage  = "Не удалось загрузить книгу: ${e.message}",
-                    )
-                }
-            }
-        }
     }
 
     private fun completeOnboarding() {

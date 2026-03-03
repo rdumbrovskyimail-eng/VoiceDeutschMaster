@@ -123,6 +123,50 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
 
+            // ── 0. Профиль пользователя ───────────────────────────────────────
+            SettingsSection(title = "Профиль пользователя") {
+                OutlinedTextField(
+                    value         = state.userName,
+                    onValueChange = { viewModel.onEvent(SettingsEvent.UpdateUserName(it)) },
+                    label         = { Text("Имя") },
+                    singleLine    = true,
+                    modifier      = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value         = state.userAge,
+                    onValueChange = { viewModel.onEvent(SettingsEvent.UpdateUserAge(it)) },
+                    label         = { Text("Возраст") },
+                    singleLine    = true,
+                    modifier      = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value         = state.userHobbies,
+                    onValueChange = { viewModel.onEvent(SettingsEvent.UpdateUserHobbies(it)) },
+                    label         = { Text("Хобби (через запятую)") },
+                    modifier      = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value         = state.userLearningGoals,
+                    onValueChange = { viewModel.onEvent(SettingsEvent.UpdateUserLearningGoals(it)) },
+                    label         = { Text("Цели изучения") },
+                    modifier      = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    "Уровень немецкого",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                val levelOptions = listOf(
+                    "A1" to "A1", "A2" to "A2", "B1" to "B1",
+                    "B2" to "B2", "C1" to "C1", "C2" to "C2",
+                )
+                SegmentedControl(
+                    options  = levelOptions,
+                    selected = state.userLevel,
+                    onSelect = { viewModel.onEvent(SettingsEvent.UpdateUserLevel(it)) },
+                )
+            }
+
             // ── 1. Обучение (Алгоритмы) ───────────────────────────────────────
             SettingsSection(title = "Обучение (Алгоритмы)") {
                 LabeledSlider(
@@ -196,6 +240,62 @@ fun SettingsScreen(
                     options  = strictnessOptions,
                     selected = state.pronunciationStrictness,
                     onSelect = { viewModel.onEvent(SettingsEvent.UpdateStrictness(it)) },
+                )
+            }
+
+            // ── 2.5. Настройки Gemini ──────────────────────────────────────────
+            SettingsSection(title = "Настройки Gemini") {
+                LabeledSlider(
+                    label         = "Temperature: ${"%.2f".format(state.geminiTemperature)}",
+                    value         = state.geminiTemperature,
+                    onValueChange = { viewModel.onEvent(SettingsEvent.UpdateGeminiTemperature(it)) },
+                    valueRange    = 0f..2f,
+                    steps         = 19,
+                )
+                LabeledSlider(
+                    label         = "Top P: ${"%.2f".format(state.geminiTopP)}",
+                    value         = state.geminiTopP,
+                    onValueChange = { viewModel.onEvent(SettingsEvent.UpdateGeminiTopP(it)) },
+                    valueRange    = 0f..1f,
+                    steps         = 19,
+                )
+                LabeledSlider(
+                    label         = "Top K: ${state.geminiTopK}",
+                    value         = state.geminiTopK.toFloat(),
+                    onValueChange = { viewModel.onEvent(SettingsEvent.UpdateGeminiTopK(it.toInt())) },
+                    valueRange    = 1f..100f,
+                    steps         = 98,
+                )
+                Text(
+                    "Голос Gemini",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                val voiceOptions = listOf(
+                    "Kore" to "Kore", "Puck" to "Puck", "Charon" to "Charon",
+                    "Fenrir" to "Fenrir", "Zephyr" to "Zephyr",
+                )
+                SegmentedControl(
+                    options  = voiceOptions,
+                    selected = state.geminiVoiceName,
+                    onSelect = { viewModel.onEvent(SettingsEvent.UpdateGeminiVoiceName(it)) },
+                )
+                RowSwitch(
+                    label           = "Транскрипция ввода (речь пользователя)",
+                    checked         = state.geminiInputTranscription,
+                    onCheckedChange = { viewModel.onEvent(SettingsEvent.ToggleGeminiInputTranscription(it)) },
+                )
+                RowSwitch(
+                    label           = "Транскрипция вывода (речь AI)",
+                    checked         = state.geminiOutputTranscription,
+                    onCheckedChange = { viewModel.onEvent(SettingsEvent.ToggleGeminiOutputTranscription(it)) },
+                )
+                LabeledSlider(
+                    label         = "Контекст: ${state.geminiMaxContextTokens / 1024}K токенов",
+                    value         = state.geminiMaxContextTokens.toFloat(),
+                    onValueChange = { viewModel.onEvent(SettingsEvent.UpdateGeminiMaxContext(it.toInt())) },
+                    valueRange    = 8_192f..1_048_576f,
+                    steps         = 15,
                 )
             }
 
@@ -342,6 +442,25 @@ fun SettingsScreen(
                     saveLogLauncher.launch("voicedeutsch_log_$ts.txt")
                 },
             )
+
+            // ── 7. О приложении ────────────────────────────────────────────────
+            SettingsSection(title = "О приложении") {
+                Text(
+                    "VoiceDeutsch Master",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    "Персональный AI-репетитор немецкого языка",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "Модель: ${state.geminiModelName}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             // ── Кнопка сохранения ─────────────────────────────────────────────
             Button(

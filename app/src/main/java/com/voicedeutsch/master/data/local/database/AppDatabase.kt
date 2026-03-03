@@ -48,7 +48,7 @@ import com.voicedeutsch.master.data.local.database.entity.WordKnowledgeEntity
         AchievementEntity::class,
         UserAchievementEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -96,6 +96,14 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_user_achievements_user_id ON user_achievements(user_id)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_user_achievements_achievement_id ON user_achievements(achievement_id)")
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_user_achievements_user_id_achievement_id ON user_achievements(user_id, achievement_id)")
+            }
+        }
+
+        val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE users ADD COLUMN age INTEGER DEFAULT NULL")
+                db.execSQL("ALTER TABLE users ADD COLUMN hobbies TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE users ADD COLUMN learning_goals TEXT DEFAULT NULL")
             }
         }
     }

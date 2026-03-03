@@ -95,12 +95,6 @@ fun OnboardingScreen(
                         selected = state.selectedLevel,
                         onSelect = { viewModel.onEvent(OnboardingEvent.SelectLevel(it)) },
                     )
-                    OnboardingStep.BOOK_LOAD -> BookLoadStep(
-                        isLoading = state.isLoadingBook,
-                        loaded    = state.bookLoaded,
-                        error     = state.errorMessage,
-                        onLoad    = { viewModel.onEvent(OnboardingEvent.LoadBook) },
-                    )
                     OnboardingStep.DONE      -> DoneStep(name = state.name)
                 }
             }
@@ -110,11 +104,10 @@ fun OnboardingScreen(
             // ── Navigation buttons ────────────────────────────────────────────
             if (state.step != OnboardingStep.DONE) {
                 OnboardingNavRow(
-                    step       = state.step,
-                    isLoading  = state.isLoadingBook,
-                    onBack     = { viewModel.onEvent(OnboardingEvent.Back) },
-                    onNext     = { viewModel.onEvent(OnboardingEvent.Next) },
-                    onLoadBook = { viewModel.onEvent(OnboardingEvent.LoadBook) },
+                    step      = state.step,
+                    isLoading = state.isLoadingBook,
+                    onBack    = { viewModel.onEvent(OnboardingEvent.Back) },
+                    onNext    = { viewModel.onEvent(OnboardingEvent.Next) },
                 )
             } else {
                 Button(
@@ -322,7 +315,6 @@ private fun OnboardingNavRow(
     isLoading: Boolean,
     onBack: () -> Unit,
     onNext: () -> Unit,
-    onLoadBook: () -> Unit,
 ) {
     Row(
         modifier              = Modifier.fillMaxWidth(),
@@ -336,7 +328,7 @@ private fun OnboardingNavRow(
         }
 
         Button(
-            onClick  = if (step == OnboardingStep.BOOK_LOAD) onLoadBook else onNext,
+            onClick  = onNext,
             enabled  = !isLoading,
             modifier = Modifier.height(48.dp),
         ) {
@@ -349,9 +341,9 @@ private fun OnboardingNavRow(
             } else {
                 Text(
                     when (step) {
-                        OnboardingStep.WELCOME   -> "Начать"
-                        OnboardingStep.BOOK_LOAD -> "Загрузить"
-                        else                     -> "Далее →"
+                        OnboardingStep.WELCOME -> "Начать"
+                        OnboardingStep.LEVEL   -> "Готово!"
+                        else                   -> "Далее"
                     }
                 )
             }

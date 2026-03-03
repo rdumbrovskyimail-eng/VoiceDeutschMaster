@@ -73,11 +73,27 @@ class ContextBuilder(
         val pace       = profile?.preferences?.learningPace?.name ?: "NORMAL"
         val voiceSpeed = profile?.voiceSettings?.germanVoiceSpeed ?: 0.8f
 
+        val userName    = profile?.name ?: "Ученик"
+        val userAge     = profile?.age?.let { "$it лет" } ?: "не указан"
+        val userHobbies = profile?.hobbies?.takeIf { it.isNotBlank() } ?: "не указаны"
+        val userLevel   = profile?.cefrLevel?.name ?: "A1"
+        val nativeLang  = profile?.nativeLanguage ?: "ru"
+        val goals       = profile?.learningGoals?.takeIf { it.isNotBlank() } ?: "общее изучение"
+
         val settingsPrompt = """
+            ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ:
+            - Имя: $userName
+            - Возраст: $userAge
+            - Уровень немецкого: $userLevel
+            - Родной язык: $nativeLang
+            - Хобби: $userHobbies
+            - Цели: $goals
+            
             НАСТРОЙКИ ПОЛЬЗОВАТЕЛЯ:
             - Строгость произношения: $strictness (если STRICT — придирайся к каждой фонеме, если LENIENT — игнорируй лёгкий акцент, если MODERATE — указывай на грубые ошибки).
             - Темп обучения: $pace (если SLOW — больше объяснений и повторений, если FAST — сразу переходи к следующей теме).
             - Скорость немецкой речи: $voiceSpeed (используй как ориентир при TTS-подборе темпа).
+            - Обращайся к пользователю по имени ($userName). Учитывай его возраст, хобби и цели при выборе тем и примеров.
         """.trimIndent()
 
         val rawFullContext = buildString {

@@ -132,6 +132,7 @@ val dataModule = module {
         )
             .addMigrations(
                 AppDatabase.MIGRATION_1_2,
+                AppDatabase.MIGRATION_2_3,
             )
             // FIX: Seed ачивок при первом создании БД (свежая установка)
             // + onOpen покрывает пользователей, пришедших через миграцию 1→2
