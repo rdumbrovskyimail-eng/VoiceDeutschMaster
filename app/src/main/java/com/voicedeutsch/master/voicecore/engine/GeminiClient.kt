@@ -155,7 +155,7 @@ class GeminiClient(
     suspend fun disconnect() {
         try {
             sessionMutex.withLock {
-                liveSession?.disconnect()
+                liveSession?.close()
                 liveSession = null
             }
             Log.d(TAG, "LiveSession closed")
