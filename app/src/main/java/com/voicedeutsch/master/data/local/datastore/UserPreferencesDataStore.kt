@@ -83,11 +83,14 @@ class UserPreferencesDataStore(private val context: Context) {
 
     suspend fun loadGeminiConfig(): GeminiConfig {
         val prefs = context.dataStore.data.first()
+        val savedTemperature = prefs[GEMINI_TEMPERATURE] ?: GeminiConfig.DEFAULT_TEMPERATURE
+        val savedTopP = prefs[GEMINI_TOP_P] ?: GeminiConfig.DEFAULT_TOP_P
+        val savedTopK = prefs[GEMINI_TOP_K] ?: GeminiConfig.DEFAULT_TOP_K
         return GeminiConfig(
             modelName = prefs[GEMINI_MODEL_NAME] ?: GeminiConfig.MODEL_GEMINI_LIVE,
-            temperature = prefs[GEMINI_TEMPERATURE] ?: GeminiConfig.DEFAULT_TEMPERATURE,
-            topP = prefs[GEMINI_TOP_P] ?: GeminiConfig.DEFAULT_TOP_P,
-            topK = prefs[GEMINI_TOP_K] ?: GeminiConfig.DEFAULT_TOP_K,
+            temperature = savedTemperature.coerceIn(0f, 2f),
+            topP = savedTopP.coerceIn(0f, 1f),
+            topK = savedTopK.coerceIn(1, 100),
             voiceName = prefs[GEMINI_VOICE_NAME] ?: GeminiConfig.DEFAULT_VOICE,
             maxContextTokens = prefs[GEMINI_MAX_CONTEXT_TOKENS] ?: GeminiConfig.MAX_CONTEXT_TOKENS,
             transcriptionConfig = GeminiConfig.TranscriptionConfig(
