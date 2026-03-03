@@ -94,10 +94,11 @@ class OnboardingViewModel(
 
     private fun previousStep() {
         val prev = when (_uiState.value.step) {
-            OnboardingStep.WELCOME -> return
-            OnboardingStep.NAME    -> OnboardingStep.WELCOME
-            OnboardingStep.LEVEL   -> OnboardingStep.NAME
-            OnboardingStep.DONE    -> OnboardingStep.LEVEL
+            OnboardingStep.WELCOME    -> return
+            OnboardingStep.NAME       -> OnboardingStep.WELCOME
+            OnboardingStep.LEVEL      -> OnboardingStep.NAME
+            OnboardingStep.MICROPHONE -> OnboardingStep.LEVEL
+            OnboardingStep.DONE       -> OnboardingStep.MICROPHONE
         }
         _uiState.update { it.copy(step = prev, errorMessage = null) }
     }
