@@ -72,7 +72,7 @@ jobs:
 
     - name: Download dependencies
       run: |
-        ./gradlew dependencies \
+        ./gradlew :app:dependencies \
           --configuration debugRuntimeClasspath \
           --no-daemon \
           --quiet || true
