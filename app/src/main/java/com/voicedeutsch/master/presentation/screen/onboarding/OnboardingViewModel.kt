@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 
 // ── State / Event ─────────────────────────────────────────────────────────────
 
-enum class OnboardingStep { WELCOME, NAME, LEVEL, DONE }
+enum class OnboardingStep { WELCOME, NAME, LEVEL, MICROPHONE, DONE }
 
 data class OnboardingUiState(
     val step: OnboardingStep = OnboardingStep.WELCOME,
@@ -82,7 +82,8 @@ class OnboardingViewModel(
                 }
                 OnboardingStep.LEVEL
             }
-            OnboardingStep.LEVEL -> {
+            OnboardingStep.LEVEL -> OnboardingStep.MICROPHONE
+            OnboardingStep.MICROPHONE -> {
                 completeOnboarding()
                 return
             }
