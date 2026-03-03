@@ -24,6 +24,9 @@ import com.voicedeutsch.master.data.local.database.dao.BookDao
 import com.voicedeutsch.master.data.local.datastore.UserPreferencesDataStore
 import com.voicedeutsch.master.domain.repository.UserRepository
 import com.voicedeutsch.master.presentation.theme.Background
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.ktx.auth
+import com.google.firebase.ktx.Firebase
 import com.voicedeutsch.master.util.NetworkMonitor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
