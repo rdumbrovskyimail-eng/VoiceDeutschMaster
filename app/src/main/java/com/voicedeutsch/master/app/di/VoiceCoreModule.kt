@@ -91,7 +91,6 @@ val voiceCoreModule = module {
     factory {
         GeminiClient(
             config = get<GeminiConfig>(),
-            json   = get(),
         )
     }
 

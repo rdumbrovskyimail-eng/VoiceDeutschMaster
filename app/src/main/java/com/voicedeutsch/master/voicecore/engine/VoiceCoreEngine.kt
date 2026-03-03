@@ -38,11 +38,10 @@ interface VoiceCoreEngine {
     suspend fun requestBookNavigation(chapter: Int, lesson: Int)
     suspend fun submitFunctionResult(callId: String, name: String, resultJson: String)
 
-    // ✅ НОВЫЕ МЕТОДЫ ──────────────────────────────────────────────────────────
+    // ── Дополнительные методы ──────────────────────────────────────────────────
 
     /**
-     * Отправляет сигнал паузы аудиопотока в Gemini.
-     * Вызывается при выключении микрофона или паузе > 1 сек.
+     * @deprecated В новой архитектуре SDK управляет аудиопотоком. Метод — no-op.
      */
     suspend fun sendAudioStreamEnd()
 

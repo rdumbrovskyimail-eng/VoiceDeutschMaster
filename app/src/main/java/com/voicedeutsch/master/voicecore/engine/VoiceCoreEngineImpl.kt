@@ -1,6 +1,9 @@
 package com.voicedeutsch.master.voicecore.engine
 
 import android.util.Log
+import com.google.firebase.ai.type.FunctionCallPart
+import com.google.firebase.ai.type.FunctionResponsePart
+import com.google.firebase.ai.type.PublicPreviewAPI
 import com.voicedeutsch.master.domain.model.LearningStrategy
 import com.voicedeutsch.master.domain.model.session.SessionResult
 import com.voicedeutsch.master.domain.usecase.knowledge.BuildKnowledgeSummaryUseCase
@@ -19,72 +22,35 @@ import com.voicedeutsch.master.voicecore.session.VoiceSessionState
 import com.voicedeutsch.master.voicecore.strategy.StrategySelector
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Heart of the system — оркестрирует все VoiceCore-компоненты.
  *
- * ════════════════════════════════════════════════════════════════════════════
- * ИЗМЕНЕНИЯ (VirtualAvatar — устранение рекомпозиций):
- * ════════════════════════════════════════════════════════════════════════════
- *
- *   ДОБАВЛЕНО: amplitudeFlow: Flow<Float>
- *
- *   Реализация через audioPipeline.audioChunks().map { RmsCalculator.calculate(it) }.
- *   SessionViewModel подписывается на этот Flow и пишет значение в
- *   mutableFloatStateOf — Compose читает его только в фазе draw Canvas,
- *   рекомпозиция VirtualAvatar не происходит.
- *
- * ════════════════════════════════════════════════════════════════════════════
- * ИЗМЕНЕНИЯ (Parallel Function Calling fix):
- * ════════════════════════════════════════════════════════════════════════════
- *
- *   hasFunctionCalls() → async/awaitAll → sendFunctionResults() (батч).
- *
- * ════════════════════════════════════════════════════════════════════════════
- * ИЗМЕНЕНИЯ (Синхронизация и Firebase — Батчинг):
- * ════════════════════════════════════════════════════════════════════════════
- *
- *   flushKnowledgeSync() вызывается в endSession() одним batch-коммитом.
- *
- * ════════════════════════════════════════════════════════════════════════════
- * FIX (Race condition — receiveFlow vs startListening):
- * ════════════════════════════════════════════════════════════════════════════
- *
- *   Баг: launchIn() шедулит корутину асинхронно, но startListening()
- *        вызывается мгновенно после. Первые аудиочанки могли уйти в
- *        Gemini ДО того, как receiveFlow() начал коллекцию session.receive().
- *        Firebase SDK мог отклонить данные → "Something unexpected happened".
- *
- *   Fix: startListening() перенесён в onStart {} оператор Flow.
- *        onStart выполняется ПОСЛЕ подписки на upstream (session.receive()),
- *        но ДО первого элемента — гарантирует правильный порядок.
- *
- *   Применено и в startSession(), и в reconnectInternal().
- * ════════════════════════════════════════════════════════════════════════════
+ * Использует startAudioConversation / stopAudioConversation из Firebase AI SDK.
+ * SDK сам управляет микрофоном, отправкой/приёмом аудио и воспроизведением.
+ * Function calls обрабатываются синхронно через callback ::handleFunctionCall.
  */
+@OptIn(PublicPreviewAPI::class)
 class VoiceCoreEngineImpl(
     private val contextBuilder:        ContextBuilder,
     private val functionRouter:        FunctionRouter,
@@ -105,10 +71,8 @@ class VoiceCoreEngineImpl(
 
     // ── Coroutine infrastructure ──────────────────────────────────────────────
 
-    private val engineScope      = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private var sessionJob:      Job? = null
-    private var audioForwardJob: Job? = null
-    private val lifecycleMutex   = Mutex()
+    private val engineScope    = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val lifecycleMutex = Mutex()
 
     // ── State ─────────────────────────────────────────────────────────────────
 
@@ -121,10 +85,6 @@ class VoiceCoreEngineImpl(
     private val _audioState      = MutableStateFlow(AudioState.IDLE)
     override val audioState:     StateFlow<AudioState> = _audioState.asStateFlow()
 
-    // amplitudeFlow для VirtualAvatar.
-    // audioPipeline.audioChunks() используется в startListening() для отправки
-    // чанков в Gemini. Здесь создаём отдельный холодный Flow от того же источника.
-    // RmsCalculator вычисляет среднеквадратичное значение PCM → нормализует в 0f..1f.
     override val amplitudeFlow: Flow<Float> = audioPipeline.audioChunks()
         .map { pcm -> RmsCalculator.calculate(pcm).coerceIn(0f, 1f) }
 
@@ -180,7 +140,7 @@ class VoiceCoreEngineImpl(
             }
 
             transitionEngine(VoiceEngineState.IDLE)
-            Log.d(TAG, "✅ Engine initialized [model=${config.modelName}]")
+            Log.d(TAG, "Engine initialized [model=${config.modelName}]")
         }
     }
 
@@ -197,8 +157,6 @@ class VoiceCoreEngineImpl(
                 updateState { copy(errorMessage = "Нет подключения к интернету. Проверьте сеть.") }
                 return@withLock _sessionState.value
             }
-
-            cancelActiveJobs()
 
             transitionEngine(VoiceEngineState.CONTEXT_LOADING)
             reconnectAttempts.set(0)
@@ -230,7 +188,7 @@ class VoiceCoreEngineImpl(
 
             if (connectResult.isFailure) {
                 val error = connectResult.exceptionOrNull()!!
-                Log.e(TAG, "❌ connect() failed: ${error.message}", error)
+                Log.e(TAG, "connect() failed: ${error.message}", error)
                 transitionEngine(VoiceEngineState.ERROR)
                 transitionConnection(ConnectionState.FAILED)
                 updateState { copy(errorMessage = "Ошибка подключения: ${error.message}") }
@@ -250,22 +208,9 @@ class VoiceCoreEngineImpl(
                 )
             }
 
-            val receiveReady = kotlinx.coroutines.CompletableDeferred<Unit>()
-
-            sessionJob = geminiClient
-                .receiveFlow()
-                .onStart { receiveReady.complete(Unit) }
-                .onEach { response ->
-                    handleGeminiResponse(response)
-                }
-                .catch { error -> handleSessionError(error) }
-                .launchIn(engineScope)
-
-            receiveReady.await()
-            Log.d(TAG, "Receive flow active — starting audio")
             startListening()
 
-            Log.d(TAG, "✅ Session started [userId=$userId, sessionId=${sessionData.session.id}]")
+            Log.d(TAG, "Session started [userId=$userId, sessionId=${sessionData.session.id}]")
             _sessionState.value
         }
 
@@ -278,14 +223,14 @@ class VoiceCoreEngineImpl(
             transitionEngine(VoiceEngineState.SESSION_ENDING)
         }
 
-        cancelActiveJobs()
-
         return lifecycleMutex.withLock {
             transitionEngine(VoiceEngineState.SAVING)
 
             val sessionResult: SessionResult? = withContext(Dispatchers.IO) {
                 runCatching {
-                    audioPipeline.stopAll()
+                    runCatching { geminiClient.stopConversation() }
+                        .onFailure { Log.w(TAG, "stopConversation() warning: ${it.message}") }
+
                     transitionAudio(AudioState.IDLE)
                     transitionConnection(ConnectionState.DISCONNECTED)
 
@@ -297,11 +242,11 @@ class VoiceCoreEngineImpl(
                     val result = endLearningSession(sessionId)
 
                     val syncOk = runCatching { flushKnowledgeSync() }.getOrElse { e ->
-                        Log.w(TAG, "⚠️ flushKnowledgeSync failed (data safe in Room): ${e.message}")
+                        Log.w(TAG, "flushKnowledgeSync failed (data safe in Room): ${e.message}")
                         false
                     }
-                    if (syncOk) Log.d(TAG, "✅ Knowledge sync flushed")
-                    else        Log.w(TAG, "⚠️ Knowledge sync deferred — will retry next session")
+                    if (syncOk) Log.d(TAG, "Knowledge sync flushed")
+                    else        Log.w(TAG, "Knowledge sync deferred — will retry next session")
 
                     result
                 }.onFailure { error ->
@@ -343,60 +288,45 @@ class VoiceCoreEngineImpl(
 
     // ── VoiceCoreEngine: audio control ────────────────────────────────────────
 
+    /**
+     * Запускает голосовой разговор через SDK.
+     * SDK сам управляет микрофоном, аудиопотоком и воспроизведением.
+     */
     override fun startListening() {
         if (!_sessionState.value.isSessionActive || _sessionState.value.isListening) return
 
-        runCatching {
-            audioPipeline.startRecording()
-        }.onFailure { e ->
-            Log.e(TAG, "startRecording failed", e)
-            updateState { copy(errorMessage = "Не удалось запустить микрофон: ${e.message}") }
-            return
-        }
-
         transitionAudio(AudioState.RECORDING)
 
-        audioForwardJob = audioPipeline.audioChunks()
-            .onEach { pcmChunk ->
-                runCatching {
-                    geminiClient.sendAudioChunk(pcmChunk)
-                }.onFailure { e ->
-                    Log.w(TAG, "sendAudioChunk failed: ${e.message}")
-                }
-            }
-            .catch { e ->
-                Log.e(TAG, "Audio stream error", e)
+        engineScope.launch {
+            runCatching {
+                geminiClient.startConversation(::handleFunctionCall)
+            }.onFailure { e ->
+                Log.e(TAG, "startConversation failed", e)
                 transitionAudio(AudioState.IDLE)
                 handleSessionError(e)
             }
-            .launchIn(engineScope)
+        }
     }
 
+    /**
+     * Останавливает голосовой разговор. Соединение сохраняется.
+     */
     override fun stopListening() {
         if (!_sessionState.value.isListening) return
-        audioForwardJob?.cancel()
-        audioForwardJob = null
-        audioPipeline.stopRecording()
         transitionAudio(AudioState.IDLE)
 
-        // Сигнал паузы аудиопотока для серверного VAD
-        // (no-op пока Firebase SDK не поддержит)
         engineScope.launch {
-            runCatching { geminiClient.sendAudioStreamEnd() }
-                .onFailure { Log.w(TAG, "sendAudioStreamEnd failed: ${it.message}") }
+            runCatching { geminiClient.stopConversation() }
+                .onFailure { Log.w(TAG, "stopConversation failed: ${it.message}") }
         }
     }
 
     override fun pausePlayback() {
-        if (!_sessionState.value.isSpeaking) return
-        audioPipeline.pausePlayback()
-        transitionAudio(AudioState.PAUSED)
+        // SDK управляет воспроизведением — no-op
     }
 
     override fun resumePlayback() {
-        if (_sessionState.value.audioState != AudioState.PAUSED) return
-        audioPipeline.resumePlayback()
-        transitionAudio(AudioState.PLAYING)
+        // SDK управляет воспроизведением — no-op
     }
 
     // ── VoiceCoreEngine: manual control ──────────────────────────────────────
@@ -417,126 +347,83 @@ class VoiceCoreEngineImpl(
     }
 
     override suspend fun submitFunctionResult(callId: String, name: String, resultJson: String) {
-        geminiClient.sendFunctionResult(callId, name, resultJson)
+        // В новой архитектуре function calls обрабатываются синхронно в callback.
+        // Метод оставлен для обратной совместимости интерфейса.
+        Log.w(TAG, "submitFunctionResult called — function calls are now handled via callback")
     }
-
-    // ── Обработка ответов Gemini ──────────────────────────────────────────────
-
-    private suspend fun handleGeminiResponse(response: GeminiResponse) {
-        when {
-            // GoAway — предупреждение о скором разрыве
-            // (не поддерживается Firebase SDK, но обрабатываем на будущее)
-            response.hasGoAway() -> {
-                val timeLeft = response.goAway!!.timeLeftMs
-                Log.w(TAG, "⚠️ GoAway received! Connection closing in ${timeLeft}ms")
-                updateState { copy(errorMessage = null) }
-            }
-
-            response.isInterrupted -> {
-                Log.d(TAG, "User interrupted AI — flushing audio queue")
-                audioPipeline.flushPlayback()
-                transitionAudio(AudioState.IDLE)
-                transitionEngine(VoiceEngineState.LISTENING)
-                updateState { copy(isSpeaking = false, isProcessing = false) }
-            }
-
-            response.hasAudio() -> {
-                transitionAudio(AudioState.PLAYING)
-                updateState {
-                    copy(
-                        isProcessing    = false,
-                        isSpeaking      = true,
-                        voiceTranscript = response.outputTranscript
-                            ?: response.transcript
-                            ?: voiceTranscript,
-                    )
-                }
-                val audioData = response.audioData
-                if (audioData == null) {
-                    Log.e(TAG, "hasAudio() = true но audioData == null — пропускаем")
-                } else {
-                    audioPipeline.enqueueAudio(audioData)
-                }
-                if (response.isTurnComplete) {
-                    transitionAudio(AudioState.IDLE)
-                    transitionEngine(VoiceEngineState.WAITING)
-                    updateState { copy(isSpeaking = false) }
-                }
-            }
-
-            response.hasFunctionCalls() -> {
-                val calls     = response.functionCalls
-                val userId    = activeUserId
-                val sessionId = activeSessionId
-
-                Log.d(TAG, "Function calls received (${calls.size}): ${calls.map { it.name }}")
-                updateState { copy(isProcessing = true) }
-
-                engineScope.launch {
-                    val results = calls.map { call ->
-                        async(Dispatchers.IO) {
-                            val result = if (userId == null) {
-                                Log.e(TAG, "hasFunctionCalls: activeUserId == null")
-                                FunctionRouter.FunctionCallResult(
-                                    call.name, false,
-                                    """{"error":"no active user session"}"""
-                                )
-                            } else {
-                                try {
-                                    withTimeout(FUNCTION_CALL_TIMEOUT_MS) {
-                                        functionRouter.route(call.name, call.argsJson, userId, sessionId)
-                                    }
-                                } catch (e: TimeoutCancellationException) {
-                                    Log.w(TAG, "Function ${call.name} timed out")
-                                    FunctionRouter.FunctionCallResult(
-                                        call.name, false,
-                                        """{"error":"function execution timed out"}"""
-                                    )
-                                }
-                            }
-                            applyFunctionSideEffects(call.name, result)
-                            Triple(call.id, result.functionName, result.resultJson)
-                        }
-                    }.awaitAll()
-
-                    geminiClient.sendFunctionResults(results)
-                    updateState { copy(isProcessing = false) }
-                }
-            }
-
-            response.inputTranscript != null -> {
-                updateState { copy(currentTranscript = response.inputTranscript) }
-                transitionEngine(VoiceEngineState.PROCESSING)
-            }
-
-            response.hasTranscript() -> {
-                updateState { copy(currentTranscript = response.transcript ?: "") }
-                transitionEngine(VoiceEngineState.PROCESSING)
-            }
-
-            // generationComplete без другого контента
-            response.isGenerationComplete && !response.isTurnComplete -> {
-                Log.d(TAG, "Generation complete (waiting for turnComplete)")
-            }
-        }
-    }
-
-    // ── VoiceCoreEngine: new methods ──────────────────────────────────────────
 
     override suspend fun sendAudioStreamEnd() {
-        geminiClient.sendAudioStreamEnd()
+        // SDK управляет аудиопотоком — no-op
     }
 
     override fun getTokenUsage(): GeminiClient.TokenUsage? = geminiClient.lastTokenUsage
 
-    // ── Вспомогательные методы ────────────────────────────────────────────────
+    // ── Синхронный callback для function calls ────────────────────────────────
 
-    private fun cancelActiveJobs() {
-        audioForwardJob?.cancel()
-        audioForwardJob = null
-        sessionJob?.cancel()
-        sessionJob = null
+    /**
+     * Обрабатывает function call от Gemini синхронно.
+     * Вызывается SDK-ом из startAudioConversation.
+     * Использует runBlocking т.к. FunctionRouter.route() — suspend.
+     */
+    private fun handleFunctionCall(functionCall: FunctionCallPart): FunctionResponsePart {
+        val userId = activeUserId
+        val sessionId = activeSessionId
+
+        Log.d(TAG, "Function call received: ${functionCall.name}")
+        updateState { copy(isProcessing = true) }
+
+        val response = if (userId == null) {
+            Log.e(TAG, "handleFunctionCall: activeUserId == null")
+            FunctionResponsePart(
+                functionCall.name,
+                JsonObject(mapOf("error" to JsonPrimitive("no active user session"))),
+                functionCall.id,
+            )
+        } else {
+            try {
+                val result = runBlocking(Dispatchers.IO) {
+                    withTimeout(FUNCTION_CALL_TIMEOUT_MS) {
+                        functionRouter.route(
+                            functionCall.name,
+                            functionCall.args.toString(),
+                            userId,
+                            sessionId,
+                        )
+                    }
+                }
+
+                applyFunctionSideEffects(functionCall.name, result)
+
+                val responseJson = try {
+                    Json.parseToJsonElement(result.resultJson) as? JsonObject
+                        ?: JsonObject(mapOf("result" to JsonPrimitive(result.resultJson)))
+                } catch (_: Exception) {
+                    JsonObject(mapOf("result" to JsonPrimitive(result.resultJson)))
+                }
+
+                FunctionResponsePart(functionCall.name, responseJson, functionCall.id)
+            } catch (e: TimeoutCancellationException) {
+                Log.w(TAG, "Function ${functionCall.name} timed out")
+                FunctionResponsePart(
+                    functionCall.name,
+                    JsonObject(mapOf("error" to JsonPrimitive("function execution timed out"))),
+                    functionCall.id,
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "handleFunctionCall error for ${functionCall.name}", e)
+                FunctionResponsePart(
+                    functionCall.name,
+                    JsonObject(mapOf("error" to JsonPrimitive(e.message ?: "unknown error"))),
+                    functionCall.id,
+                )
+            }
+        }
+
+        updateState { copy(isProcessing = false) }
+        return response
     }
+
+    // ── Вспомогательные методы ────────────────────────────────────────────────
 
     private fun applyFunctionSideEffects(
         functionName: String,
@@ -556,9 +443,6 @@ class VoiceCoreEngineImpl(
         Log.e(TAG, "Session error [attempts=${reconnectAttempts.get()}/$maxAttempts]: ${error.message}", error)
 
         engineScope.launch {
-            // Guard: only one reconnect flow may proceed at a time.
-            // tryLock() returns false if another coroutine already holds the lock,
-            // so duplicate calls from receiveFlow + audioForwardJob are silently dropped.
             if (!reconnectMutex.tryLock()) {
                 Log.w(TAG, "handleSessionError: reconnect already in progress — ignoring duplicate call")
                 return@launch
@@ -577,7 +461,6 @@ class VoiceCoreEngineImpl(
                     delay(delayMs)
 
                     runCatching { reconnectInternal() }.onFailure { cause ->
-                        // Release the lock before re-entering so the recursive call can acquire it.
                         reconnectMutex.unlock()
                         handleSessionError(cause)
                         return@launch
@@ -596,11 +479,9 @@ class VoiceCoreEngineImpl(
     private suspend fun reconnectInternal() {
         val uid = activeUserId ?: error("reconnectInternal: no activeUserId")
 
-        cancelActiveJobs()
-        audioPipeline.stopAll()
+        runCatching { geminiClient.stopConversation() }
+            .onFailure { Log.w(TAG, "stopConversation during reconnect: ${it.message}") }
 
-        // Session resumption не поддерживается Firebase SDK —
-        // всегда делаем полный disconnect + reconnect.
         runCatching { geminiClient.disconnect() }
             .onFailure { Log.w(TAG, "disconnect() during reconnect: ${it.message}") }
 
@@ -626,22 +507,9 @@ class VoiceCoreEngineImpl(
         reconnectAttempts.set(0)
         updateState { copy(errorMessage = null, currentStrategy = strategy) }
 
-        val receiveReady = kotlinx.coroutines.CompletableDeferred<Unit>()
-
-        sessionJob = geminiClient
-            .receiveFlow()
-            .onStart { receiveReady.complete(Unit) }
-            .onEach { response ->
-                handleGeminiResponse(response)
-            }
-            .catch { err -> handleSessionError(err) }
-            .launchIn(engineScope)
-
-        receiveReady.await()
-        Log.d(TAG, "Receive flow active — starting audio")
         startListening()
 
-        Log.d(TAG, "✅ Reconnected successfully")
+        Log.d(TAG, "Reconnected successfully")
     }
 
     private fun buildStrategyChangeMessage(strategy: LearningStrategy): String =
