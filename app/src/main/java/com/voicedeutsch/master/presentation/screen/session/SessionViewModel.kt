@@ -94,7 +94,6 @@ class SessionViewModel(
             is SessionEvent.StartSession     -> startSession()
             is SessionEvent.EndSession       -> endSession()
             is SessionEvent.PauseResume      -> togglePause()
-            is SessionEvent.ToggleMic        -> toggleMic()
             is SessionEvent.SendTextMessage  -> sendText(event.text)
             is SessionEvent.DismissError     -> _uiState.update { it.copy(errorMessage = null) }
             is SessionEvent.DismissResult    -> _uiState.update { it.copy(sessionResult = null) }
@@ -187,12 +186,6 @@ class SessionViewModel(
         val current = voiceState.value
         if (current.isListening) voiceCoreEngine.stopListening()
         else if (current.isSessionActive) voiceCoreEngine.startListening()
-    }
-
-    private fun toggleMic() {
-        val current = voiceState.value
-        if (current.isListening) voiceCoreEngine.stopListening()
-        else voiceCoreEngine.startListening()
     }
 
     private fun sendText(text: String) {
