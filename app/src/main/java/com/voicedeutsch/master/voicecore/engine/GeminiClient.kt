@@ -85,21 +85,30 @@ class GeminiClient(
                 }
             }
 
-            // ══ ВРЕМЕННЫЙ ТЕСТ — вставить вместо текущего кода в connect() ══
             val liveConfig = liveGenerationConfig {
                 responseModality = ResponseModality.AUDIO
-                speechConfig = SpeechConfig(voice = Voice("Kore"))
+                speechConfig = SpeechConfig(voice = Voice(config.voiceName))
+
+                if (config.transcriptionConfig.outputTranscriptionEnabled) {
+                    outputAudioTranscription = AudioTranscriptionConfig()
+                }
+                if (config.transcriptionConfig.inputTranscriptionEnabled) {
+                    inputAudioTranscription = AudioTranscriptionConfig()
+                }
             }
 
             val liveModel = Firebase.ai(backend = GenerativeBackend.googleAI()).liveModel(
                 modelName = config.modelName,
                 generationConfig = liveConfig,
-                systemInstruction = content { text("Du bist ein freundlicher Deutschlehrer. Begrüße den Benutzer auf Deutsch.") },
-                tools = emptyList(),  // ← НОЛЬ функций
+                systemInstruction = content { text(context.fullContext) },
+                tools = toolsList,
             )
 
             val session = liveModel.connect()
-            sessionMutex.withLock { liveSession = session }
+
+            sessionMutex.withLock {
+                liveSession = session
+            }
 
             Log.d(TAG, "LiveSession established")
         } catch (e: Exception) {
