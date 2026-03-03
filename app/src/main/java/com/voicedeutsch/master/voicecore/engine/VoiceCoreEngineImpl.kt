@@ -250,15 +250,19 @@ class VoiceCoreEngineImpl(
                 )
             }
 
+            val receiveReady = kotlinx.coroutines.CompletableDeferred<Unit>()
+
             sessionJob = geminiClient
                 .receiveFlow()
+                .onStart { receiveReady.complete(Unit) }
                 .onEach { response ->
                     handleGeminiResponse(response)
                 }
                 .catch { error -> handleSessionError(error) }
                 .launchIn(engineScope)
 
-            Log.d(TAG, "Session connected — starting audio immediately")
+            receiveReady.await()
+            Log.d(TAG, "Receive flow active — starting audio")
             startListening()
 
             Log.d(TAG, "✅ Session started [userId=$userId, sessionId=${sessionData.session.id}]")
@@ -622,15 +626,19 @@ class VoiceCoreEngineImpl(
         reconnectAttempts.set(0)
         updateState { copy(errorMessage = null, currentStrategy = strategy) }
 
+        val receiveReady = kotlinx.coroutines.CompletableDeferred<Unit>()
+
         sessionJob = geminiClient
             .receiveFlow()
+            .onStart { receiveReady.complete(Unit) }
             .onEach { response ->
                 handleGeminiResponse(response)
             }
             .catch { err -> handleSessionError(err) }
             .launchIn(engineScope)
 
-        Log.d(TAG, "Session reconnected — starting audio immediately")
+        receiveReady.await()
+        Log.d(TAG, "Receive flow active — starting audio")
         startListening()
 
         Log.d(TAG, "✅ Reconnected successfully")
