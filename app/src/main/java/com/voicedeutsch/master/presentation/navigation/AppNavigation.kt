@@ -151,6 +151,7 @@ fun AppNavigation() {
         NavHost(
             navController    = navController,
             startDestination = startDestination,
+            modifier         = Modifier.padding(innerPadding),
             enterTransition  = NavAnimations.enterTransition,
             exitTransition   = NavAnimations.exitTransition,
             popEnterTransition  = NavAnimations.popEnterTransition,
