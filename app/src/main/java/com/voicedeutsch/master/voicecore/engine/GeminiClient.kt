@@ -88,9 +88,6 @@ class GeminiClient(
             val liveConfig = liveGenerationConfig {
                 responseModality = ResponseModality.AUDIO
                 speechConfig = SpeechConfig(voice = Voice(config.voiceName))
-                temperature = config.temperature
-                topP = config.topP
-                topK = config.topK
 
                 if (config.transcriptionConfig.outputTranscriptionEnabled) {
                     outputAudioTranscription = AudioTranscriptionConfig()
@@ -158,7 +155,7 @@ class GeminiClient(
     suspend fun disconnect() {
         try {
             sessionMutex.withLock {
-                liveSession?.close()
+                liveSession?.disconnect()
                 liveSession = null
             }
             Log.d(TAG, "LiveSession closed")
@@ -176,7 +173,7 @@ class GeminiClient(
             return
         }
         runCatching {
-            session.send(text)
+            session.send(content { text(text) })
         }.onFailure { e ->
             Log.e(TAG, "sendText error: ${e.message}", e)
         }
