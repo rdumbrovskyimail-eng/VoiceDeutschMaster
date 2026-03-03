@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.*
 import androidx.compose.material3.AlertDialog
@@ -56,6 +57,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onNavigateToBookManager: () -> Unit = {},
     onNavigateToTests: () -> Unit = {},
+    onNavigateToComprehensiveTests: () -> Unit = {},
     viewModel: SettingsViewModel = koinViewModel(),
 ) {
     val context = LocalContext.current
@@ -515,6 +517,18 @@ fun SettingsScreen(
                     Icon(Icons.Default.BugReport, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("Запустить тесты")
+                }
+                Spacer(Modifier.height(4.dp))
+                Button(
+                    onClick  = onNavigateToComprehensiveTests,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors   = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF1E40AF),
+                    ),
+                ) {
+                    Icon(Icons.Default.Science, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("🧪 Полная тест-лаборатория (101%)")
                 }
             }
 
