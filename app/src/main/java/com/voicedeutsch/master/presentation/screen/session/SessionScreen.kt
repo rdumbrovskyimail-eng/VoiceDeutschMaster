@@ -69,8 +69,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import android.Manifest
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -154,16 +152,6 @@ fun SessionScreen(
         uiState.snackbarMessage?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.onEvent(SessionEvent.ConsumeSnackbar)
-        }
-    }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            viewModel.onEvent(SessionEvent.StartSession)
-        } else {
-            viewModel.onEvent(SessionEvent.PermissionDenied)
         }
     }
 
