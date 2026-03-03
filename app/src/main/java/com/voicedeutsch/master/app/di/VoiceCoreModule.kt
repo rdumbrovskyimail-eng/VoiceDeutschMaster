@@ -34,7 +34,6 @@ val voiceCoreModule = module {
     single { BookContextProvider(get(), get()) }
     single { ContextBuilder(get(), get(), get()) }
 
-    single { FunctionRegistry }
     single {
         FunctionRouter(
             get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get()
@@ -42,19 +41,6 @@ val voiceCoreModule = module {
     }
 
     single { StrategySelector() }
-
-    factory { LinearBookStrategy() }
-    factory { RepetitionStrategy() }
-    factory { FreePracticeStrategy() }
-    factory { GapFillingStrategy() }
-    factory { PronunciationStrategy() }
-    factory { GrammarStrategy() }
-    factory { VocabularyStrategy() }
-    factory { ListeningStrategy() }
-    factory { AssessmentStrategy() }
-
-    single { VoiceSessionManager() }
-    factory { SessionHistory() }
 
     factory {
         GeminiConfig(
@@ -88,7 +74,7 @@ val voiceCoreModule = module {
         )
     }
 
-    factory {
+    single {
         GeminiClient(
             config = get<GeminiConfig>(),
         )
