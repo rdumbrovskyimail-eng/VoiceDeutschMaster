@@ -1,5 +1,6 @@
 package com.voicedeutsch.master.presentation.screen.onboarding
 
+import android.Manifest
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -11,6 +12,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -18,6 +20,9 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberPermissionState
 import com.voicedeutsch.master.domain.model.user.CefrLevel
 import com.voicedeutsch.master.presentation.theme.Background
 import com.voicedeutsch.master.presentation.theme.Primary
@@ -32,12 +37,14 @@ import org.koin.androidx.compose.koinViewModel
  *  3. LEVEL   – Choose starting CEFR level
  *  → DONE     – Completion confirmation
  */
+@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun OnboardingScreen(
     onOnboardingComplete: () -> Unit,
     viewModel: OnboardingViewModel = koinViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val micPermissionState = rememberPermissionState(Manifest.permission.RECORD_AUDIO)
 
     LaunchedEffect(state.step) {
         if (state.step == OnboardingStep.DONE) {
@@ -95,6 +102,10 @@ fun OnboardingScreen(
                         selected = state.selectedLevel,
                         onSelect = { viewModel.onEvent(OnboardingEvent.SelectLevel(it)) },
                     )
+                    OnboardingStep.MICROPHONE -> MicrophoneStep(
+                        isGranted = micPermissionState.status.isGranted,
+                        onRequest = { micPermissionState.launchPermissionRequest() },
+                    )
                     OnboardingStep.DONE      -> DoneStep(name = state.name)
                 }
             }
@@ -104,10 +115,11 @@ fun OnboardingScreen(
             // ── Navigation buttons ────────────────────────────────────────────
             if (state.step != OnboardingStep.DONE) {
                 OnboardingNavRow(
-                    step      = state.step,
-                    isLoading = state.isLoading,
-                    onBack    = { viewModel.onEvent(OnboardingEvent.Back) },
-                    onNext    = { viewModel.onEvent(OnboardingEvent.Next) },
+                    step         = state.step,
+                    isLoading    = state.isLoading,
+                    isMicGranted = micPermissionState.status.isGranted,
+                    onBack       = { viewModel.onEvent(OnboardingEvent.Back) },
+                    onNext       = { viewModel.onEvent(OnboardingEvent.Next) },
                 )
             } else {
                 Button(
@@ -268,6 +280,7 @@ private fun DoneStep(name: String) {
 private fun OnboardingNavRow(
     step: OnboardingStep,
     isLoading: Boolean,
+    isMicGranted: Boolean = true,
     onBack: () -> Unit,
     onNext: () -> Unit,
 ) {
@@ -284,7 +297,7 @@ private fun OnboardingNavRow(
 
         Button(
             onClick  = onNext,
-            enabled  = !isLoading,
+            enabled  = !isLoading && !(step == OnboardingStep.MICROPHONE && !isMicGranted),
             modifier = Modifier.height(48.dp),
         ) {
             if (isLoading) {
@@ -296,11 +309,64 @@ private fun OnboardingNavRow(
             } else {
                 Text(
                     when (step) {
-                        OnboardingStep.WELCOME -> "Начать"
-                        OnboardingStep.LEVEL   -> "Готово!"
-                        else                   -> "Далее"
+                        OnboardingStep.WELCOME    -> "Начать"
+                        OnboardingStep.LEVEL      -> "Далее"
+                        OnboardingStep.MICROPHONE -> "Готово!"
+                        else                      -> "Далее"
                     }
                 )
+            }
+        }
+    }
+}
+
+// ── Microphone permission step ────────────────────────────────────────────────
+
+@Composable
+private fun MicrophoneStep(isGranted: Boolean, onRequest: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        modifier            = Modifier.fillMaxSize(),
+    ) {
+        Text("🎙️", fontSize = 72.sp)
+        Spacer(Modifier.height(24.dp))
+        Text(
+            text       = "Доступ к микрофону",
+            style      = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            color      = MaterialTheme.colorScheme.onBackground,
+            textAlign  = TextAlign.Center,
+        )
+        Spacer(Modifier.height(16.dp))
+        Text(
+            text      = "VoiceDeutsch работает только голосом. Без микрофона занятия невозможны.",
+            style     = MaterialTheme.typography.bodyLarge,
+            color     = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(32.dp))
+        if (isGranted) {
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = Color(0xFF2E7D32).copy(alpha = 0.15f),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    text       = "✓ Разрешение получено",
+                    style      = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color      = Color(0xFF2E7D32),
+                    textAlign  = TextAlign.Center,
+                    modifier   = Modifier.padding(16.dp),
+                )
+            }
+        } else {
+            Button(
+                onClick  = onRequest,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+            ) {
+                Text("Разрешить доступ", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
         }
     }
