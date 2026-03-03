@@ -26,8 +26,8 @@ class VoiceDeutschApp : Application() {
     }
 
     override fun onCreate() {
-        initAppLogger()
         super.onCreate()
+        initAppLogger()
 
         try {
             CrashLogger.init(this).apply {
