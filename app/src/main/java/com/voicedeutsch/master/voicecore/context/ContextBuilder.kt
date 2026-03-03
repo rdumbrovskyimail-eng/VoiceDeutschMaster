@@ -96,26 +96,79 @@ class ContextBuilder(
             - Обращайся к пользователю по имени ($userName). Учитывай его возраст, хобби и цели при выборе тем и примеров.
         """.trimIndent()
 
-        val rawFullContext = buildString {
+        // Приоритетная сборка контекста:
+        // 1 (высший): system instruction + settings (всегда включаются)
+        // 2: текущая глава книги
+        // 3: профиль + стратегия
+        // 4 (низший): user context (ошибки, слова на повторение, история)
+        // При малом лимите — наименее важные части обрезаются.
+
+        val coreBlock = buildString {
             append(staticSystemPrompt)
             appendLine()
             appendLine()
             appendLine("--- USER SETTINGS ---")
             appendLine()
             append(settingsPrompt)
-            appendLine()
-            appendLine()
-            appendLine("--- USER CONTEXT ---")
-            appendLine()
-            append(userContext)
-            appendLine()
+        }
+
+        val bookBlock = buildString {
             appendLine("--- BOOK CONTEXT ---")
             appendLine()
             append(bookContext)
-            appendLine()
+        }
+
+        val strategyBlock = buildString {
             appendLine("--- CURRENT STRATEGY ---")
             appendLine()
             append(strategyPrompt)
+        }
+
+        val userBlock = buildString {
+            appendLine("--- USER CONTEXT ---")
+            appendLine()
+            append(userContext)
+        }
+
+        val coreTokens = coreBlock.length / TOKEN_CHAR_RATIO
+        val remaining = SAFE_CONTEXT_TOKEN_BUDGET - coreTokens
+
+        val rawFullContext = buildString {
+            append(coreBlock)
+            appendLine()
+            appendLine()
+
+            if (remaining > 0) {
+                val bookTokens = bookBlock.length / TOKEN_CHAR_RATIO
+                val strategyTokens = strategyBlock.length / TOKEN_CHAR_RATIO
+                val userTokens = userBlock.length / TOKEN_CHAR_RATIO
+
+                var budget = remaining
+
+                if (budget >= bookTokens) {
+                    append(bookBlock)
+                    appendLine()
+                    budget -= bookTokens
+                } else if (budget > 500) {
+                    val trimmedBook = bookBlock.take(budget * TOKEN_CHAR_RATIO)
+                    append(trimmedBook)
+                    appendLine()
+                    budget = 0
+                }
+
+                if (budget >= strategyTokens) {
+                    append(strategyBlock)
+                    appendLine()
+                    budget -= strategyTokens
+                }
+
+                if (budget >= userTokens) {
+                    append(userBlock)
+                } else if (budget > 500) {
+                    val trimmedUser = userBlock.take(budget * TOKEN_CHAR_RATIO)
+                    append(trimmedUser)
+                }
+            }
         }
 
         val optimizedContext = PromptOptimizer.optimize(

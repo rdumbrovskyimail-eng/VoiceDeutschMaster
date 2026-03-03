@@ -15,6 +15,7 @@ data class BookManagerUiState(
     val books: List<BookEntity> = emptyList(),
     val chapters: List<BookChapterEntity> = emptyList(),
     val selectedBook: BookEntity? = null,
+    val errorMessage: String? = null,
 )
 
 sealed interface BookManagerEvent {
@@ -56,20 +57,29 @@ class BookManagerViewModel(
 
     private fun createBook(title: String, description: String) {
         viewModelScope.launch {
-            bookDao.insertBook(
-                BookEntity(
-                    title = title,
-                    description = description.ifBlank { null },
+            runCatching {
+                bookDao.insertBook(
+                    BookEntity(
+                        title = title,
+                        description = description.ifBlank { null },
+                    )
                 )
-            )
+            }.onFailure { e ->
+                _uiState.update { it.copy(errorMessage = "Ошибка создания книги: ${e.message}") }
+            }
         }
     }
 
     private fun deleteBook(book: BookEntity) {
         viewModelScope.launch {
-            bookDao.deleteBook(book)
-            if (_uiState.value.selectedBook?.id == book.id) {
-                _uiState.update { it.copy(selectedBook = null, chapters = emptyList()) }
+            runCatching {
+                bookDao.deleteBook(book)
+            }.onSuccess {
+                if (_uiState.value.selectedBook?.id == book.id) {
+                    _uiState.update { it.copy(selectedBook = null, chapters = emptyList()) }
+                }
+            }.onFailure { e ->
+                _uiState.update { it.copy(errorMessage = "Ошибка удаления: ${e.message}") }
             }
         }
     }
@@ -86,28 +96,40 @@ class BookManagerViewModel(
     private fun createChapter(title: String, content: String) {
         val bookId = _uiState.value.selectedBook?.id ?: return
         viewModelScope.launch {
-            val nextNumber = bookDao.getChapterCount(bookId) + 1
-            bookDao.insertChapter(
-                BookChapterEntity(
-                    bookId = bookId,
-                    chapterNumber = nextNumber,
-                    title = title,
-                    content = content,
+            runCatching {
+                val nextNumber = bookDao.getChapterCount(bookId) + 1
+                bookDao.insertChapter(
+                    BookChapterEntity(
+                        bookId = bookId,
+                        chapterNumber = nextNumber,
+                        title = title,
+                        content = content,
+                    )
                 )
-            )
+            }.onFailure { e ->
+                _uiState.update { it.copy(errorMessage = "Ошибка создания главы: ${e.message}") }
+            }
         }
     }
 
     private fun updateChapter(id: Long, title: String, content: String) {
         viewModelScope.launch {
-            val existing = bookDao.getChapterById(id) ?: return@launch
-            bookDao.updateChapter(existing.copy(title = title, content = content))
+            runCatching {
+                val existing = bookDao.getChapterById(id) ?: return@launch
+                bookDao.updateChapter(existing.copy(title = title, content = content))
+            }.onFailure { e ->
+                _uiState.update { it.copy(errorMessage = "Ошибка обновления главы: ${e.message}") }
+            }
         }
     }
 
     private fun deleteChapter(chapter: BookChapterEntity) {
         viewModelScope.launch {
-            bookDao.deleteChapter(chapter)
+            runCatching {
+                bookDao.deleteChapter(chapter)
+            }.onFailure { e ->
+                _uiState.update { it.copy(errorMessage = "Ошибка удаления главы: ${e.message}") }
+            }
         }
     }
 }
