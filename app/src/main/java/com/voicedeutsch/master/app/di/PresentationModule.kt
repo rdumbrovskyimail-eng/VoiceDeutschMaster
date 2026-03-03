@@ -5,6 +5,7 @@ import com.voicedeutsch.master.presentation.screen.dashboard.DashboardViewModel
 import com.voicedeutsch.master.presentation.screen.knowledge.KnowledgeViewModel
 import com.voicedeutsch.master.presentation.screen.onboarding.OnboardingViewModel
 import com.voicedeutsch.master.presentation.screen.session.SessionViewModel
+import com.voicedeutsch.master.presentation.screen.settings.BookManagerViewModel
 import com.voicedeutsch.master.presentation.screen.settings.SettingsViewModel
 import com.voicedeutsch.master.presentation.screen.statistics.StatisticsViewModel
 import org.koin.androidx.viewmodel.dsl.viewModel
@@ -55,6 +56,11 @@ val presentationModule = module {
             preferencesDataStore     = get(),
             userRepository           = get(),
             backupManager            = get(),
+        )
+    }
+    viewModel {
+        BookManagerViewModel(
+            bookDao = get(),
         )
     }
     viewModel {

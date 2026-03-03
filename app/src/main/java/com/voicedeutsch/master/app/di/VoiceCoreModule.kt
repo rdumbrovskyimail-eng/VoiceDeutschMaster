@@ -31,7 +31,7 @@ val voiceCoreModule = module {
     single { AudioPipeline(androidContext()) }
 
     single { UserContextProvider(get()) }
-    single { BookContextProvider(get()) }
+    single { BookContextProvider(get(), get()) }
     single { ContextBuilder(get(), get(), get()) }
 
     single { FunctionRegistry }

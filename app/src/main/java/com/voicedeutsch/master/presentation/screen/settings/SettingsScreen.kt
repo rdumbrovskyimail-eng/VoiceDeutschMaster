@@ -53,6 +53,8 @@ import java.util.Locale
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onNavigateToBookManager: () -> Unit = {},
+    onNavigateToTests: () -> Unit = {},
     viewModel: SettingsViewModel = koinViewModel(),
 ) {
     val context = LocalContext.current
@@ -299,6 +301,24 @@ fun SettingsScreen(
                 )
             }
 
+            // ── 2.7. Управление книгами ───────────────────────────────────────
+            SettingsSection(title = "Книги") {
+                Text(
+                    "Создавайте книги с главами для использования в контексте Gemini.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                OutlinedButton(
+                    onClick  = onNavigateToBookManager,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Управление книгами")
+                }
+            }
+
             // ── 3. Напоминание ────────────────────────────────────────────────
             SettingsSection(title = "Напоминание") {
                 RowSwitch(
@@ -430,6 +450,24 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 )
+            }
+
+            // ── 5.5. Тесты ────────────────────────────────────────────────────
+            SettingsSection(title = "Тесты") {
+                Text(
+                    "Runtime-проверки: сеть, БД, микрофон, Firebase, DataStore.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                OutlinedButton(
+                    onClick  = onNavigateToTests,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Default.BugReport, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Запустить тесты")
+                }
             }
 
             // ── 6. Диагностика ────────────────────────────────────────────────

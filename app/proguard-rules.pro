@@ -47,8 +47,11 @@
 
 # ── Domain models (used by Gemini function calls via JSON) ────────────────────
 -keep class com.voicedeutsch.master.domain.model.** { *; }
--keep class com.voicedeutsch.master.voicecore.engine.GeminiResponse { *; }
--keep class com.voicedeutsch.master.voicecore.engine.GeminiFunctionCall { *; }
+-keep class com.voicedeutsch.master.voicecore.engine.GeminiConfig { *; }
+-keep class com.voicedeutsch.master.voicecore.engine.GeminiConfig$* { *; }
+
+# ── Room entities ─────────────────────────────────────────────────────────────
+-keep class com.voicedeutsch.master.data.local.database.entity.** { *; }
 
 # ── Enums ─────────────────────────────────────────────────────────────────────
 -keepclassmembers enum * {

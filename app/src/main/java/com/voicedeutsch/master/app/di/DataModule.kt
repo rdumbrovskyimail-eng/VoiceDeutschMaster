@@ -133,6 +133,7 @@ val dataModule = module {
             .addMigrations(
                 AppDatabase.MIGRATION_1_2,
                 AppDatabase.MIGRATION_2_3,
+                AppDatabase.MIGRATION_3_4,
             )
             // FIX: Seed ачивок при первом создании БД (свежая установка)
             // + onOpen покрывает пользователей, пришедших через миграцию 1→2
@@ -167,6 +168,7 @@ val dataModule = module {
     single { get<AppDatabase>().bookProgressDao() }
     single { get<AppDatabase>().mistakeDao() }
     single { get<AppDatabase>().achievementDao() }
+    single { get<AppDatabase>().bookDao() }
 
     // ─── DataStore & Assets ──────────────────────────────────────────────────
     single { UserPreferencesDataStore(androidContext()) }
