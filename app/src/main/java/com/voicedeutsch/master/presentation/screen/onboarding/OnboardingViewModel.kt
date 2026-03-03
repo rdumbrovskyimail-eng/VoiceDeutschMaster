@@ -115,7 +115,6 @@ class OnboardingViewModel(
                 )
 
                 userRepository.createUser(profile)
-                userRepository.setActiveUserId(userId)
                 preferencesDataStore.setOnboardingComplete(true)
 
             }.onSuccess {
