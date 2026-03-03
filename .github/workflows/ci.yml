@@ -40,11 +40,11 @@ jobs:
 
     - name: Set up google-services.json
       run: |
-        if [ -n "${{ secrets.GOOGLE_SERVICES_JSON }}" ]; then
+        if [ -f "app/google-services.json" ]; then
+          echo "✅ google-services.json found in repo"
+        elif [ -n "${{ secrets.GOOGLE_SERVICES_JSON }}" ]; then
           echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 -d > app/google-services.json
           echo "✅ Using google-services.json from secrets"
-        elif [ -f "app/google-services.json" ]; then
-          echo "✅ Using google-services.json from repo"
         else
           echo "❌ ERROR: No google-services.json available"
           exit 1
