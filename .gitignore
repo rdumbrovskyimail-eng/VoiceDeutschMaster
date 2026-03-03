@@ -16,7 +16,7 @@ app/schemas/
 # The CI placeholder is safe to commit:
 # app/google-services.json.ci     ← OK to commit
 # The real one must NEVER be committed:
-app/google-services.json
+# app/google-services.json
 
 # ── Signing ───────────────────────────────────────────────────────────────────
 *.jks
