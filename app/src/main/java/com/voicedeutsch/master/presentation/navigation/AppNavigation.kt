@@ -40,6 +40,8 @@ import com.voicedeutsch.master.presentation.screen.dashboard.DashboardScreen
 import com.voicedeutsch.master.presentation.screen.knowledge.KnowledgeScreen
 import com.voicedeutsch.master.presentation.screen.onboarding.OnboardingScreen
 import com.voicedeutsch.master.presentation.screen.session.SessionScreen
+import com.voicedeutsch.master.presentation.screen.settings.BookManagerScreen
+import com.voicedeutsch.master.presentation.screen.settings.RuntimeTestScreen
 import com.voicedeutsch.master.presentation.screen.settings.SettingsScreen
 import com.voicedeutsch.master.presentation.screen.statistics.StatisticsScreen
 import kotlinx.coroutines.flow.firstOrNull
@@ -205,6 +207,20 @@ fun AppNavigation() {
 
             composable<NavRoute.Settings> {
                 SettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigateToBookManager = { navController.navigate(NavRoute.BookManager) },
+                    onNavigateToTests = { navController.navigate(NavRoute.RuntimeTests) },
+                )
+            }
+
+            composable<NavRoute.BookManager> {
+                BookManagerScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            composable<NavRoute.RuntimeTests> {
+                RuntimeTestScreen(
                     onBack = { navController.popBackStack() },
                 )
             }

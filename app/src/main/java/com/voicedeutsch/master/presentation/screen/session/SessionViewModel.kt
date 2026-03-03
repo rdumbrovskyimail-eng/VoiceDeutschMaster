@@ -113,7 +113,8 @@ class SessionViewModel(
                 val userId = userRepository.getActiveUserId()
                     ?: error("No active user found. Please complete onboarding.")
 
-                voiceCoreEngine.initialize(GeminiConfig())
+                val geminiConfig = preferencesDataStore.loadGeminiConfig()
+                voiceCoreEngine.initialize(geminiConfig)
                 voiceCoreEngine.startSession(userId)
 
                 // ✅ Подписываемся на амплитуду после старта сессии.

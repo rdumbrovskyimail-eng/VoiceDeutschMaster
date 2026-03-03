@@ -3,41 +3,36 @@ package com.voicedeutsch.master.voicecore.audio
 import android.content.Context
 import com.voicedeutsch.master.util.AudioUtils
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+/**
+ * AudioPipeline — управляет записью аудио для мониторинга амплитуды (визуализация аватара).
+ *
+ * В новой архитектуре Firebase AI SDK сам управляет микрофоном и воспроизведением
+ * через startAudioConversation/stopAudioConversation. AudioPipeline используется
+ * ТОЛЬКО для параллельного мониторинга амплитуды (если доступен второй AudioRecord)
+ * или как fallback для будущих сценариев.
+ */
 class AudioPipeline(private val context: Context) {
     private var recorder = AudioRecorder()
-    private var player = AudioPlayer()
 
     private val stateMutex = Mutex()
     private var _isRecording = false
-    private var _isPlaying = false
     private var _isInitialized = false
 
     val isRecording: Boolean get() = _isRecording
-    val isPlaying: Boolean get() = _isPlaying
 
-    // Микрофон
     private val _audioSharedFlow = kotlinx.coroutines.flow.MutableSharedFlow<ByteArray>(
         extraBufferCapacity = 64
     )
     val incomingAudioFlow: kotlinx.coroutines.flow.SharedFlow<ByteArray> = _audioSharedFlow
-    fun audioChunks(): kotlinx.coroutines.flow.Flow<ByteArray> = _audioSharedFlow
-
-    // 🔥 FIX #13: Ограниченный буфер вместо UNLIMITED во избежание OOM.
-    // При 24kHz 16-bit mono ~48 KB/сек; 128 чанков ≈ несколько секунд буфера.
-    // DROP_OLDEST отбрасывает устаревшие данные при переполнении вместо роста очереди.
-    private var playbackQueue = Channel<ByteArray>(capacity = 128, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    fun audioChunks(): Flow<ByteArray> = _audioSharedFlow
 
     private var scopeJob = SupervisorJob()
     private var pipelineScope = CoroutineScope(Dispatchers.IO + scopeJob)
     private var recordingJob: Job? = null
-    private var playbackJob: Job? = null
 
     fun initialize() {
         if (_isInitialized) return
@@ -47,8 +42,10 @@ class AudioPipeline(private val context: Context) {
 
     fun release() {
         if (!_isInitialized) return
-        flushPlayback()   // ✅ запускает корутину внутри
-        stopRecording()   // ✅ запускает корутину внутри
+        recorder.stop()
+        recordingJob?.cancel()
+        recordingJob = null
+        _isRecording = false
         pipelineScope.cancel()
         _isInitialized = false
     }
@@ -59,10 +56,6 @@ class AudioPipeline(private val context: Context) {
                 if (_isRecording) return@withLock
                 ensureScopeAlive()
 
-                // ✅ FIX: recorder.start(pipelineScope) вместо recorder.start().
-                // AudioRecorder больше не создаёт raw Thread — запись идёт в корутине
-                // под контролем pipelineScope. При stopAll() / release() scope отменяется
-                // и корутина записи завершается автоматически без утечки потока.
                 recorder.start(pipelineScope)
                 _isRecording = true
 
@@ -88,109 +81,11 @@ class AudioPipeline(private val context: Context) {
         }
     }
 
-    fun enqueueAudio(pcmBytes: ByteArray) {
-        if (pcmBytes.isEmpty()) return
-        playbackQueue.trySend(pcmBytes)
-        ensurePlaybackRunning()
-    }
-
-    fun pausePlayback() = player.pause()
-    fun resumePlayback() = player.resume()
-
-    // 🔥 FIX Deadlock: cancelAndJoin() вынесен ЗА пределы мьютекса.
-    // Было: cancelAndJoin() внутри withLock → playbackJob.finally тоже ждёт withLock → дэдлок.
-    // Стало: захватываем job-ссылку и сбрасываем состояние внутри мьютекса,
-    //        затем отпускаем мьютекс и только потом ждём завершения job.
-    fun flushPlayback() {
-        pipelineScope.launch {
-            android.util.Log.d("AudioPipeline", "Interruption: Flushing audio queue")
-
-            // 1. Захватываем ссылку и сбрасываем состояние под мьютексом
-            val jobToCancel = stateMutex.withLock {
-                val job = playbackJob
-                playbackJob = null
-                _isPlaying = false
-                playbackQueue.cancel()
-                playbackQueue = Channel(capacity = 128, onBufferOverflow = BufferOverflow.DROP_OLDEST)
-                job
-            }
-
-            // 2. cancelAndJoin() — ВНЕ мьютекса, дэдлок невозможен
-            jobToCancel?.cancelAndJoin()
-
-            // 3. Сбрасываем железо после гарантированной остановки job
-            player.flush()
-        }
-    }
-
-    fun stopPlayback() {
-        pipelineScope.launch {
-            // 1. Захватываем ссылку и сбрасываем состояние под мьютексом
-            val jobToCancel = stateMutex.withLock {
-                if (!_isPlaying) return@launch
-                val job = playbackJob
-                playbackJob = null
-                _isPlaying = false
-                playbackQueue.cancel()
-                playbackQueue = Channel(capacity = 128, onBufferOverflow = BufferOverflow.DROP_OLDEST)
-                job
-            }
-
-            // 2. cancelAndJoin() — ВНЕ мьютекса
-            jobToCancel?.cancelAndJoin()
-
-            // 3. Останавливаем железо
-            player.stop()
-        }
-    }
-
     suspend fun stopAll() {
-        flushPlayback()
         stopRecording()
     }
 
     fun getCurrentAmplitude(): Float = recorder.currentAmplitude
-
-    /**
-     * ✅ НОВОЕ: Уведомление о приостановке аудиопотока.
-     * Вызывается VoiceCoreEngineImpl при stopListening().
-     * Позволяет серверному VAD корректно обработать паузу.
-     */
-    fun notifyStreamPaused() {
-        // Аудиопоток приостановлен — серверный VAD должен быть уведомлён
-        // через GeminiClient.sendAudioStreamEnd() (вызывается выше по стеку)
-        android.util.Log.d("AudioPipeline", "Audio stream paused notification")
-    }
-
-    private fun ensurePlaybackRunning() {
-        pipelineScope.launch {
-            stateMutex.withLock {
-                if (_isPlaying) return@withLock
-                _isPlaying = true
-                ensureScopeAlive()
-                playbackJob = pipelineScope.launch {
-                    player.start()
-                    try {
-                        for (chunk in playbackQueue) {
-                            player.write(chunk)
-                        }
-                    } finally {
-                        // ✅ FIX Deadlock: NonCancellable гарантирует, что finally-блок
-                        // выполнится до конца даже при отмене корутины.
-                        // withLock внутри finally без NonCancellable может быть отменён
-                        // в момент ожидания мьютекса, оставив _isPlaying = true навсегда.
-                        // flushPlayback/stopPlayback уже сбрасывают _isPlaying = false
-                        // до cancelAndJoin(), поэтому повторный withLock здесь идемпотентен
-                        // и не вызывает deadlock (мьютекс уже свободен к этому моменту).
-                        withContext(NonCancellable) {
-                            player.stop()
-                            stateMutex.withLock { _isPlaying = false }
-                        }
-                    }
-                }
-            }
-        }
-    }
 
     private fun ensureScopeAlive() {
         if (scopeJob.isCancelled || scopeJob.isCompleted) {

@@ -12,12 +12,7 @@ object ProgressFunctions {
     val declarations: List<GeminiFunctionDeclaration> = listOf(
         FunctionRegistry.declare(
             name = "update_user_level",
-            description = "Обновить уровень CEFR пользователя (A1→A2→B1→B2→C1→C2).",
-            params = mapOf(
-                "cefr_level" to ("string"  to "Новый уровень: A1, A2, B1, B2, C1, C2"),
-                "sub_level"  to ("integer" to "Подуровень 1-10"),
-            ),
-            required = listOf("cefr_level"),
+            description = "Пересчитать уровень CEFR пользователя на основе его прогресса. Уровень определяется автоматически.",
         ),
         FunctionRegistry.declare(
             name = "get_user_statistics",

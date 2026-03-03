@@ -53,6 +53,8 @@ import java.util.Locale
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onNavigateToBookManager: () -> Unit = {},
+    onNavigateToTests: () -> Unit = {},
     viewModel: SettingsViewModel = koinViewModel(),
 ) {
     val context = LocalContext.current
@@ -122,6 +124,57 @@ fun SettingsScreen(
                 .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
+
+            // ── 0. Профиль пользователя ───────────────────────────────────────
+            SettingsSection(title = "Профиль пользователя") {
+                OutlinedTextField(
+                    value         = state.userName,
+                    onValueChange = { viewModel.onEvent(SettingsEvent.UpdateUserName(it)) },
+                    label         = { Text("Имя") },
+                    singleLine    = true,
+                    modifier      = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value         = state.userAge,
+                    onValueChange = { viewModel.onEvent(SettingsEvent.UpdateUserAge(it)) },
+                    label         = { Text("Возраст") },
+                    singleLine    = true,
+                    modifier      = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value         = state.userHobbies,
+                    onValueChange = { viewModel.onEvent(SettingsEvent.UpdateUserHobbies(it)) },
+                    label         = { Text("Хобби (через запятую)") },
+                    modifier      = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value         = state.userLearningGoals,
+                    onValueChange = { viewModel.onEvent(SettingsEvent.UpdateUserLearningGoals(it)) },
+                    label         = { Text("Цели изучения") },
+                    modifier      = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value         = state.userNativeLanguage,
+                    onValueChange = { viewModel.onEvent(SettingsEvent.UpdateUserNativeLanguage(it)) },
+                    label         = { Text("Родной язык") },
+                    singleLine    = true,
+                    modifier      = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    "Уровень немецкого",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                val levelOptions = listOf(
+                    "A1" to "A1", "A2" to "A2", "B1" to "B1",
+                    "B2" to "B2", "C1" to "C1", "C2" to "C2",
+                )
+                SegmentedControl(
+                    options  = levelOptions,
+                    selected = state.userLevel,
+                    onSelect = { viewModel.onEvent(SettingsEvent.UpdateUserLevel(it)) },
+                )
+            }
 
             // ── 1. Обучение (Алгоритмы) ───────────────────────────────────────
             SettingsSection(title = "Обучение (Алгоритмы)") {
@@ -197,6 +250,120 @@ fun SettingsScreen(
                     selected = state.pronunciationStrictness,
                     onSelect = { viewModel.onEvent(SettingsEvent.UpdateStrictness(it)) },
                 )
+            }
+
+            // ── 2.5. Настройки Gemini ──────────────────────────────────────────
+            SettingsSection(title = "Настройки Gemini") {
+                OutlinedTextField(
+                    value         = state.geminiModelName,
+                    onValueChange = { /* model name change requires app restart */ },
+                    label         = { Text("Модель Gemini") },
+                    singleLine    = true,
+                    readOnly      = true,
+                    modifier      = Modifier.fillMaxWidth(),
+                )
+                LabeledSlider(
+                    label         = "Temperature: ${"%.2f".format(state.geminiTemperature)}",
+                    value         = state.geminiTemperature,
+                    onValueChange = { viewModel.onEvent(SettingsEvent.UpdateGeminiTemperature(it)) },
+                    valueRange    = 0f..2f,
+                    steps         = 19,
+                )
+                LabeledSlider(
+                    label         = "Top P: ${"%.2f".format(state.geminiTopP)}",
+                    value         = state.geminiTopP,
+                    onValueChange = { viewModel.onEvent(SettingsEvent.UpdateGeminiTopP(it)) },
+                    valueRange    = 0f..1f,
+                    steps         = 19,
+                )
+                LabeledSlider(
+                    label         = "Top K: ${state.geminiTopK}",
+                    value         = state.geminiTopK.toFloat(),
+                    onValueChange = { viewModel.onEvent(SettingsEvent.UpdateGeminiTopK(it.toInt())) },
+                    valueRange    = 1f..100f,
+                    steps         = 98,
+                )
+                Text(
+                    "Голос Gemini",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                val voiceOptions = listOf(
+                    "Kore" to "Kore", "Puck" to "Puck", "Charon" to "Charon",
+                    "Fenrir" to "Fenrir", "Zephyr" to "Zephyr",
+                )
+                SegmentedControl(
+                    options  = voiceOptions,
+                    selected = state.geminiVoiceName,
+                    onSelect = { viewModel.onEvent(SettingsEvent.UpdateGeminiVoiceName(it)) },
+                )
+                LabeledSlider(
+                    label         = "Скорость речи: ${"%.1f".format(state.voiceSpeed)}x",
+                    value         = state.voiceSpeed,
+                    onValueChange = { viewModel.onEvent(SettingsEvent.UpdateVoiceSpeed(it)) },
+                    valueRange    = 0.5f..2.0f,
+                    steps         = 14,
+                )
+                RowSwitch(
+                    label           = "Транскрипция ввода (речь пользователя)",
+                    checked         = state.geminiInputTranscription,
+                    onCheckedChange = { viewModel.onEvent(SettingsEvent.ToggleGeminiInputTranscription(it)) },
+                )
+                RowSwitch(
+                    label           = "Транскрипция вывода (речь AI)",
+                    checked         = state.geminiOutputTranscription,
+                    onCheckedChange = { viewModel.onEvent(SettingsEvent.ToggleGeminiOutputTranscription(it)) },
+                )
+            }
+
+            // ── 2.6. Контекст и лимиты ───────────────────────────────────────
+            SettingsSection(title = "Контекст и лимиты") {
+                Text(
+                    "Размер контекста определяет сколько данных загружается в Gemini при старте сессии. " +
+                    "Большой контекст (платная версия) позволяет загрузить всю книгу, историю и словарь.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                LabeledSlider(
+                    label         = "Макс. контекст: ${state.geminiMaxContextTokens / 1024}K токенов",
+                    value         = state.geminiMaxContextTokens.toFloat(),
+                    onValueChange = { viewModel.onEvent(SettingsEvent.UpdateGeminiMaxContext(it.toInt())) },
+                    valueRange    = 8_192f..1_048_576f,
+                    steps         = 15,
+                )
+                Text(
+                    buildString {
+                        val k = state.geminiMaxContextTokens / 1024
+                        append("Текущий лимит: ${k}K токенов. ")
+                        when {
+                            k <= 16 -> append("Базовый — только промпт и текущий урок.")
+                            k <= 128 -> append("Стандартный — промпт, урок, словарь, история.")
+                            k <= 512 -> append("Расширенный — вся книга + полная история.")
+                            else -> append("Максимальный — все данные системы загружаются целиком.")
+                        }
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                )
+            }
+
+            // ── 2.7. Управление книгами ───────────────────────────────────────
+            SettingsSection(title = "Книги") {
+                Text(
+                    "Создавайте книги с главами для использования в контексте Gemini.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                OutlinedButton(
+                    onClick  = onNavigateToBookManager,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Управление книгами")
+                }
             }
 
             // ── 3. Напоминание ────────────────────────────────────────────────
@@ -332,6 +499,24 @@ fun SettingsScreen(
                 )
             }
 
+            // ── 5.5. Тесты ────────────────────────────────────────────────────
+            SettingsSection(title = "Тесты") {
+                Text(
+                    "Runtime-проверки: сеть, БД, микрофон, Firebase, DataStore.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                OutlinedButton(
+                    onClick  = onNavigateToTests,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Default.BugReport, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Запустить тесты")
+                }
+            }
+
             // ── 6. Диагностика ────────────────────────────────────────────────
             DiagnosticsSection(
                 logStats  = logStats,
@@ -342,6 +527,25 @@ fun SettingsScreen(
                     saveLogLauncher.launch("voicedeutsch_log_$ts.txt")
                 },
             )
+
+            // ── 7. О приложении ────────────────────────────────────────────────
+            SettingsSection(title = "О приложении") {
+                Text(
+                    "VoiceDeutsch Master",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    "Персональный AI-репетитор немецкого языка",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "Модель: ${state.geminiModelName}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             // ── Кнопка сохранения ─────────────────────────────────────────────
             Button(

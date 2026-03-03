@@ -24,13 +24,12 @@ import com.voicedeutsch.master.presentation.theme.Secondary
 import org.koin.androidx.compose.koinViewModel
 
 /**
- * Onboarding flow — 4-step wizard:
+ * Onboarding flow — 3-step wizard:
  *
- *  1. WELCOME    – Splash + tagline
- *  2. NAME       – Enter user name
- *  3. LEVEL      – Choose starting CEFR level
- *  4. BOOK_LOAD  – Load book assets
- *  5. DONE       – Completion confirmation
+ *  1. WELCOME – Splash + tagline
+ *  2. NAME    – Enter user name
+ *  3. LEVEL   – Choose starting CEFR level
+ *  → DONE     – Completion confirmation
  */
 @Composable
 fun OnboardingScreen(
@@ -95,12 +94,6 @@ fun OnboardingScreen(
                         selected = state.selectedLevel,
                         onSelect = { viewModel.onEvent(OnboardingEvent.SelectLevel(it)) },
                     )
-                    OnboardingStep.BOOK_LOAD -> BookLoadStep(
-                        isLoading = state.isLoadingBook,
-                        loaded    = state.bookLoaded,
-                        error     = state.errorMessage,
-                        onLoad    = { viewModel.onEvent(OnboardingEvent.LoadBook) },
-                    )
                     OnboardingStep.DONE      -> DoneStep(name = state.name)
                 }
             }
@@ -110,11 +103,10 @@ fun OnboardingScreen(
             // ── Navigation buttons ────────────────────────────────────────────
             if (state.step != OnboardingStep.DONE) {
                 OnboardingNavRow(
-                    step       = state.step,
-                    isLoading  = state.isLoadingBook,
-                    onBack     = { viewModel.onEvent(OnboardingEvent.Back) },
-                    onNext     = { viewModel.onEvent(OnboardingEvent.Next) },
-                    onLoadBook = { viewModel.onEvent(OnboardingEvent.LoadBook) },
+                    step      = state.step,
+                    isLoading = state.isLoading,
+                    onBack    = { viewModel.onEvent(OnboardingEvent.Back) },
+                    onNext    = { viewModel.onEvent(OnboardingEvent.Next) },
                 )
             } else {
                 Button(
@@ -244,51 +236,6 @@ private fun LevelStep(selected: CefrLevel, onSelect: (CefrLevel) -> Unit) {
 }
 
 @Composable
-private fun BookLoadStep(
-    isLoading: Boolean,
-    loaded: Boolean,
-    error: String?,
-    onLoad: () -> Unit,
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-        modifier            = Modifier.fillMaxSize(),
-    ) {
-        Text(
-            text       = if (loaded) "📚 Книга загружена!" else "📚 Загрузка учебника",
-            style      = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            color      = MaterialTheme.colorScheme.onBackground,
-            textAlign  = TextAlign.Center,
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text      = "Слова, грамматика и упражнения из учебника будут доступны во время занятий",
-            style     = MaterialTheme.typography.bodyMedium,
-            color     = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-            textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.height(32.dp))
-        if (isLoading) {
-            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.height(16.dp))
-            Text("Загружаем...", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
-        } else if (!loaded) {
-            Button(onClick = onLoad, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                Text("Загрузить учебник")
-            }
-        } else {
-            Text("✓ Все главы загружены", style = MaterialTheme.typography.bodyLarge, color = Secondary, fontWeight = FontWeight.SemiBold)
-        }
-        error?.let {
-            Spacer(Modifier.height(12.dp))
-            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
-        }
-    }
-}
-
-@Composable
 private fun DoneStep(name: String) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -322,7 +269,6 @@ private fun OnboardingNavRow(
     isLoading: Boolean,
     onBack: () -> Unit,
     onNext: () -> Unit,
-    onLoadBook: () -> Unit,
 ) {
     Row(
         modifier              = Modifier.fillMaxWidth(),
@@ -336,7 +282,7 @@ private fun OnboardingNavRow(
         }
 
         Button(
-            onClick  = if (step == OnboardingStep.BOOK_LOAD) onLoadBook else onNext,
+            onClick  = onNext,
             enabled  = !isLoading,
             modifier = Modifier.height(48.dp),
         ) {
@@ -349,9 +295,9 @@ private fun OnboardingNavRow(
             } else {
                 Text(
                     when (step) {
-                        OnboardingStep.WELCOME   -> "Начать"
-                        OnboardingStep.BOOK_LOAD -> "Загрузить"
-                        else                     -> "Далее →"
+                        OnboardingStep.WELCOME -> "Начать"
+                        OnboardingStep.LEVEL   -> "Готово!"
+                        else                   -> "Далее"
                     }
                 )
             }

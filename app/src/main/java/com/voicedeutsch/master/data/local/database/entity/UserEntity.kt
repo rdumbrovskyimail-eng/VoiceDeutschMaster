@@ -29,6 +29,10 @@ data class UserEntity(
     val streakDays: Int = 0,
     @ColumnInfo(name = "last_session_date")
     val lastSessionDate: Long? = null,
+    val age: Int? = null,
+    val hobbies: String? = null,
+    @ColumnInfo(name = "learning_goals")
+    val learningGoals: String? = null,
     @ColumnInfo(name = "created_at")
     val createdAt: Long = System.currentTimeMillis(),
     @ColumnInfo(name = "updated_at")

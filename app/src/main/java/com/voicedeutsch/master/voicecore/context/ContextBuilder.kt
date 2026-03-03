@@ -57,6 +57,7 @@ class ContextBuilder(
         currentStrategy: LearningStrategy,
         currentChapter: Int,
         currentLesson: Int,
+        maxContextTokens: Int = LIVE_API_TOTAL_TOKEN_LIMIT,
     ): SessionContext {
         val staticSystemPrompt = MasterPrompt.build()
         val userContext        = userContextProvider.buildUserContext(knowledgeSnapshot)
@@ -73,38 +74,112 @@ class ContextBuilder(
         val pace       = profile?.preferences?.learningPace?.name ?: "NORMAL"
         val voiceSpeed = profile?.voiceSettings?.germanVoiceSpeed ?: 0.8f
 
+        val userName    = profile?.name ?: "Ученик"
+        val userAge     = profile?.age?.let { "$it лет" } ?: "не указан"
+        val userHobbies = profile?.hobbies?.takeIf { it.isNotBlank() } ?: "не указаны"
+        val userLevel   = profile?.cefrLevel?.name ?: "A1"
+        val nativeLang  = profile?.nativeLanguage ?: "ru"
+        val goals       = profile?.learningGoals?.takeIf { it.isNotBlank() } ?: "общее изучение"
+
         val settingsPrompt = """
+            ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ:
+            - Имя: $userName
+            - Возраст: $userAge
+            - Уровень немецкого: $userLevel
+            - Родной язык: $nativeLang
+            - Хобби: $userHobbies
+            - Цели: $goals
+            
             НАСТРОЙКИ ПОЛЬЗОВАТЕЛЯ:
             - Строгость произношения: $strictness (если STRICT — придирайся к каждой фонеме, если LENIENT — игнорируй лёгкий акцент, если MODERATE — указывай на грубые ошибки).
             - Темп обучения: $pace (если SLOW — больше объяснений и повторений, если FAST — сразу переходи к следующей теме).
             - Скорость немецкой речи: $voiceSpeed (используй как ориентир при TTS-подборе темпа).
+            - Обращайся к пользователю по имени ($userName). Учитывай его возраст, хобби и цели при выборе тем и примеров.
         """.trimIndent()
 
-        val rawFullContext = buildString {
+        // Приоритетная сборка контекста:
+        // 1 (высший): system instruction + settings (всегда включаются)
+        // 2: текущая глава книги
+        // 3: профиль + стратегия
+        // 4 (низший): user context (ошибки, слова на повторение, история)
+        // При малом лимите — наименее важные части обрезаются.
+
+        val coreBlock = buildString {
             append(staticSystemPrompt)
             appendLine()
             appendLine()
             appendLine("--- USER SETTINGS ---")
             appendLine()
             append(settingsPrompt)
-            appendLine()
-            appendLine()
-            appendLine("--- USER CONTEXT ---")
-            appendLine()
-            append(userContext)
-            appendLine()
+        }
+
+        val bookBlock = buildString {
             appendLine("--- BOOK CONTEXT ---")
             appendLine()
             append(bookContext)
-            appendLine()
+        }
+
+        val strategyBlock = buildString {
             appendLine("--- CURRENT STRATEGY ---")
             appendLine()
             append(strategyPrompt)
         }
 
+        val userBlock = buildString {
+            appendLine("--- USER CONTEXT ---")
+            appendLine()
+            append(userContext)
+        }
+
+        // Бюджет: от maxContextTokens вычитаем буфер на функции и историю
+        val functionReserve = 3_000
+        val conversationReserve = (maxContextTokens * 0.3).toInt().coerceAtLeast(10_000)
+        val contextBudget = maxContextTokens - functionReserve - conversationReserve
+
+        val coreTokens = coreBlock.length / TOKEN_CHAR_RATIO
+        val remaining = contextBudget - coreTokens
+
+        val rawFullContext = buildString {
+            append(coreBlock)
+            appendLine()
+            appendLine()
+
+            if (remaining > 0) {
+                val bookTokens = bookBlock.length / TOKEN_CHAR_RATIO
+                val strategyTokens = strategyBlock.length / TOKEN_CHAR_RATIO
+                val userTokens = userBlock.length / TOKEN_CHAR_RATIO
+
+                var budget = remaining
+
+                if (budget >= bookTokens) {
+                    append(bookBlock)
+                    appendLine()
+                    budget -= bookTokens
+                } else if (budget > 500) {
+                    val trimmedBook = bookBlock.take(budget * TOKEN_CHAR_RATIO)
+                    append(trimmedBook)
+                    appendLine()
+                    budget = 0
+                }
+
+                if (budget >= strategyTokens) {
+                    append(strategyBlock)
+                    appendLine()
+                    budget -= strategyTokens
+                }
+
+                if (budget >= userTokens) {
+                    append(userBlock)
+                } else if (budget > 500) {
+                    val trimmedUser = userBlock.take(budget * TOKEN_CHAR_RATIO)
+                    append(trimmedUser)
+                }
+            }
+        }
+
         val optimizedContext = PromptOptimizer.optimize(
             fullPrompt = rawFullContext,
-            maxTokens  = SAFE_CONTEXT_TOKEN_BUDGET,
+            maxTokens  = contextBudget,
         )
 
         val sessionContext = SessionContext(

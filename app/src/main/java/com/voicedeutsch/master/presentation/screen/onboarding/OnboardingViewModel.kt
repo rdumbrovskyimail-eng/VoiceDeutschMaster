@@ -5,7 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.voicedeutsch.master.data.local.datastore.UserPreferencesDataStore
 import com.voicedeutsch.master.domain.model.user.CefrLevel
 import com.voicedeutsch.master.domain.usecase.user.GetUserProfileUseCase
-import com.voicedeutsch.master.domain.repository.BookRepository
+
 import com.voicedeutsch.master.domain.repository.UserRepository
 import com.voicedeutsch.master.util.generateUUID
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,14 +16,13 @@ import kotlinx.coroutines.launch
 
 // ── State / Event ─────────────────────────────────────────────────────────────
 
-enum class OnboardingStep { WELCOME, NAME, LEVEL, BOOK_LOAD, DONE }
+enum class OnboardingStep { WELCOME, NAME, LEVEL, DONE }
 
 data class OnboardingUiState(
     val step: OnboardingStep = OnboardingStep.WELCOME,
     val name: String = "",
     val selectedLevel: CefrLevel = CefrLevel.A1,
-    val isLoadingBook: Boolean = false,
-    val bookLoaded: Boolean = false,
+    val isLoading: Boolean = false,
     val errorMessage: String? = null,
 )
 
@@ -32,7 +31,6 @@ sealed interface OnboardingEvent {
     data object Back : OnboardingEvent
     data class UpdateName(val name: String) : OnboardingEvent
     data class SelectLevel(val level: CefrLevel) : OnboardingEvent
-    data object LoadBook : OnboardingEvent
     data object DismissError : OnboardingEvent
     data object Complete : OnboardingEvent
 }
@@ -43,20 +41,18 @@ sealed interface OnboardingEvent {
  * ViewModel for [OnboardingScreen].
  *
  * Manages a step-by-step flow:
- *   Welcome → Name → Level → Book Load → Done
+ *   Welcome → Name → Level → Done
  *
  * On completion it:
  *  1. Creates the user profile via UserRepository
  *  2. Sets onboarding complete flag
  *
  * @param userRepository        Create user, set active user ID.
- * @param bookRepository        Load book assets into the database.
  * @param preferencesDataStore  Save onboarding flags.
  * @param getUserProfile        Verify profile was saved correctly.
  */
 class OnboardingViewModel(
     private val userRepository: UserRepository,
-    private val bookRepository: BookRepository,
     private val preferencesDataStore: UserPreferencesDataStore,
     private val getUserProfile: GetUserProfileUseCase,
 ) : ViewModel() {
@@ -70,7 +66,6 @@ class OnboardingViewModel(
             is OnboardingEvent.Back          -> previousStep()
             is OnboardingEvent.UpdateName    -> _uiState.update { it.copy(name = event.name) }
             is OnboardingEvent.SelectLevel   -> _uiState.update { it.copy(selectedLevel = event.level) }
-            is OnboardingEvent.LoadBook      -> loadBook()
             is OnboardingEvent.DismissError  -> _uiState.update { it.copy(errorMessage = null) }
             is OnboardingEvent.Complete      -> completeOnboarding()
         }
@@ -79,64 +74,36 @@ class OnboardingViewModel(
     private fun nextStep() {
         val current = _uiState.value
         val next = when (current.step) {
-            OnboardingStep.WELCOME   -> {
-                OnboardingStep.NAME
-            }
-            OnboardingStep.NAME      -> {
+            OnboardingStep.WELCOME -> OnboardingStep.NAME
+            OnboardingStep.NAME -> {
                 if (current.name.isBlank()) {
                     _uiState.update { it.copy(errorMessage = "Введите ваше имя") }
                     return
                 }
                 OnboardingStep.LEVEL
             }
-            OnboardingStep.LEVEL     -> OnboardingStep.BOOK_LOAD
-            OnboardingStep.BOOK_LOAD -> {
-                if (_uiState.value.bookLoaded) {
-                    completeOnboarding()
-                } else {
-                    loadBook()
-                }
+            OnboardingStep.LEVEL -> {
+                completeOnboarding()
                 return
             }
-            OnboardingStep.DONE      -> return
+            OnboardingStep.DONE -> return
         }
         _uiState.update { it.copy(step = next, errorMessage = null) }
     }
 
     private fun previousStep() {
         val prev = when (_uiState.value.step) {
-            OnboardingStep.WELCOME   -> return
-            OnboardingStep.NAME      -> OnboardingStep.WELCOME
-            OnboardingStep.LEVEL     -> OnboardingStep.NAME
-            OnboardingStep.BOOK_LOAD -> OnboardingStep.LEVEL
-            OnboardingStep.DONE      -> OnboardingStep.BOOK_LOAD
+            OnboardingStep.WELCOME -> return
+            OnboardingStep.NAME    -> OnboardingStep.WELCOME
+            OnboardingStep.LEVEL   -> OnboardingStep.NAME
+            OnboardingStep.DONE    -> OnboardingStep.LEVEL
         }
         _uiState.update { it.copy(step = prev, errorMessage = null) }
     }
 
-    private fun loadBook() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoadingBook = true, errorMessage = null) }
-            runCatching {
-                if (!bookRepository.isBookLoaded()) {
-                    bookRepository.loadBookIntoDatabase()
-                }
-            }.onSuccess {
-                completeOnboarding()
-            }.onFailure { e ->
-                _uiState.update {
-                    it.copy(
-                        isLoadingBook = false,
-                        errorMessage  = "Не удалось загрузить книгу: ${e.message}",
-                    )
-                }
-            }
-        }
-    }
-
     private fun completeOnboarding() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoadingBook = false) }
+            _uiState.update { it.copy(isLoading = true) }
             runCatching {
                 val state = _uiState.value
                 val userId = generateUUID()
@@ -152,9 +119,9 @@ class OnboardingViewModel(
                 preferencesDataStore.setOnboardingComplete(true)
 
             }.onSuccess {
-                _uiState.update { it.copy(bookLoaded = true, step = OnboardingStep.DONE, errorMessage = null) }
+                _uiState.update { it.copy(isLoading = false, step = OnboardingStep.DONE, errorMessage = null) }
             }.onFailure { e ->
-                _uiState.update { it.copy(isLoadingBook = false, errorMessage = "Ошибка: ${e.message}") }
+                _uiState.update { it.copy(isLoading = false, errorMessage = "Ошибка: ${e.message}") }
             }
         }
     }
