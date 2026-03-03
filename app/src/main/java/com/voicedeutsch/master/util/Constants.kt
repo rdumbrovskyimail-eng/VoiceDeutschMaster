@@ -10,7 +10,7 @@ object Constants {
     // DATABASE
     // ==========================================
     const val DATABASE_NAME = "voice_deutsch_master.db"
-    const val DATABASE_VERSION = 1
+    const val DATABASE_VERSION = 4
 
     // ==========================================
     // SRS (Spaced Repetition System)
