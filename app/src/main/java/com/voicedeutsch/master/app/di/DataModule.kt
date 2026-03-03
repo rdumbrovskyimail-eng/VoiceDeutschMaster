@@ -51,15 +51,6 @@ import java.util.concurrent.TimeUnit
 
 val dataModule = module {
 
-    // ─── JSON ────────────────────────────────────────────────────────────────
-    single {
-        Json {
-            ignoreUnknownKeys = true
-            isLenient         = true
-            encodeDefaults    = true
-        }
-    }
-
     // ─── Ktor HttpClient ─────────────────────────────────────────────────────
     single {
         HttpClient(OkHttp) {
@@ -229,5 +220,5 @@ val dataModule = module {
     // Определяем здесь, а не в useCaseModule, потому что зависит от KnowledgeRepository
     // который уже объявлен в dataModule. Если у вас есть отдельный useCaseModule —
     // перенесите эту строку туда.
-    single { FlushKnowledgeSyncUseCase(get<KnowledgeRepository>()) }
+    factory { FlushKnowledgeSyncUseCase(get<KnowledgeRepository>()) }
 }
