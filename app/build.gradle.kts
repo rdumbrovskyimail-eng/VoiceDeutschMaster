@@ -180,6 +180,7 @@ dependencies {
     // ── UI Polish ─────────────────────────────────────────────────────────────
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.compose.ui:ui-text-google-fonts")
+    implementation("com.google.accompanist:accompanist-permissions:0.36.0")
 
     // ── Unit Testing ─────────────────────────────────────────────────────────
     testImplementation(libs.bundles.testing)
