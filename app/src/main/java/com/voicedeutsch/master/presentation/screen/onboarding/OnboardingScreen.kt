@@ -24,13 +24,12 @@ import com.voicedeutsch.master.presentation.theme.Secondary
 import org.koin.androidx.compose.koinViewModel
 
 /**
- * Onboarding flow — 4-step wizard:
+ * Onboarding flow — 3-step wizard:
  *
- *  1. WELCOME    – Splash + tagline
- *  2. NAME       – Enter user name
- *  3. LEVEL      – Choose starting CEFR level
- *  4. BOOK_LOAD  – Load book assets
- *  5. DONE       – Completion confirmation
+ *  1. WELCOME – Splash + tagline
+ *  2. NAME    – Enter user name
+ *  3. LEVEL   – Choose starting CEFR level
+ *  → DONE     – Completion confirmation
  */
 @Composable
 fun OnboardingScreen(

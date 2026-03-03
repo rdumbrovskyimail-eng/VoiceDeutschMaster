@@ -33,12 +33,10 @@ object BookFunctions {
         ),
         FunctionRegistry.declare(
             name        = "mark_lesson_complete",
-            description = "Отметить урок как пройденный.",
+            description = "Отметить текущий урок как пройденный.",
             params      = mapOf(
-                "chapter" to ("integer" to "Номер главы"),
-                "lesson"  to ("integer" to "Номер урока"),
+                "score" to ("number" to "Оценка за урок 0.0-1.0"),
             ),
-            required    = listOf("chapter", "lesson"),
         ),
         // ✅ НОВАЯ ФУНКЦИЯ: постраничное чтение урока
         FunctionRegistry.declare(

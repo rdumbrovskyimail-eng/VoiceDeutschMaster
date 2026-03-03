@@ -12,7 +12,6 @@ import com.voicedeutsch.master.domain.usecase.learning.EndLearningSessionUseCase
 import com.voicedeutsch.master.domain.usecase.learning.StartLearningSessionUseCase
 import com.voicedeutsch.master.util.NetworkMonitor
 import com.voicedeutsch.master.voicecore.audio.AudioPipeline
-import com.voicedeutsch.master.voicecore.audio.RmsCalculator
 import com.voicedeutsch.master.voicecore.context.ContextBuilder
 import com.voicedeutsch.master.voicecore.functions.FunctionRouter
 import com.voicedeutsch.master.voicecore.session.AudioState
@@ -85,8 +84,14 @@ class VoiceCoreEngineImpl(
     private val _audioState      = MutableStateFlow(AudioState.IDLE)
     override val audioState:     StateFlow<AudioState> = _audioState.asStateFlow()
 
-    override val amplitudeFlow: Flow<Float> = audioPipeline.audioChunks()
-        .map { pcm -> RmsCalculator.calculate(pcm).coerceIn(0f, 1f) }
+    override val amplitudeFlow: Flow<Float> = _audioState
+        .map { state ->
+            when (state) {
+                AudioState.RECORDING -> 0.5f
+                AudioState.PLAYING   -> 0.7f
+                else                 -> 0f
+            }
+        }
 
     @Volatile private var config: GeminiConfig? = null
     @Volatile private var activeSessionId: String? = null
@@ -151,7 +156,7 @@ class VoiceCoreEngineImpl(
             check(current == VoiceEngineState.IDLE || current == VoiceEngineState.CONNECTED) {
                 "startSession() called in invalid state: $current"
             }
-            checkNotNull(config) { "Call initialize() before startSession()" }
+            val cfg = checkNotNull(config) { "Call initialize() before startSession()" }
 
             if (!networkMonitor.isOnline()) {
                 transitionEngine(VoiceEngineState.ERROR)
@@ -177,7 +182,7 @@ class VoiceCoreEngineImpl(
                     currentStrategy   = strategy,
                     currentChapter    = sessionData.currentChapter,
                     currentLesson     = sessionData.currentLesson,
-                    maxContextTokens  = config!!.maxContextTokens,
+                    maxContextTokens  = cfg.maxContextTokens,
                 )
             }
 
@@ -385,9 +390,10 @@ class VoiceCoreEngineImpl(
             try {
                 val result = runBlocking(Dispatchers.IO) {
                     withTimeout(FUNCTION_CALL_TIMEOUT_MS) {
+                        val argsJson = JsonObject(functionCall.args.mapValues { (_, v) -> v }).toString()
                         functionRouter.route(
                             functionCall.name,
-                            functionCall.args.toString(),
+                            argsJson,
                             userId,
                             sessionId,
                         )

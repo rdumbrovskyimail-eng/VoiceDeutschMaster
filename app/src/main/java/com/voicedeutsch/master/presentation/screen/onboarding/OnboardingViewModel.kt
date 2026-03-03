@@ -5,7 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.voicedeutsch.master.data.local.datastore.UserPreferencesDataStore
 import com.voicedeutsch.master.domain.model.user.CefrLevel
 import com.voicedeutsch.master.domain.usecase.user.GetUserProfileUseCase
-import com.voicedeutsch.master.domain.repository.BookRepository
+
 import com.voicedeutsch.master.domain.repository.UserRepository
 import com.voicedeutsch.master.util.generateUUID
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,20 +41,18 @@ sealed interface OnboardingEvent {
  * ViewModel for [OnboardingScreen].
  *
  * Manages a step-by-step flow:
- *   Welcome → Name → Level → Book Load → Done
+ *   Welcome → Name → Level → Done
  *
  * On completion it:
  *  1. Creates the user profile via UserRepository
  *  2. Sets onboarding complete flag
  *
  * @param userRepository        Create user, set active user ID.
- * @param bookRepository        Load book assets into the database.
  * @param preferencesDataStore  Save onboarding flags.
  * @param getUserProfile        Verify profile was saved correctly.
  */
 class OnboardingViewModel(
     private val userRepository: UserRepository,
-    private val bookRepository: BookRepository,
     private val preferencesDataStore: UserPreferencesDataStore,
     private val getUserProfile: GetUserProfileUseCase,
 ) : ViewModel() {

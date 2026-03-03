@@ -209,12 +209,12 @@ class SettingsViewModel(
                         germanVoiceSpeed        = voice?.germanVoiceSpeed ?: 0.8f,
                         showTranscription       = voice?.showTranscription ?: true,
                         // Gemini
-                        geminiTemperature       = geminiConfig.temperature,
-                        geminiTopP              = geminiConfig.topP,
-                        geminiTopK              = geminiConfig.topK,
+                        geminiTemperature       = geminiConfig.temperature.coerceIn(0f, 2f),
+                        geminiTopP              = geminiConfig.topP.coerceIn(0f, 1f),
+                        geminiTopK              = geminiConfig.topK.coerceIn(1, 100),
                         geminiVoiceName         = geminiConfig.voiceName,
                         geminiModelName         = geminiConfig.modelName,
-                        geminiMaxContextTokens  = geminiConfig.maxContextTokens,
+                        geminiMaxContextTokens  = geminiConfig.maxContextTokens.coerceIn(8_192, 1_048_576),
                         geminiInputTranscription  = geminiConfig.transcriptionConfig.inputTranscriptionEnabled,
                         geminiOutputTranscription = geminiConfig.transcriptionConfig.outputTranscriptionEnabled,
                     )
@@ -247,13 +247,13 @@ class SettingsViewModel(
                     preferredSessionDuration = s.sessionDurationMinutes,
                     dailyGoalWords = s.dailyGoalWords,
                     dailyGoalMinutes = s.sessionDurationMinutes,
-                    learningPace = LearningPace.valueOf(s.learningPace),
+                    learningPace = LearningPace.entries.find { it.name == s.learningPace } ?: LearningPace.NORMAL,
                     srsEnabled = s.srsEnabled,
                     maxReviewsPerSession = s.maxReviewsPerSession,
                     reminderEnabled = s.reminderEnabled,
                     reminderHour = s.reminderHour,
                     reminderMinute = s.reminderMinute,
-                    pronunciationStrictness = PronunciationStrictness.valueOf(s.pronunciationStrictness),
+                    pronunciationStrictness = PronunciationStrictness.entries.find { it.name == s.pronunciationStrictness } ?: PronunciationStrictness.MODERATE,
                     dataSavingMode = s.dataSavingMode,
                 )
 

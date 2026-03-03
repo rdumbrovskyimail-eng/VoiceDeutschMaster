@@ -16,7 +16,7 @@ object LearningFunctions {
             params = mapOf(
                 "word"           to ("string"  to "Слово, которое произносил пользователь"),
                 "score"          to ("number"  to "Общая оценка 0.0-1.0"),
-                "problem_sounds" to ("string"  to "JSON-массив проблемных звуков, например [\"ü\",\"ö\"]"),
+                "problem_sounds" to ("array"   to "Массив проблемных звуков, например [\"ü\",\"ö\"]"),
                 "attempt_number" to ("integer" to "Номер попытки"),
             ),
             required = listOf("word", "score"),

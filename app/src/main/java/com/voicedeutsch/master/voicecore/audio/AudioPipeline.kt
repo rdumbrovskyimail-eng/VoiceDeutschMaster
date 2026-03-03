@@ -42,7 +42,10 @@ class AudioPipeline(private val context: Context) {
 
     fun release() {
         if (!_isInitialized) return
-        stopRecording()
+        recorder.stop()
+        recordingJob?.cancel()
+        recordingJob = null
+        _isRecording = false
         pipelineScope.cancel()
         _isInitialized = false
     }

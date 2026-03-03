@@ -46,10 +46,7 @@ fun BookManagerScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        if (state.selectedBook != null) state.selectedBook!!.title
-                        else "Управление книгами",
-                    )
+                    Text(state.selectedBook?.title ?: "Управление книгами")
                 },
                 navigationIcon = {
                     IconButton(onClick = {
@@ -277,8 +274,8 @@ private fun EditChapterDialog(
     onConfirm: (title: String, content: String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var title by remember { mutableStateOf(chapter?.title ?: "") }
-    var content by remember { mutableStateOf(chapter?.content ?: "") }
+    var title by remember(chapter?.id) { mutableStateOf(chapter?.title ?: "") }
+    var content by remember(chapter?.id) { mutableStateOf(chapter?.content ?: "") }
 
     AlertDialog(
         onDismissRequest = onDismiss,

@@ -88,6 +88,9 @@ class GeminiClient(
             val liveConfig = liveGenerationConfig {
                 responseModality = ResponseModality.AUDIO
                 speechConfig = SpeechConfig(voice = Voice(config.voiceName))
+                temperature = config.temperature
+                topP = config.topP
+                topK = config.topK
 
                 if (config.transcriptionConfig.outputTranscriptionEnabled) {
                     outputAudioTranscription = AudioTranscriptionConfig()

@@ -23,7 +23,6 @@ val presentationModule = module {
     viewModel {
         OnboardingViewModel(
             userRepository       = get(),
-            bookRepository       = get(),
             preferencesDataStore = get(),
             getUserProfile       = get(),
         )
