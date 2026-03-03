@@ -271,7 +271,9 @@ class SettingsViewModel(
                 preferencesDataStore.setDailyGoal(s.dailyGoalWords)
 
                 // Сохраняем Gemini config в DataStore
-                val geminiConfig = com.voicedeutsch.master.voicecore.engine.GeminiConfig(
+                // Загружаем текущий конфиг, чтобы не затереть поля, которых нет в UI
+                val currentGeminiConfig = preferencesDataStore.loadGeminiConfig()
+                val geminiConfig = currentGeminiConfig.copy(
                     temperature = s.geminiTemperature,
                     topP = s.geminiTopP,
                     topK = s.geminiTopK,
@@ -282,6 +284,9 @@ class SettingsViewModel(
                         inputTranscriptionEnabled = s.geminiInputTranscription,
                         outputTranscriptionEnabled = s.geminiOutputTranscription,
                     ),
+                    reconnectMaxAttempts = currentGeminiConfig.reconnectMaxAttempts,
+                    vadConfig = currentGeminiConfig.vadConfig,
+                    affectiveDialogEnabled = currentGeminiConfig.affectiveDialogEnabled,
                 )
                 preferencesDataStore.saveGeminiConfig(geminiConfig)
             }
