@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.voicedeutsch.master.data.local.database.entity.BookChapterEntity
 import com.voicedeutsch.master.data.local.database.entity.BookEntity
 import com.voicedeutsch.master.presentation.theme.Background
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -25,7 +26,7 @@ fun BookManagerScreen(
     onBack: () -> Unit,
     viewModel: BookManagerViewModel = koinViewModel(),
 ) {
-    val state by viewModel.uiState.collectAsState()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
 
