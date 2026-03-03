@@ -53,8 +53,11 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberPermissionState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -101,7 +104,7 @@ import org.koin.androidx.compose.koinViewModel
  *  │  BottomBar: Pause | 🎤 PulsingMic | Stats | Settings │
  *  └─────────────────────────────────────────────────────┘
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
 fun SessionScreen(
     onSessionEnd: () -> Unit,
@@ -109,8 +112,10 @@ fun SessionScreen(
     onNavigateToStatistics: () -> Unit = {},
     viewModel: SessionViewModel = koinViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val voiceState by viewModel.voiceState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val voiceState by viewModel.voiceState.collectAsStateWithLifecycle()
+
+    val hasRecordAudioPermission = rememberPermissionState(Manifest.permission.RECORD_AUDIO).status.isGranted
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -127,7 +132,7 @@ fun SessionScreen(
             title = { Text("Завершить занятие?") },
             text  = { Text("Ваш текущий прогресс будет сохранен.") },
             confirmButton = {
-                Button(
+                 Button(
                     onClick = {
                         showExitDialog = false
                         viewModel.onEvent(SessionEvent.EndSession)
@@ -164,7 +169,11 @@ fun SessionScreen(
 
     LaunchedEffect(Unit) {
         if (!uiState.isSessionActive && !uiState.isLoading) {
-            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            if (!hasRecordAudioPermission) {
+                viewModel.onEvent(SessionEvent.PermissionDenied)
+                return@LaunchedEffect
+            }
+            viewModel.onEvent(SessionEvent.StartSession)
         }
     }
 
@@ -382,7 +391,13 @@ fun SessionScreen(
                         result            = result,
                         onDismiss         = { viewModel.onEvent(SessionEvent.DismissResult) },
                         onGoToDashboard   = onNavigateToDashboard,
-                        onStartNewSession = { viewModel.onEvent(SessionEvent.StartSession) },
+                        onStartNewSession = {
+                            if (!hasRecordAudioPermission) {
+                                viewModel.onEvent(SessionEvent.PermissionDenied)
+                                return@SessionResultCard
+                            }
+                            viewModel.onEvent(SessionEvent.StartSession)
+                        },
                         modifier          = Modifier
                             .padding(24.dp)
                             .widthIn(max = 400.dp),
