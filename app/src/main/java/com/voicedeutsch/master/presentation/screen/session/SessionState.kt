@@ -51,8 +51,7 @@ sealed interface SessionEvent {
     data object EndSession : SessionEvent
     /** Toggle listening pause / resume without ending the session. */
     data object PauseResume : SessionEvent
-    /** Toggle microphone (start/stop recording). */
-    data object ToggleMic : SessionEvent
+
     /** Send a typed text message as a fallback input. */
     data class SendTextMessage(val text: String) : SessionEvent
     /** Dismiss the current error message. */
