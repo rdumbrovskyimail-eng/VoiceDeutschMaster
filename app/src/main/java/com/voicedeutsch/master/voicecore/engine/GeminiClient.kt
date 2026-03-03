@@ -31,8 +31,11 @@ import kotlinx.coroutines.sync.withLock
  */
 @OptIn(PublicPreviewAPI::class)
 class GeminiClient(
-    private val config: GeminiConfig,
+    config: GeminiConfig,
 ) {
+    var config: GeminiConfig = config
+        internal set
+
     companion object {
         private const val TAG = "GeminiClient"
     }

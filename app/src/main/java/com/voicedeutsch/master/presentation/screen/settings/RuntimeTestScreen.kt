@@ -55,6 +55,20 @@ fun RuntimeTestScreen(
     var results by remember { mutableStateOf<List<RuntimeTestResult>>(emptyList()) }
     var isRunning by remember { mutableStateOf(false) }
 
+    val junitTestClasses = remember {
+        listOf(
+            "SrsCalculatorTest" to "Алгоритм интервального повторения (SRS)",
+            "EvaluateAnswerUseCaseTest" to "Оценка ответов пользователя",
+            "FunctionRegistryTest" to "Реестр функций Gemini",
+            "FunctionRouterTest" to "Маршрутизация function calls",
+            "ContextBuilderTest" to "Сборка контекста для сессии",
+            "AppDatabaseTest" to "Room база данных: миграции, CRUD",
+            "StrategySelectorTest" to "Выбор стратегии обучения",
+            "VoiceSessionManagerTest" to "Управление голосовой сессией",
+            "MasterPromptTest" to "Системный промпт Gemini",
+        )
+    }
+
     fun runAllTests() {
         isRunning = true
         results = emptyList()
@@ -155,24 +169,65 @@ fun RuntimeTestScreen(
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
         ) {
-            if (results.isEmpty() && !isRunning) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Нажмите Play для запуска тестов", style = MaterialTheme.typography.bodyLarge)
-                        Spacer(Modifier.height(16.dp))
-                        Button(onClick = { runAllTests() }) {
-                            Text("Запустить все тесты")
-                        }
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Runtime тесты
+                item {
+                    Text(
+                        "RUNTIME-ТЕСТЫ",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    if (results.isEmpty() && !isRunning) {
+                        Button(
+                            onClick = { runAllTests() },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Запустить runtime-тесты") }
                     }
                 }
-            } else {
+
                 if (isRunning) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                    Spacer(Modifier.height(8.dp))
+                    item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
                 }
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(results) { result ->
-                        TestResultCard(result)
+
+                items(results) { result -> TestResultCard(result) }
+
+                // JUnit тесты
+                item {
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        "JUNIT-ТЕСТЫ (src/test)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Эти тесты запускаются через Gradle (./gradlew test).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                items(junitTestClasses) { testInfo ->
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "JUnit",
+                                color = MaterialTheme.colorScheme.tertiary,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.width(48.dp),
+                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(testInfo.first, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                Text(testInfo.second, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
                     }
                 }
             }

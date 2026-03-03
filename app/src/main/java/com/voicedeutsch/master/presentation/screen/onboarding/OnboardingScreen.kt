@@ -105,7 +105,7 @@ fun OnboardingScreen(
             if (state.step != OnboardingStep.DONE) {
                 OnboardingNavRow(
                     step      = state.step,
-                    isLoading = state.isLoadingBook,
+                    isLoading = state.isLoading,
                     onBack    = { viewModel.onEvent(OnboardingEvent.Back) },
                     onNext    = { viewModel.onEvent(OnboardingEvent.Next) },
                 )
@@ -232,51 +232,6 @@ private fun LevelStep(selected: CefrLevel, onSelect: (CefrLevel) -> Unit) {
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun BookLoadStep(
-    isLoading: Boolean,
-    loaded: Boolean,
-    error: String?,
-    onLoad: () -> Unit,
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-        modifier            = Modifier.fillMaxSize(),
-    ) {
-        Text(
-            text       = if (loaded) "📚 Книга загружена!" else "📚 Загрузка учебника",
-            style      = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            color      = MaterialTheme.colorScheme.onBackground,
-            textAlign  = TextAlign.Center,
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text      = "Слова, грамматика и упражнения из учебника будут доступны во время занятий",
-            style     = MaterialTheme.typography.bodyMedium,
-            color     = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-            textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.height(32.dp))
-        if (isLoading) {
-            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.height(16.dp))
-            Text("Загружаем...", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
-        } else if (!loaded) {
-            Button(onClick = onLoad, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                Text("Загрузить учебник")
-            }
-        } else {
-            Text("✓ Все главы загружены", style = MaterialTheme.typography.bodyLarge, color = Secondary, fontWeight = FontWeight.SemiBold)
-        }
-        error?.let {
-            Spacer(Modifier.height(12.dp))
-            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
         }
     }
 }

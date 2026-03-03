@@ -30,7 +30,10 @@ fun BookManagerScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(state.errorMessage) {
-        state.errorMessage?.let { snackbarHostState.showSnackbar(it) }
+        state.errorMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.onEvent(BookManagerEvent.DismissError)
+        }
     }
 
     var showAddBookDialog by remember { mutableStateOf(false) }

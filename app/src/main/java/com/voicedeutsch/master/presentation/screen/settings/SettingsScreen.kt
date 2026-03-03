@@ -153,6 +153,13 @@ fun SettingsScreen(
                     label         = { Text("Цели изучения") },
                     modifier      = Modifier.fillMaxWidth(),
                 )
+                OutlinedTextField(
+                    value         = state.userNativeLanguage,
+                    onValueChange = { viewModel.onEvent(SettingsEvent.UpdateUserNativeLanguage(it)) },
+                    label         = { Text("Родной язык") },
+                    singleLine    = true,
+                    modifier      = Modifier.fillMaxWidth(),
+                )
                 Text(
                     "Уровень немецкого",
                     style = MaterialTheme.typography.bodySmall,
@@ -247,6 +254,14 @@ fun SettingsScreen(
 
             // ── 2.5. Настройки Gemini ──────────────────────────────────────────
             SettingsSection(title = "Настройки Gemini") {
+                OutlinedTextField(
+                    value         = state.geminiModelName,
+                    onValueChange = { /* model name change requires app restart */ },
+                    label         = { Text("Модель Gemini") },
+                    singleLine    = true,
+                    readOnly      = true,
+                    modifier      = Modifier.fillMaxWidth(),
+                )
                 LabeledSlider(
                     label         = "Temperature: ${"%.2f".format(state.geminiTemperature)}",
                     value         = state.geminiTemperature,
@@ -282,6 +297,13 @@ fun SettingsScreen(
                     selected = state.geminiVoiceName,
                     onSelect = { viewModel.onEvent(SettingsEvent.UpdateGeminiVoiceName(it)) },
                 )
+                LabeledSlider(
+                    label         = "Скорость речи: ${"%.1f".format(state.voiceSpeed)}x",
+                    value         = state.voiceSpeed,
+                    onValueChange = { viewModel.onEvent(SettingsEvent.UpdateVoiceSpeed(it)) },
+                    valueRange    = 0.5f..2.0f,
+                    steps         = 14,
+                )
                 RowSwitch(
                     label           = "Транскрипция ввода (речь пользователя)",
                     checked         = state.geminiInputTranscription,
@@ -292,12 +314,37 @@ fun SettingsScreen(
                     checked         = state.geminiOutputTranscription,
                     onCheckedChange = { viewModel.onEvent(SettingsEvent.ToggleGeminiOutputTranscription(it)) },
                 )
+            }
+
+            // ── 2.6. Контекст и лимиты ───────────────────────────────────────
+            SettingsSection(title = "Контекст и лимиты") {
+                Text(
+                    "Размер контекста определяет сколько данных загружается в Gemini при старте сессии. " +
+                    "Большой контекст (платная версия) позволяет загрузить всю книгу, историю и словарь.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
                 LabeledSlider(
-                    label         = "Контекст: ${state.geminiMaxContextTokens / 1024}K токенов",
+                    label         = "Макс. контекст: ${state.geminiMaxContextTokens / 1024}K токенов",
                     value         = state.geminiMaxContextTokens.toFloat(),
                     onValueChange = { viewModel.onEvent(SettingsEvent.UpdateGeminiMaxContext(it.toInt())) },
                     valueRange    = 8_192f..1_048_576f,
                     steps         = 15,
+                )
+                Text(
+                    buildString {
+                        val k = state.geminiMaxContextTokens / 1024
+                        append("Текущий лимит: ${k}K токенов. ")
+                        when {
+                            k <= 16 -> append("Базовый — только промпт и текущий урок.")
+                            k <= 128 -> append("Стандартный — промпт, урок, словарь, история.")
+                            k <= 512 -> append("Расширенный — вся книга + полная история.")
+                            else -> append("Максимальный — все данные системы загружаются целиком.")
+                        }
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
                 )
             }
 

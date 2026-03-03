@@ -57,6 +57,7 @@ class ContextBuilder(
         currentStrategy: LearningStrategy,
         currentChapter: Int,
         currentLesson: Int,
+        maxContextTokens: Int = LIVE_API_TOTAL_TOKEN_LIMIT,
     ): SessionContext {
         val staticSystemPrompt = MasterPrompt.build()
         val userContext        = userContextProvider.buildUserContext(knowledgeSnapshot)
@@ -130,8 +131,13 @@ class ContextBuilder(
             append(userContext)
         }
 
+        // Бюджет: от maxContextTokens вычитаем буфер на функции и историю
+        val functionReserve = 3_000
+        val conversationReserve = (maxContextTokens * 0.3).toInt().coerceAtLeast(10_000)
+        val contextBudget = maxContextTokens - functionReserve - conversationReserve
+
         val coreTokens = coreBlock.length / TOKEN_CHAR_RATIO
-        val remaining = SAFE_CONTEXT_TOKEN_BUDGET - coreTokens
+        val remaining = contextBudget - coreTokens
 
         val rawFullContext = buildString {
             append(coreBlock)
@@ -173,7 +179,7 @@ class ContextBuilder(
 
         val optimizedContext = PromptOptimizer.optimize(
             fullPrompt = rawFullContext,
-            maxTokens  = SAFE_CONTEXT_TOKEN_BUDGET,
+            maxTokens  = contextBudget,
         )
 
         val sessionContext = SessionContext(

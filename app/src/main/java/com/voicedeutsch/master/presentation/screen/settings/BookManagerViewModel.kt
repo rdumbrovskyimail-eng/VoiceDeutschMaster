@@ -26,6 +26,7 @@ sealed interface BookManagerEvent {
     data class CreateChapter(val title: String, val content: String) : BookManagerEvent
     data class UpdateChapter(val id: Long, val title: String, val content: String) : BookManagerEvent
     data class DeleteChapter(val chapter: BookChapterEntity) : BookManagerEvent
+    data object DismissError : BookManagerEvent
 }
 
 class BookManagerViewModel(
@@ -52,6 +53,7 @@ class BookManagerViewModel(
             is BookManagerEvent.CreateChapter -> createChapter(event.title, event.content)
             is BookManagerEvent.UpdateChapter -> updateChapter(event.id, event.title, event.content)
             is BookManagerEvent.DeleteChapter -> deleteChapter(event.chapter)
+            is BookManagerEvent.DismissError -> _uiState.update { it.copy(errorMessage = null) }
         }
     }
 

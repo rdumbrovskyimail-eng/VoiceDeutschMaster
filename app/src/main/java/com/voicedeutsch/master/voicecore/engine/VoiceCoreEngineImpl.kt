@@ -133,6 +133,7 @@ class VoiceCoreEngineImpl(
             runCatching {
                 audioPipeline.initialize()
                 this.config = config
+                geminiClient.config = config
             }.onFailure { error ->
                 transitionEngine(VoiceEngineState.ERROR)
                 updateState { copy(errorMessage = error.message) }
@@ -176,6 +177,7 @@ class VoiceCoreEngineImpl(
                     currentStrategy   = strategy,
                     currentChapter    = sessionData.currentChapter,
                     currentLesson     = sessionData.currentLesson,
+                    maxContextTokens  = config!!.maxContextTokens,
                 )
             }
 
@@ -496,6 +498,7 @@ class VoiceCoreEngineImpl(
                 currentStrategy   = strategy,
                 currentChapter    = 1,
                 currentLesson     = 1,
+                maxContextTokens  = config?.maxContextTokens ?: GeminiConfig.MAX_CONTEXT_TOKENS,
             )
         }
 

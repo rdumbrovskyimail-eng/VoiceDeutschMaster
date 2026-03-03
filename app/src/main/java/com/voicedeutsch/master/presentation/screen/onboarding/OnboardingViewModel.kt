@@ -22,8 +22,7 @@ data class OnboardingUiState(
     val step: OnboardingStep = OnboardingStep.WELCOME,
     val name: String = "",
     val selectedLevel: CefrLevel = CefrLevel.A1,
-    val isLoadingBook: Boolean = false,
-    val bookLoaded: Boolean = false,
+    val isLoading: Boolean = false,
     val errorMessage: String? = null,
 )
 
@@ -32,7 +31,6 @@ sealed interface OnboardingEvent {
     data object Back : OnboardingEvent
     data class UpdateName(val name: String) : OnboardingEvent
     data class SelectLevel(val level: CefrLevel) : OnboardingEvent
-    data object LoadBook : OnboardingEvent
     data object DismissError : OnboardingEvent
     data object Complete : OnboardingEvent
 }
@@ -70,7 +68,6 @@ class OnboardingViewModel(
             is OnboardingEvent.Back          -> previousStep()
             is OnboardingEvent.UpdateName    -> _uiState.update { it.copy(name = event.name) }
             is OnboardingEvent.SelectLevel   -> _uiState.update { it.copy(selectedLevel = event.level) }
-            is OnboardingEvent.LoadBook      -> loadBook()
             is OnboardingEvent.DismissError  -> _uiState.update { it.copy(errorMessage = null) }
             is OnboardingEvent.Complete      -> completeOnboarding()
         }
@@ -108,7 +105,7 @@ class OnboardingViewModel(
 
     private fun completeOnboarding() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoadingBook = false) }
+            _uiState.update { it.copy(isLoading = true) }
             runCatching {
                 val state = _uiState.value
                 val userId = generateUUID()
@@ -124,9 +121,9 @@ class OnboardingViewModel(
                 preferencesDataStore.setOnboardingComplete(true)
 
             }.onSuccess {
-                _uiState.update { it.copy(bookLoaded = true, step = OnboardingStep.DONE, errorMessage = null) }
+                _uiState.update { it.copy(isLoading = false, step = OnboardingStep.DONE, errorMessage = null) }
             }.onFailure { e ->
-                _uiState.update { it.copy(isLoadingBook = false, errorMessage = "Ошибка: ${e.message}") }
+                _uiState.update { it.copy(isLoading = false, errorMessage = "Ошибка: ${e.message}") }
             }
         }
     }
