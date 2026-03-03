@@ -27,7 +27,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Mic
+
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -77,7 +77,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
-import com.voicedeutsch.master.presentation.components.PulsingMicButton
+
 import com.voicedeutsch.master.presentation.components.SessionTimer
 import com.voicedeutsch.master.presentation.components.StatusBadge
 import com.voicedeutsch.master.presentation.components.VirtualAvatar
@@ -167,7 +167,7 @@ fun SessionScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(hasRecordAudioPermission) {
         if (!uiState.isSessionActive && !uiState.isLoading) {
             if (!hasRecordAudioPermission) {
                 viewModel.onEvent(SessionEvent.PermissionDenied)
@@ -554,15 +554,6 @@ private fun SessionBottomBar(
                 imageVector        = if (isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
                 contentDescription = if (isPaused) "Продолжить" else "Пауза",
                 tint               = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-            )
-        }
-
-        Box(modifier = Modifier.weight(2f), contentAlignment = Alignment.Center) {
-            PulsingMicButton(
-                engineState = voiceEngineState,
-                onClick     = { onEvent(SessionEvent.ToggleMic) },
-                enabled     = uiState.isSessionActive && !uiState.isLoading,
-                size        = 64.dp,
             )
         }
 
