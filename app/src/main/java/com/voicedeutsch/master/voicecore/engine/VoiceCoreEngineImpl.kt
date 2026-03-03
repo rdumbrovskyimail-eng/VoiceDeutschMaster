@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -85,12 +86,13 @@ class VoiceCoreEngineImpl(
     private val _audioState      = MutableStateFlow(AudioState.IDLE)
     override val audioState:     StateFlow<AudioState> = _audioState.asStateFlow()
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     override val amplitudeFlow: Flow<Float> = _audioState
-        .map { state ->
+        .flatMapLatest { state ->
             when (state) {
-                AudioState.RECORDING -> 0.5f
-                AudioState.PLAYING   -> 0.7f
-                else                 -> 0f
+                AudioState.RECORDING -> avatarAnimation.createActiveFlow()
+                AudioState.PLAYING   -> avatarAnimation.createActiveFlow()
+                else                 -> avatarAnimation.createIdleFlow()
             }
         }
 
@@ -100,6 +102,7 @@ class VoiceCoreEngineImpl(
     private val reconnectAttempts = AtomicInteger(0)
     @Volatile private var sessionStartMs: Long = 0L
     private val reconnectMutex = Mutex()
+    private val avatarAnimation = AvatarAnimationSource()
 
     // ── State helpers ─────────────────────────────────────────────────────────
 
