@@ -171,6 +171,12 @@ class VoiceCoreEngineImpl(
             activeSessionId = sessionData.session.id
             activeUserId    = userId
             sessionStartMs  = System.currentTimeMillis()
+            engineScope.launch {
+                while (isActive) {
+                    delay(1000L)
+                    updateState { copy(sessionDurationMs = System.currentTimeMillis() - sessionStartMs) }
+                }
+            }
 
             val snapshot = withContext(Dispatchers.IO) { buildKnowledgeSummary(userId) }
             val strategy = strategySelector.selectStrategy(snapshot)
@@ -390,7 +396,7 @@ class VoiceCoreEngineImpl(
             try {
                 val result = runBlocking(Dispatchers.IO) {
                     withTimeout(FUNCTION_CALL_TIMEOUT_MS) {
-                        val argsJson = JsonObject(functionCall.args.mapValues { (_, v) -> v }).toString()
+                        val argsJson = JsonObject(functionCall.args?.mapValues { (_, v) -> v } ?: emptyMap()).toString()
                         functionRouter.route(
                             functionCall.name,
                             argsJson,
@@ -468,10 +474,12 @@ class VoiceCoreEngineImpl(
                     transitionConnection(ConnectionState.RECONNECTING)
                     delay(delayMs)
 
-                    runCatching { reconnectInternal() }.onFailure { cause ->
-                        reconnectMutex.unlock()
-                        handleSessionError(cause)
-                        return@launch
+                    var lockAcquired = false
+                    try {
+                        lockAcquired = reconnectMutex.tryLock()
+                        if (lockAcquired) reconnectInternal()
+                    } finally {
+                        if (lockAcquired) reconnectMutex.unlock()
                     }
                 } else {
                     Log.e(TAG, "Max reconnect attempts reached — giving up")
