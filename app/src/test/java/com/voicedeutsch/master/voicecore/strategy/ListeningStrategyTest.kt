@@ -2,7 +2,13 @@
 package com.voicedeutsch.master.voicecore.strategy
 
 import com.voicedeutsch.master.domain.model.LearningStrategy
+import com.voicedeutsch.master.domain.model.knowledge.BookProgressSnapshot
+import com.voicedeutsch.master.domain.model.knowledge.GrammarSnapshot
 import com.voicedeutsch.master.domain.model.knowledge.KnowledgeSnapshot
+import com.voicedeutsch.master.domain.model.knowledge.PronunciationSnapshot
+import com.voicedeutsch.master.domain.model.knowledge.RecommendationsSnapshot
+import com.voicedeutsch.master.domain.model.knowledge.SessionHistorySnapshot
+import com.voicedeutsch.master.domain.model.knowledge.VocabularySnapshot
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -16,8 +22,26 @@ class ListeningStrategyTest {
     fun setUp() {
         strategy = ListeningStrategy()
         snapshot = KnowledgeSnapshot(
-            vocabulary = KnowledgeSnapshot.VocabularyStats(totalWords = 80),
-            grammar = KnowledgeSnapshot.GrammarStats(totalRules = 12),
+            vocabulary = VocabularySnapshot(
+                totalWords = 80,
+                byLevel = emptyMap(),
+                byTopic = emptyMap(),
+                recentNewWords = emptyList(),
+                problemWords = emptyList(),
+                wordsForReviewToday = 0
+            ),
+            grammar = GrammarSnapshot(
+                totalRules = 12,
+                byLevel = emptyMap(),
+                knownRules = emptyList(),
+                problemRules = emptyList(),
+                rulesForReviewToday = 0
+            ),
+            pronunciation = PronunciationSnapshot(0f, emptyList(), emptyList(), 0f, ""),
+            bookProgress = BookProgressSnapshot(0, 0, 0, 0f, ""),
+            sessionHistory = SessionHistorySnapshot("", "", "", 0, 0),
+            weakPoints = emptyList(),
+            recommendations = RecommendationsSnapshot("", "", emptyList(), "")
         )
     }
 
@@ -63,8 +87,13 @@ class ListeningStrategyTest {
     @Test
     fun getStrategyContext_differentSnapshot_returnsNonEmpty() {
         val emptySnapshot = KnowledgeSnapshot(
-            vocabulary = KnowledgeSnapshot.VocabularyStats(totalWords = 0),
-            grammar = KnowledgeSnapshot.GrammarStats(totalRules = 0),
+            vocabulary = VocabularySnapshot(0, emptyMap(), emptyMap(), emptyList(), emptyList(), 0),
+            grammar = GrammarSnapshot(0, emptyMap(), emptyList(), emptyList(), 0),
+            pronunciation = PronunciationSnapshot(0f, emptyList(), emptyList(), 0f, ""),
+            bookProgress = BookProgressSnapshot(0, 0, 0, 0f, ""),
+            sessionHistory = SessionHistorySnapshot("", "", "", 0, 0),
+            weakPoints = emptyList(),
+            recommendations = RecommendationsSnapshot("", "", emptyList(), "")
         )
         val context = strategy.getStrategyContext(emptySnapshot)
         assertTrue(context.isNotBlank())
