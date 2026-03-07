@@ -53,8 +53,4 @@ sealed interface NavRoute {
     /** Runtime Tests — diagnostic tests for Firebase, Room, mic, network. */
     @Serializable
     data object RuntimeTests : NavRoute
-
-    /** Comprehensive Test Lab — full 101% coverage of all app functionality. */
-    @Serializable
-    data object ComprehensiveTests : NavRoute
 }
