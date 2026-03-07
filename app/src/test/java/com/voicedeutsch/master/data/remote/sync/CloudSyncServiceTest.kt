@@ -14,6 +14,7 @@ import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.WriteBatch
+import io.mockk.mockkStatic
 import io.mockk.Runs
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -22,6 +23,7 @@ import io.mockk.just
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
@@ -47,6 +49,7 @@ class CloudSyncServiceTest {
 
     @BeforeEach
     fun setUp() {
+        mockkStatic("kotlinx.coroutines.tasks.TasksKt")
         firestore = mockk(relaxed = true)
         auth = mockk(relaxed = true)
         firebaseUser = mockk(relaxed = true)
