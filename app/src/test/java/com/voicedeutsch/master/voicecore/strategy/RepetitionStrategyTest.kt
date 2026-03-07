@@ -2,7 +2,13 @@
 package com.voicedeutsch.master.voicecore.strategy
 
 import com.voicedeutsch.master.domain.model.LearningStrategy
+import com.voicedeutsch.master.domain.model.knowledge.BookProgressSnapshot
+import com.voicedeutsch.master.domain.model.knowledge.GrammarSnapshot
 import com.voicedeutsch.master.domain.model.knowledge.KnowledgeSnapshot
+import com.voicedeutsch.master.domain.model.knowledge.PronunciationSnapshot
+import com.voicedeutsch.master.domain.model.knowledge.RecommendationsSnapshot
+import com.voicedeutsch.master.domain.model.knowledge.SessionHistorySnapshot
+import com.voicedeutsch.master.domain.model.knowledge.VocabularySnapshot
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -20,14 +26,26 @@ class RepetitionStrategyTest {
         wordsForReviewToday: Int,
         rulesForReviewToday: Int,
     ) = KnowledgeSnapshot(
-        vocabulary = KnowledgeSnapshot.VocabularyStats(
+        vocabulary = VocabularySnapshot(
             totalWords = 0,
-            wordsForReviewToday = wordsForReviewToday,
+            byLevel = emptyMap(),
+            byTopic = emptyMap(),
+            recentNewWords = emptyList(),
+            problemWords = emptyList(),
+            wordsForReviewToday = wordsForReviewToday
         ),
-        grammar = KnowledgeSnapshot.GrammarStats(
+        grammar = GrammarSnapshot(
             totalRules = 0,
-            rulesForReviewToday = rulesForReviewToday,
+            byLevel = emptyMap(),
+            knownRules = emptyList(),
+            problemRules = emptyList(),
+            rulesForReviewToday = rulesForReviewToday
         ),
+        pronunciation = PronunciationSnapshot(0f, emptyList(), emptyList(), 0f, ""),
+        bookProgress = BookProgressSnapshot(0, 0, 0, 0f, ""),
+        sessionHistory = SessionHistorySnapshot("", "", "", 0, 0),
+        weakPoints = emptyList(),
+        recommendations = RecommendationsSnapshot("", "", emptyList(), "")
     )
 
     // ── strategy property ────────────────────────────────────────────────
