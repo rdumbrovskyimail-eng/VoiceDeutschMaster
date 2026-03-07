@@ -8,6 +8,7 @@ plugins {
     alias(libs.plugins.room)
     alias(libs.plugins.google.services)
     alias(libs.plugins.firebase.crashlytics)
+    id("jacoco")
 }
 
 android {
@@ -43,9 +44,10 @@ android {
     buildTypes {
         debug {
             isMinifyEnabled = false
+            enableUnitTestCoverage = true
+            enableAndroidTestCoverage = true
             buildConfigField("Boolean", "DEBUG_MODE", "true")
             buildConfigField("Boolean", "USE_DEBUG_APP_CHECK", "true")
-            // ✅ ИСПРАВЛЕНИЕ: Читаем токен из свойств проекта!
             buildConfigField(
                 "String",
                 "APP_CHECK_DEBUG_TOKEN",
@@ -108,6 +110,17 @@ android {
 
     room {
         schemaDirectory("$projectDir/schemas")
+    }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            isReturnDefaultValues = true
+            all {
+                it.useJUnitPlatform()
+                it.jvmArgs("-Xmx2g")
+            }
+        }
     }
 
     packaging {
@@ -182,7 +195,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-text-google-fonts")
     implementation("com.google.accompanist:accompanist-permissions:0.36.0")
 
-    // ── Unit Testing ─────────────────────────────────────────────────────────
+    // ── Unit Testing (src/test/) ─────────────────────────────────────────────
     testImplementation(libs.bundles.testing)
     testRuntimeOnly(libs.junit5.engine)
     testImplementation(libs.room.testing)
@@ -194,8 +207,9 @@ dependencies {
     testImplementation(libs.ktor.client.mock)
     testImplementation(libs.turbine)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.test.core)
 
-    // ── Android Instrumented Testing ─────────────────────────────────────────
+    // ── Android Instrumented Testing (src/androidTest/) ──────────────────────
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test.junit4)
     androidTestImplementation(libs.mockk.android)
@@ -208,7 +222,52 @@ tasks.withType<Test> {
     useJUnitPlatform()
 }
 
-// ✅ ИСПРАВЛЕНО: findProperty вызывается на этапе конфигурации (вне doLast)
+jacoco {
+    toolVersion = "0.8.12"
+}
+
+tasks.register<JacocoReport>("jacocoTestReport") {
+    dependsOn("testDebugUnitTest")
+
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+        html.outputLocation.set(layout.buildDirectory.dir("reports/jacoco"))
+    }
+
+    val kotlinClasses = fileTree("${layout.buildDirectory.get()}/tmp/kotlin-classes/debug") {
+        exclude(
+            "**/R.class",
+            "**/R$*.class",
+            "**/BuildConfig.*",
+            "**/Manifest*.*",
+            "**/*_Factory.*",
+            "**/*_MembersInjector.*",
+            "**/*_Impl.*",
+            "**/*_Impl$*.*",
+            "**/di/**Module*",
+            "**/app/MainActivity*",
+            "**/app/VoiceDeutschApp*",
+            "**/app/StaticDebugAppCheckProviderFactory*",
+            "**/presentation/screen/**Screen*",
+            "**/presentation/screen/**Canvas*",
+            "**/presentation/components/**",
+            "**/presentation/theme/**",
+            "**/presentation/navigation/AppNavigation*",
+            "**/presentation/navigation/NavAnimations*",
+            "**/util/LogViewerDialog*",
+            "**/ComprehensiveTestScreen*",
+            "**/RuntimeTestScreen*",
+        )
+    }
+
+    classDirectories.setFrom(kotlinClasses)
+    sourceDirectories.setFrom("${project.projectDir}/src/main/java")
+    executionData.setFrom(
+        fileTree(layout.buildDirectory) { include("jacoco/testDebugUnitTest.exec") }
+    )
+}
+
 tasks.register("printAppCheckToken") {
     val token = project.findProperty("appCheckDebugToken")?.toString()
         ?: "❌ НЕ ЗАДАН — добавь APP_CHECK_DEBUG_TOKEN в GitHub Secrets"
@@ -222,4 +281,3 @@ tasks.register("printAppCheckToken") {
         println("   App Check → Apps → твоё приложение → Manage debug tokens")
         println("")
     }
-}
