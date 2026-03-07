@@ -281,3 +281,4 @@ tasks.register("printAppCheckToken") {
         println("   App Check → Apps → твоё приложение → Manage debug tokens")
         println("")
     }
+}
