@@ -42,7 +42,6 @@ import com.voicedeutsch.master.presentation.screen.knowledge.KnowledgeScreen
 import com.voicedeutsch.master.presentation.screen.onboarding.OnboardingScreen
 import com.voicedeutsch.master.presentation.screen.session.SessionScreen
 import com.voicedeutsch.master.presentation.screen.settings.BookManagerScreen
-import com.voicedeutsch.master.presentation.screen.settings.ComprehensiveTestScreen
 import com.voicedeutsch.master.presentation.screen.settings.RuntimeTestScreen
 import com.voicedeutsch.master.presentation.screen.settings.SettingsScreen
 import com.voicedeutsch.master.presentation.screen.statistics.StatisticsScreen
@@ -213,7 +212,6 @@ fun AppNavigation() {
                     onBack = { navController.popBackStack() },
                     onNavigateToBookManager = { navController.navigate(NavRoute.BookManager) },
                     onNavigateToTests = { navController.navigate(NavRoute.RuntimeTests) },
-                    onNavigateToComprehensiveTests = { navController.navigate(NavRoute.ComprehensiveTests) },
                 )
             }
 
@@ -225,12 +223,6 @@ fun AppNavigation() {
 
             composable<NavRoute.RuntimeTests> {
                 RuntimeTestScreen(
-                    onBack = { navController.popBackStack() },
-                )
-            }
-
-            composable<NavRoute.ComprehensiveTests> {
-                ComprehensiveTestScreen(
                     onBack = { navController.popBackStack() },
                 )
             }
