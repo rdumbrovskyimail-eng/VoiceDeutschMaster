@@ -9,8 +9,12 @@ on:
 jobs:
   distribute:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Copy files to correct paths
         run: |
