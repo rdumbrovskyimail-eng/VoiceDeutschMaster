@@ -2,7 +2,13 @@
 package com.voicedeutsch.master.voicecore.strategy
 
 import com.voicedeutsch.master.domain.model.LearningStrategy
+import com.voicedeutsch.master.domain.model.knowledge.BookProgressSnapshot
+import com.voicedeutsch.master.domain.model.knowledge.GrammarSnapshot
 import com.voicedeutsch.master.domain.model.knowledge.KnowledgeSnapshot
+import com.voicedeutsch.master.domain.model.knowledge.PronunciationSnapshot
+import com.voicedeutsch.master.domain.model.knowledge.RecommendationsSnapshot
+import com.voicedeutsch.master.domain.model.knowledge.SessionHistorySnapshot
+import com.voicedeutsch.master.domain.model.knowledge.VocabularySnapshot
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -17,9 +23,13 @@ class GapFillingStrategyTest {
     }
 
     private fun snapshotWithWeakPoints(weakPoints: List<String>) = KnowledgeSnapshot(
-        vocabulary = KnowledgeSnapshot.VocabularyStats(totalWords = 50),
-        grammar = KnowledgeSnapshot.GrammarStats(totalRules = 10),
+        vocabulary = VocabularySnapshot(50, emptyMap(), emptyMap(), emptyList(), emptyList(), 0),
+        grammar = GrammarSnapshot(10, emptyMap(), emptyList(), emptyList(), 0),
+        pronunciation = PronunciationSnapshot(0f, emptyList(), emptyList(), 0f, ""),
+        bookProgress = BookProgressSnapshot(0, 0, 0, 0f, ""),
+        sessionHistory = SessionHistorySnapshot("", "", "", 0, 0),
         weakPoints = weakPoints,
+        recommendations = RecommendationsSnapshot("", "", emptyList(), "")
     )
 
     // ── strategy property ────────────────────────────────────────────────
