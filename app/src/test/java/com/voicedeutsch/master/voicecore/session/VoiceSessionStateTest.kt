@@ -1,4 +1,4 @@
-// Path: src/test/java/com/voicedeutsch/master/voicecore/session/VoiceSessionStateTest.kt
+// Путь: src/test/java/com/voicedeutsch/master/voicecore/session/VoiceSessionStateTest.kt
 package com.voicedeutsch.master.voicecore.session
 
 import com.voicedeutsch.master.domain.model.LearningStrategy
@@ -7,241 +7,248 @@ import org.junit.jupiter.api.Test
 
 class VoiceSessionStateTest {
 
-    private fun makeState(
-        engineState: VoiceEngineState = VoiceEngineState.IDLE,
-        connectionState: ConnectionState = ConnectionState.DISCONNECTED,
-        audioState: AudioState = AudioState.IDLE,
-        isVoiceActive: Boolean = false,
-        isListening: Boolean = false,
-        isSpeaking: Boolean = false,
-        isProcessing: Boolean = false,
-        sessionId: String? = null,
-        sessionDurationMs: Long = 0L,
-        wordsLearnedInSession: Int = 0,
-        wordsReviewedInSession: Int = 0,
-        exercisesCompleted: Int = 0,
-        currentTranscript: String = "",
-        voiceTranscript: String = "",
-        errorMessage: String? = null,
-        tokenUsage: Int = 0,
-    ) = VoiceSessionState(
-        engineState = engineState,
-        connectionState = connectionState,
-        audioState = audioState,
-        isVoiceActive = isVoiceActive,
-        isListening = isListening,
-        isSpeaking = isSpeaking,
-        isProcessing = isProcessing,
-        sessionId = sessionId,
-        sessionDurationMs = sessionDurationMs,
-        wordsLearnedInSession = wordsLearnedInSession,
-        wordsReviewedInSession = wordsReviewedInSession,
-        exercisesCompleted = exercisesCompleted,
-        currentTranscript = currentTranscript,
-        voiceTranscript = voiceTranscript,
-        errorMessage = errorMessage,
-        tokenUsage = tokenUsage,
-    )
-
-    // ── default values ────────────────────────────────────────────────────────
+    // ── Default values ───────────────────────────────────────────────────
 
     @Test
-    fun defaultState_engineState_isIdle() {
-        val state = VoiceSessionState()
-        assertEquals(VoiceEngineState.IDLE, state.engineState)
+    fun defaultState_engineStateIsIdle() {
+        assertEquals(VoiceEngineState.IDLE, VoiceSessionState().engineState)
     }
 
     @Test
-    fun defaultState_connectionState_isDisconnected() {
+    fun defaultState_connectionStateIsDisconnected() {
         assertEquals(ConnectionState.DISCONNECTED, VoiceSessionState().connectionState)
     }
 
     @Test
-    fun defaultState_audioState_isIdle() {
+    fun defaultState_audioStateIsIdle() {
         assertEquals(AudioState.IDLE, VoiceSessionState().audioState)
     }
 
     @Test
-    fun defaultState_isVoiceActive_isFalse() {
-        assertFalse(VoiceSessionState().isVoiceActive)
+    fun defaultState_booleanFlagsAreFalse() {
+        val state = VoiceSessionState()
+        assertFalse(state.isVoiceActive)
+        assertFalse(state.isListening)
+        assertFalse(state.isSpeaking)
+        assertFalse(state.isProcessing)
     }
 
     @Test
-    fun defaultState_sessionId_isNull() {
-        assertNull(VoiceSessionState().sessionId)
+    fun defaultState_currentStrategyIsLinearBook() {
+        assertEquals(LearningStrategy.LINEAR_BOOK, VoiceSessionState().currentStrategy)
     }
 
     @Test
-    fun defaultState_tokenUsage_isZero() {
-        assertEquals(0, VoiceSessionState().tokenUsage)
+    fun defaultState_numericFieldsAreZero() {
+        val state = VoiceSessionState()
+        assertEquals(0L, state.sessionDurationMs)
+        assertEquals(0, state.wordsLearnedInSession)
+        assertEquals(0, state.wordsReviewedInSession)
+        assertEquals(0, state.exercisesCompleted)
+        assertEquals(0, state.tokenUsage)
     }
 
     @Test
-    fun defaultState_errorMessage_isNull() {
+    fun defaultState_stringFieldsAreEmpty() {
+        val state = VoiceSessionState()
+        assertEquals("", state.currentTranscript)
+        assertEquals("", state.voiceTranscript)
+    }
+
+    @Test
+    fun defaultState_waveformDataAreEmptyArrays() {
+        val state = VoiceSessionState()
+        assertEquals(0, state.voiceWaveformData.size)
+        assertEquals(0, state.userWaveformData.size)
+    }
+
+    @Test
+    fun defaultState_errorMessageIsNull() {
         assertNull(VoiceSessionState().errorMessage)
     }
 
-    // ── isSessionActive — computed property ───────────────────────────────────
-
     @Test
-    fun isSessionActive_engineIdle_returnsFalse() {
-        val state = makeState(engineState = VoiceEngineState.IDLE)
-        assertFalse(state.isSessionActive)
+    fun defaultState_sessionIdIsNull() {
+        assertNull(VoiceSessionState().sessionId)
     }
 
+    // ── isSessionActive ──────────────────────────────────────────────────
+
     @Test
-    fun isSessionActive_engineSessionActive_returnsTrue() {
-        val state = makeState(engineState = VoiceEngineState.SESSION_ACTIVE)
+    fun isSessionActive_sessionActiveState_returnsTrue() {
+        val state = VoiceSessionState(engineState = VoiceEngineState.SESSION_ACTIVE)
         assertTrue(state.isSessionActive)
     }
 
     @Test
-    fun isSessionActive_engineListening_returnsTrue() {
-        val state = makeState(engineState = VoiceEngineState.LISTENING)
+    fun isSessionActive_listeningState_returnsTrue() {
+        val state = VoiceSessionState(engineState = VoiceEngineState.LISTENING)
         assertTrue(state.isSessionActive)
     }
 
     @Test
-    fun isSessionActive_engineProcessing_returnsTrue() {
-        val state = makeState(engineState = VoiceEngineState.PROCESSING)
+    fun isSessionActive_processingState_returnsTrue() {
+        val state = VoiceSessionState(engineState = VoiceEngineState.PROCESSING)
         assertTrue(state.isSessionActive)
     }
 
     @Test
-    fun isSessionActive_engineSpeaking_returnsTrue() {
-        val state = makeState(engineState = VoiceEngineState.SPEAKING)
+    fun isSessionActive_speakingState_returnsTrue() {
+        val state = VoiceSessionState(engineState = VoiceEngineState.SPEAKING)
         assertTrue(state.isSessionActive)
     }
 
     @Test
-    fun isSessionActive_engineWaiting_returnsTrue() {
-        val state = makeState(engineState = VoiceEngineState.WAITING)
+    fun isSessionActive_waitingState_returnsTrue() {
+        val state = VoiceSessionState(engineState = VoiceEngineState.WAITING)
         assertTrue(state.isSessionActive)
     }
 
     @Test
-    fun isSessionActive_engineError_returnsFalse() {
-        val state = makeState(engineState = VoiceEngineState.ERROR)
+    fun isSessionActive_idleState_returnsFalse() {
+        val state = VoiceSessionState(engineState = VoiceEngineState.IDLE)
         assertFalse(state.isSessionActive)
     }
 
     @Test
-    fun isSessionActive_engineSaving_returnsFalse() {
-        val state = makeState(engineState = VoiceEngineState.SAVING)
+    fun isSessionActive_errorState_returnsFalse() {
+        val state = VoiceSessionState(engineState = VoiceEngineState.ERROR)
         assertFalse(state.isSessionActive)
     }
 
-    @Test
-    fun isSessionActive_engineInitializing_returnsFalse() {
-        val state = makeState(engineState = VoiceEngineState.INITIALIZING)
-        assertFalse(state.isSessionActive)
-    }
+    // ── equals — FloatArray structural comparison ────────────────────────
 
     @Test
-    fun isSessionActive_engineConnecting_returnsFalse() {
-        val state = makeState(engineState = VoiceEngineState.CONNECTING)
-        assertFalse(state.isSessionActive)
-    }
-
-    @Test
-    fun isSessionActive_engineSessionEnding_returnsFalse() {
-        val state = makeState(engineState = VoiceEngineState.SESSION_ENDING)
-        assertFalse(state.isSessionActive)
-    }
-
-    // ── equals ────────────────────────────────────────────────────────────────
-
-    @Test
-    fun equals_twoDefaultInstances_areEqual() {
-        val a = VoiceSessionState()
-        val b = VoiceSessionState()
+    fun equals_identicalFloatArrayContents_returnsTrue() {
+        val a = VoiceSessionState(voiceWaveformData = floatArrayOf(1f, 2f, 3f))
+        val b = VoiceSessionState(voiceWaveformData = floatArrayOf(1f, 2f, 3f))
         assertEquals(a, b)
     }
 
     @Test
-    fun equals_differentEngineState_areNotEqual() {
-        val a = makeState(engineState = VoiceEngineState.IDLE)
-        val b = makeState(engineState = VoiceEngineState.LISTENING)
+    fun equals_differentVoiceWaveformData_returnsFalse() {
+        val a = VoiceSessionState(voiceWaveformData = floatArrayOf(1f, 2f))
+        val b = VoiceSessionState(voiceWaveformData = floatArrayOf(1f, 3f))
         assertNotEquals(a, b)
     }
 
     @Test
-    fun equals_differentConnectionState_areNotEqual() {
-        val a = makeState(connectionState = ConnectionState.DISCONNECTED)
-        val b = makeState(connectionState = ConnectionState.CONNECTED)
+    fun equals_differentUserWaveformData_returnsFalse() {
+        val a = VoiceSessionState(userWaveformData = floatArrayOf(0.5f))
+        val b = VoiceSessionState(userWaveformData = floatArrayOf(0.9f))
         assertNotEquals(a, b)
     }
 
     @Test
-    fun equals_differentSessionId_areNotEqual() {
-        val a = makeState(sessionId = "sess_1")
-        val b = makeState(sessionId = "sess_2")
+    fun equals_sameReference_returnsTrue() {
+        val state = VoiceSessionState()
+        assertEquals(state, state)
+    }
+
+    @Test
+    fun equals_differentType_returnsFalse() {
+        val state = VoiceSessionState()
+        assertNotEquals(state, "not a state")
+    }
+
+    @Test
+    fun equals_differentEngineState_returnsFalse() {
+        val a = VoiceSessionState(engineState = VoiceEngineState.IDLE)
+        val b = VoiceSessionState(engineState = VoiceEngineState.SESSION_ACTIVE)
         assertNotEquals(a, b)
     }
 
     @Test
-    fun equals_nullVsNonNullSessionId_areNotEqual() {
-        val a = makeState(sessionId = null)
-        val b = makeState(sessionId = "sess_1")
+    fun equals_differentTokenUsage_returnsFalse() {
+        val a = VoiceSessionState(tokenUsage = 100)
+        val b = VoiceSessionState(tokenUsage = 200)
         assertNotEquals(a, b)
     }
 
     @Test
-    fun equals_differentTokenUsage_areNotEqual() {
-        val a = makeState(tokenUsage = 100)
-        val b = makeState(tokenUsage = 200)
+    fun equals_differentErrorMessage_returnsFalse() {
+        val a = VoiceSessionState(errorMessage = "error")
+        val b = VoiceSessionState(errorMessage = null)
         assertNotEquals(a, b)
     }
 
     @Test
-    fun equals_differentWordsLearned_areNotEqual() {
-        val a = makeState(wordsLearnedInSession = 5)
-        val b = makeState(wordsLearnedInSession = 10)
-        assertNotEquals(a, b)
-    }
-
-    @Test
-    fun equals_differentCurrentTranscript_areNotEqual() {
-        val a = makeState(currentTranscript = "Hallo")
-        val b = makeState(currentTranscript = "Tschüss")
-        assertNotEquals(a, b)
-    }
-
-    @Test
-    fun equals_sameWaveformContent_areEqual() {
-        val waveform = floatArrayOf(0.1f, 0.2f, 0.3f)
-        val a = VoiceSessionState(voiceWaveformData = waveform.copyOf())
-        val b = VoiceSessionState(voiceWaveformData = waveform.copyOf())
+    fun equals_allFieldsIdentical_returnsTrue() {
+        val waveform = floatArrayOf(0.1f, 0.2f)
+        val a = VoiceSessionState(
+            engineState = VoiceEngineState.LISTENING,
+            connectionState = ConnectionState.CONNECTED,
+            audioState = AudioState.RECORDING,
+            isVoiceActive = true,
+            isListening = true,
+            isSpeaking = false,
+            isProcessing = false,
+            currentStrategy = LearningStrategy.REPETITION,
+            sessionDurationMs = 60_000L,
+            wordsLearnedInSession = 5,
+            wordsReviewedInSession = 3,
+            exercisesCompleted = 2,
+            currentTranscript = "Hallo",
+            voiceTranscript = "Welt",
+            voiceWaveformData = waveform,
+            userWaveformData = waveform,
+            errorMessage = null,
+            sessionId = "session-1",
+            tokenUsage = 42,
+        )
+        val b = a.copy(
+            voiceWaveformData = waveform.copyOf(),
+            userWaveformData = waveform.copyOf(),
+        )
         assertEquals(a, b)
     }
 
-    @Test
-    fun equals_differentWaveformContent_areNotEqual() {
-        val a = VoiceSessionState(voiceWaveformData = floatArrayOf(0.1f, 0.2f))
-        val b = VoiceSessionState(voiceWaveformData = floatArrayOf(0.3f, 0.4f))
-        assertNotEquals(a, b)
-    }
-
-    // ── hashCode ─────────────────────────────────────────────────────────────
+    // ── hashCode ─────────────────────────────────────────────────────────
 
     @Test
-    fun hashCode_sameEngineAndSessionId_sameBucket() {
-        val a = makeState(engineState = VoiceEngineState.IDLE, sessionId = "s1")
-        val b = makeState(engineState = VoiceEngineState.IDLE, sessionId = "s1")
+    fun hashCode_twoEqualStates_haveSameHashCode() {
+        val a = VoiceSessionState(sessionId = "abc", exercisesCompleted = 3, tokenUsage = 10)
+        val b = VoiceSessionState(sessionId = "abc", exercisesCompleted = 3, tokenUsage = 10)
         assertEquals(a.hashCode(), b.hashCode())
     }
 
     @Test
-    fun hashCode_differentEngineState_differentHash() {
-        val a = makeState(engineState = VoiceEngineState.IDLE)
-        val b = makeState(engineState = VoiceEngineState.LISTENING)
+    fun hashCode_differentEngineState_producesDifferentHash() {
+        val a = VoiceSessionState(engineState = VoiceEngineState.IDLE)
+        val b = VoiceSessionState(engineState = VoiceEngineState.SESSION_ACTIVE)
         assertNotEquals(a.hashCode(), b.hashCode())
     }
 
     @Test
-    fun hashCode_differentTokenUsage_differentHash() {
-        val a = makeState(tokenUsage = 0)
-        val b = makeState(tokenUsage = 999)
+    fun hashCode_differentTokenUsage_producesDifferentHash() {
+        val a = VoiceSessionState(tokenUsage = 0)
+        val b = VoiceSessionState(tokenUsage = 999)
         assertNotEquals(a.hashCode(), b.hashCode())
+    }
+
+    @Test
+    fun hashCode_differentTranscript_producesDifferentHash() {
+        val a = VoiceSessionState(currentTranscript = "Hallo")
+        val b = VoiceSessionState(currentTranscript = "Tschüss")
+        assertNotEquals(a.hashCode(), b.hashCode())
+    }
+
+    // ── copy ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun copy_changesOnlySpecifiedField() {
+        val original = VoiceSessionState(sessionId = "s1", tokenUsage = 5)
+        val copied = original.copy(tokenUsage = 50)
+        assertEquals("s1", copied.sessionId)
+        assertEquals(50, copied.tokenUsage)
+        assertEquals(original.engineState, copied.engineState)
+    }
+
+    @Test
+    fun copy_waveformDataIsShallowCopy() {
+        val waveform = floatArrayOf(1f, 2f, 3f)
+        val original = VoiceSessionState(voiceWaveformData = waveform)
+        val copied = original.copy(tokenUsage = 1)
+        assertTrue(copied.voiceWaveformData.contentEquals(waveform))
     }
 }

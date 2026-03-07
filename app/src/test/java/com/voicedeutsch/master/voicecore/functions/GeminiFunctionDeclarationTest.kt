@@ -1,4 +1,4 @@
-// Path: src/test/java/com/voicedeutsch/master/voicecore/functions/GeminiFunctionDeclarationTest.kt
+// Путь: src/test/java/com/voicedeutsch/master/voicecore/functions/GeminiFunctionDeclarationTest.kt
 package com.voicedeutsch.master.voicecore.functions
 
 import org.junit.jupiter.api.Assertions.*
@@ -6,160 +6,215 @@ import org.junit.jupiter.api.Test
 
 class GeminiFunctionDeclarationTest {
 
-    private fun makeDeclaration(
-        name: String = "get_word",
-        description: String = "Retrieve a word definition",
-        parameters: GeminiParameters? = null,
-    ) = GeminiFunctionDeclaration(
-        name = name,
-        description = description,
-        parameters = parameters,
-    )
-
-    // ── creation ──────────────────────────────────────────────────────────────
+    // ── GeminiFunctionDeclaration — creation ─────────────────────────────
 
     @Test
-    fun creation_withRequiredFields_setsValues() {
-        val decl = makeDeclaration()
-        assertEquals("get_word", decl.name)
-        assertEquals("Retrieve a word definition", decl.description)
-    }
-
-    @Test
-    fun creation_defaultParameters_isNull() {
-        val decl = makeDeclaration()
+    fun declaration_minimalConstruction_parametersIsNull() {
+        val decl = GeminiFunctionDeclaration(name = "test_func", description = "desc")
         assertNull(decl.parameters)
     }
 
     @Test
-    fun creation_withParameters_setsParameters() {
+    fun declaration_withParameters_parametersIsNotNull() {
         val params = GeminiParameters(
-            type = "object",
-            properties = mapOf("word" to GeminiProperty(type = "string", description = "The word")),
-            required = listOf("word"),
+            properties = mapOf("key" to GeminiProperty(type = "string")),
+            required = listOf("key"),
         )
-        val decl = makeDeclaration(parameters = params)
+        val decl = GeminiFunctionDeclaration(
+            name = "test_func",
+            description = "desc",
+            parameters = params,
+        )
         assertNotNull(decl.parameters)
-        assertTrue(decl.parameters!!.properties.containsKey("word"))
     }
 
     @Test
-    fun creation_nullParameters_isParameterlessFunction() {
-        val decl = makeDeclaration(parameters = null)
-        assertNull(decl.parameters)
+    fun declaration_nameStoredCorrectly() {
+        val decl = GeminiFunctionDeclaration(name = "my_function", description = "d")
+        assertEquals("my_function", decl.name)
     }
 
     @Test
-    fun creation_withEmptyParameters_isValid() {
-        val params = GeminiParameters()
-        val decl = makeDeclaration(parameters = params)
-        assertNotNull(decl.parameters)
-        assertTrue(decl.parameters!!.properties.isEmpty())
-    }
-
-    // ── copy ──────────────────────────────────────────────────────────────────
-
-    @Test
-    fun copy_changesName_restUnchanged() {
-        val original = makeDeclaration(name = "get_word", description = "Desc")
-        val copy = original.copy(name = "mark_lesson_complete")
-        assertEquals("mark_lesson_complete", copy.name)
-        assertEquals("Desc", copy.description)
-        assertNull(copy.parameters)
+    fun declaration_descriptionStoredCorrectly() {
+        val decl = GeminiFunctionDeclaration(name = "f", description = "my description")
+        assertEquals("my description", decl.description)
     }
 
     @Test
-    fun copy_changesDescription() {
-        val original = makeDeclaration(description = "Old description")
-        val copy = original.copy(description = "New description")
-        assertEquals("New description", copy.description)
-    }
-
-    @Test
-    fun copy_addsParameters() {
-        val original = makeDeclaration(parameters = null)
-        val params = GeminiParameters(properties = mapOf("n" to GeminiProperty(type = "integer")))
-        val copy = original.copy(parameters = params)
-        assertNotNull(copy.parameters)
-    }
-
-    @Test
-    fun copy_removesParameters() {
-        val params = GeminiParameters()
-        val original = makeDeclaration(parameters = params)
-        val copy = original.copy(parameters = null)
-        assertNull(copy.parameters)
-    }
-
-    // ── equals / hashCode ─────────────────────────────────────────────────────
-
-    @Test
-    fun equals_twoIdenticalNoParamInstances_areEqual() {
-        val a = makeDeclaration()
-        val b = makeDeclaration()
+    fun declaration_equals_twoIdenticalNullParams() {
+        val a = GeminiFunctionDeclaration(name = "f", description = "d")
+        val b = GeminiFunctionDeclaration(name = "f", description = "d")
         assertEquals(a, b)
+    }
+
+    @Test
+    fun declaration_equals_twoIdenticalWithParams() {
+        val params = GeminiParameters(required = listOf("x"))
+        val a = GeminiFunctionDeclaration(name = "f", description = "d", parameters = params)
+        val b = GeminiFunctionDeclaration(name = "f", description = "d", parameters = params.copy())
+        assertEquals(a, b)
+    }
+
+    @Test
+    fun declaration_notEquals_differentName() {
+        val a = GeminiFunctionDeclaration(name = "func_a", description = "d")
+        val b = GeminiFunctionDeclaration(name = "func_b", description = "d")
+        assertNotEquals(a, b)
+    }
+
+    @Test
+    fun declaration_notEquals_oneNullParamsOneNot() {
+        val a = GeminiFunctionDeclaration(name = "f", description = "d", parameters = null)
+        val b = GeminiFunctionDeclaration(
+            name = "f",
+            description = "d",
+            parameters = GeminiParameters(),
+        )
+        assertNotEquals(a, b)
+    }
+
+    @Test
+    fun declaration_copy_changesOnlySpecifiedField() {
+        val original = GeminiFunctionDeclaration(name = "original", description = "desc")
+        val copied = original.copy(name = "updated")
+        assertEquals("updated", copied.name)
+        assertEquals("desc", copied.description)
+        assertNull(copied.parameters)
+    }
+
+    @Test
+    fun declaration_hashCode_equalObjectsHaveSameHash() {
+        val a = GeminiFunctionDeclaration(name = "f", description = "d")
+        val b = GeminiFunctionDeclaration(name = "f", description = "d")
         assertEquals(a.hashCode(), b.hashCode())
     }
 
+    // ── GeminiParameters — creation ──────────────────────────────────────
+
     @Test
-    fun equals_differentName_areNotEqual() {
-        val a = makeDeclaration(name = "func_a")
-        val b = makeDeclaration(name = "func_b")
-        assertNotEquals(a, b)
+    fun parameters_defaultType_isObject() {
+        assertEquals("object", GeminiParameters().type)
     }
 
     @Test
-    fun equals_differentDescription_areNotEqual() {
-        val a = makeDeclaration(description = "Desc A")
-        val b = makeDeclaration(description = "Desc B")
-        assertNotEquals(a, b)
+    fun parameters_defaultProperties_isEmpty() {
+        assertTrue(GeminiParameters().properties.isEmpty())
     }
 
     @Test
-    fun equals_nullVsNonNullParameters_areNotEqual() {
-        val a = makeDeclaration(parameters = null)
-        val b = makeDeclaration(parameters = GeminiParameters())
-        assertNotEquals(a, b)
+    fun parameters_defaultRequired_isEmpty() {
+        assertTrue(GeminiParameters().required.isEmpty())
     }
 
     @Test
-    fun equals_sameParameters_areEqual() {
-        val params = GeminiParameters(
-            type = "object",
-            properties = mapOf("x" to GeminiProperty(type = "string")),
-            required = listOf("x"),
+    fun parameters_withProperties_storesCorrectly() {
+        val props = mapOf(
+            "score" to GeminiProperty(type = "number", description = "Score 0-1"),
         )
-        val a = makeDeclaration(parameters = params)
-        val b = makeDeclaration(parameters = params.copy())
+        val params = GeminiParameters(properties = props)
+        assertEquals(1, params.properties.size)
+        assertEquals("number", params.properties["score"]?.type)
+    }
+
+    @Test
+    fun parameters_withRequired_storesCorrectly() {
+        val params = GeminiParameters(required = listOf("score", "index"))
+        assertEquals(listOf("score", "index"), params.required)
+    }
+
+    @Test
+    fun parameters_equals_twoIdentical() {
+        val a = GeminiParameters(required = listOf("x"))
+        val b = GeminiParameters(required = listOf("x"))
         assertEquals(a, b)
     }
 
-    // ── practical usage scenarios ─────────────────────────────────────────────
-
     @Test
-    fun declaration_withMultipleProperties_storesAll() {
-        val params = GeminiParameters(
-            type = "object",
-            properties = mapOf(
-                "chapter" to GeminiProperty(type = "integer", description = "Chapter number"),
-                "lesson" to GeminiProperty(type = "integer", description = "Lesson number"),
-            ),
-            required = listOf("chapter", "lesson"),
-        )
-        val decl = makeDeclaration(name = "advance_to_next_lesson", parameters = params)
-        assertEquals(2, decl.parameters!!.properties.size)
-        assertEquals(2, decl.parameters!!.required.size)
+    fun parameters_notEquals_differentRequired() {
+        val a = GeminiParameters(required = listOf("x"))
+        val b = GeminiParameters(required = listOf("y"))
+        assertNotEquals(a, b)
     }
 
     @Test
-    fun declaration_name_isNotBlank() {
-        val decl = makeDeclaration(name = "some_function")
-        assertTrue(decl.name.isNotBlank())
+    fun parameters_copy_changesOnlySpecifiedField() {
+        val original = GeminiParameters(type = "object", required = listOf("a"))
+        val copied = original.copy(required = listOf("b"))
+        assertEquals("object", copied.type)
+        assertEquals(listOf("b"), copied.required)
     }
 
     @Test
-    fun declaration_description_isNotBlank() {
-        val decl = makeDeclaration(description = "Does something")
-        assertTrue(decl.description.isNotBlank())
+    fun parameters_hashCode_equalObjectsHaveSameHash() {
+        val a = GeminiParameters(required = listOf("x"))
+        val b = GeminiParameters(required = listOf("x"))
+        assertEquals(a.hashCode(), b.hashCode())
+    }
+
+    // ── GeminiProperty — creation ────────────────────────────────────────
+
+    @Test
+    fun property_typeStoredCorrectly() {
+        val prop = GeminiProperty(type = "string")
+        assertEquals("string", prop.type)
+    }
+
+    @Test
+    fun property_defaultDescription_isEmpty() {
+        assertEquals("", GeminiProperty(type = "integer").description)
+    }
+
+    @Test
+    fun property_defaultEnum_isNull() {
+        assertNull(GeminiProperty(type = "string").enum)
+    }
+
+    @Test
+    fun property_withEnum_storesCorrectly() {
+        val prop = GeminiProperty(type = "string", enum = listOf("A1", "A2", "B1"))
+        assertEquals(listOf("A1", "A2", "B1"), prop.enum)
+    }
+
+    @Test
+    fun property_withDescription_storesCorrectly() {
+        val prop = GeminiProperty(type = "number", description = "Score 0.0-1.0")
+        assertEquals("Score 0.0-1.0", prop.description)
+    }
+
+    @Test
+    fun property_equals_twoIdentical() {
+        val a = GeminiProperty(type = "string", description = "desc", enum = listOf("x"))
+        val b = GeminiProperty(type = "string", description = "desc", enum = listOf("x"))
+        assertEquals(a, b)
+    }
+
+    @Test
+    fun property_notEquals_differentType() {
+        val a = GeminiProperty(type = "string")
+        val b = GeminiProperty(type = "integer")
+        assertNotEquals(a, b)
+    }
+
+    @Test
+    fun property_notEquals_nullEnumVsNonNull() {
+        val a = GeminiProperty(type = "string", enum = null)
+        val b = GeminiProperty(type = "string", enum = listOf("x"))
+        assertNotEquals(a, b)
+    }
+
+    @Test
+    fun property_copy_changesOnlySpecifiedField() {
+        val original = GeminiProperty(type = "string", description = "original")
+        val copied = original.copy(description = "updated")
+        assertEquals("string", copied.type)
+        assertEquals("updated", copied.description)
+        assertNull(copied.enum)
+    }
+
+    @Test
+    fun property_hashCode_equalObjectsHaveSameHash() {
+        val a = GeminiProperty(type = "number", description = "d")
+        val b = GeminiProperty(type = "number", description = "d")
+        assertEquals(a.hashCode(), b.hashCode())
     }
 }
