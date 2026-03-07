@@ -3,8 +3,12 @@ package com.voicedeutsch.master.data.local
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.serializer
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
+
+@Serializable
+private enum class Status { ACTIVE, INACTIVE }
 
 class JsonFactoryTest {
 
@@ -93,9 +97,6 @@ class JsonFactoryTest {
 
     @Test
     fun coerceInputValues_invalidEnumValue_usesDefault() {
-        @Serializable
-        enum class Status { ACTIVE, INACTIVE }
-
         @Serializable data class WithEnum(val status: Status = Status.INACTIVE)
         val json = """{"status":"UNKNOWN_VALUE"}"""
         assertDoesNotThrow {
@@ -141,7 +142,7 @@ class JsonFactoryTest {
     fun instance_roundtrip_listOfStrings_preservesContent() {
         val original = listOf("Hund", "Katze", "Maus")
         val encoded = JsonFactory.instance.encodeToString(
-            kotlinx.serialization.builtins.ListSerializer(kotlinx.serialization.builtins.serializer()),
+            kotlinx.serialization.builtins.ListSerializer(kotlinx.serialization.serializer<String>()),
             original
         )
         val decoded = JsonFactory.instance.decodeFromString<List<String>>(encoded)
@@ -151,7 +152,7 @@ class JsonFactoryTest {
     @Test
     fun instance_emptyList_encodedAsEmptyArray() {
         val encoded = JsonFactory.instance.encodeToString(
-            kotlinx.serialization.builtins.ListSerializer(kotlinx.serialization.builtins.serializer()),
+            kotlinx.serialization.builtins.ListSerializer(kotlinx.serialization.serializer<String>()),
             emptyList<String>()
         )
         assertEquals("[]", encoded)
