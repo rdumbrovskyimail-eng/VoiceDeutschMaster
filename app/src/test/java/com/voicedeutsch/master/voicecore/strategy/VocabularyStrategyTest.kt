@@ -2,7 +2,13 @@
 package com.voicedeutsch.master.voicecore.strategy
 
 import com.voicedeutsch.master.domain.model.LearningStrategy
+import com.voicedeutsch.master.domain.model.knowledge.BookProgressSnapshot
+import com.voicedeutsch.master.domain.model.knowledge.GrammarSnapshot
 import com.voicedeutsch.master.domain.model.knowledge.KnowledgeSnapshot
+import com.voicedeutsch.master.domain.model.knowledge.PronunciationSnapshot
+import com.voicedeutsch.master.domain.model.knowledge.RecommendationsSnapshot
+import com.voicedeutsch.master.domain.model.knowledge.SessionHistorySnapshot
+import com.voicedeutsch.master.domain.model.knowledge.VocabularySnapshot
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -17,8 +23,49 @@ class VocabularyStrategyTest {
     }
 
     private fun snapshotWithVocab(totalWords: Int) = KnowledgeSnapshot(
-        vocabulary = KnowledgeSnapshot.VocabularyStats(totalWords = totalWords),
-        grammar = KnowledgeSnapshot.GrammarStats(totalRules = 0),
+        vocabulary = VocabularySnapshot(
+            totalWords = totalWords,
+            byLevel = emptyMap(),
+            byTopic = emptyMap(),
+            recentNewWords = emptyList(),
+            problemWords = emptyList(),
+            wordsForReviewToday = 0
+        ),
+        grammar = GrammarSnapshot(
+            totalRules = 0,
+            byLevel = emptyMap(),
+            knownRules = emptyList(),
+            problemRules = emptyList(),
+            rulesForReviewToday = 0
+        ),
+        pronunciation = PronunciationSnapshot(
+            overallScore = 0f,
+            problemSounds = emptyList(),
+            goodSounds = emptyList(),
+            averageWordScore = 0f,
+            trend = ""
+        ),
+        bookProgress = BookProgressSnapshot(
+            currentChapter = 0,
+            currentLesson = 0,
+            totalChapters = 0,
+            completionPercentage = 0f,
+            currentTopic = ""
+        ),
+        sessionHistory = SessionHistorySnapshot(
+            lastSession = "",
+            lastSessionSummary = "",
+            averageSessionDuration = "",
+            streak = 0,
+            totalSessions = 0
+        ),
+        weakPoints = emptyList(),
+        recommendations = RecommendationsSnapshot(
+            primaryStrategy = "",
+            secondaryStrategy = "",
+            focusAreas = emptyList(),
+            suggestedSessionDuration = ""
+        )
     )
 
     // ── strategy property ────────────────────────────────────────────────
