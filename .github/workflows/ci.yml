@@ -77,26 +77,43 @@ jobs:
           --no-daemon \
           --quiet || true
 
-    - name: Inspect InlineData fields
-      run: |
-        echo "=== Searching for firebase-ai JAR ==="
-        JAR=$(find ~/.gradle/caches -name "firebase-ai-*.jar" 2>/dev/null | grep -v sources | grep -v javadoc | head -1)
-        echo "JAR: $JAR"
-        if [ -n "$JAR" ]; then
-          echo "=== javap output ==="
-          javap -classpath "$JAR" com.google.firebase.ai.type.InlineData 2>&1
-        else
-          echo "JAR not found, all firebase jars:"
-          find ~/.gradle/caches -name "*.jar" 2>/dev/null | grep -i firebase | grep -v sources | grep -v javadoc
-        fi
-
     - name: Run Unit Tests
       run: |
         ./gradlew testDebugUnitTest \
           --parallel \
           --build-cache \
           --no-daemon \
-          -Dlint.baselines.continue=true
+          -Dlint.baselines.continue=true \
+          2>&1 | tee test_results.log
+
+    - name: Test Summary
+      if: always()
+      run: |
+        echo "═══════════════════════════════════════"
+        echo "         TEST RESULTS SUMMARY"
+        echo "═══════════════════════════════════════"
+        if [ -f test_results.log ]; then
+          PASSED=$(grep -c "PASSED" test_results.log 2>/dev/null || echo "0")
+          FAILED=$(grep -c "FAILED" test_results.log 2>/dev/null || echo "0")
+          echo "✅ PASSED: $PASSED"
+          echo "❌ FAILED: $FAILED"
+          echo ""
+          if [ "$FAILED" != "0" ]; then
+            echo "─── Failed tests ───"
+            grep "FAILED" test_results.log | head -20
+          fi
+        fi
+        echo "═══════════════════════════════════════"
+
+    - name: Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-${{ github.run_number }}
+        path: |
+          app/build/reports/tests/testDebugUnitTest/
+          test_results.log
+        retention-days: 7
 
     - name: Print App Check Debug Token
       run: |
