@@ -217,6 +217,9 @@ dependencies {
     androidTestImplementation(libs.room.testing)
     androidTestImplementation(libs.test.core)
     androidTestImplementation(libs.test.runner)
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.work:work-testing:2.9.0")
+    androidTestImplementation("io.insert-koin:koin-test:3.5.3")
 }
 
 tasks.withType<Test> {
