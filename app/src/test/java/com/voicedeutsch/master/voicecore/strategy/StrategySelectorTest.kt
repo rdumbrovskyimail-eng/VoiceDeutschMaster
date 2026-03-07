@@ -2,7 +2,13 @@
 package com.voicedeutsch.master.voicecore.strategy
 
 import com.voicedeutsch.master.domain.model.LearningStrategy
+import com.voicedeutsch.master.domain.model.knowledge.BookProgressSnapshot
+import com.voicedeutsch.master.domain.model.knowledge.GrammarSnapshot
 import com.voicedeutsch.master.domain.model.knowledge.KnowledgeSnapshot
+import com.voicedeutsch.master.domain.model.knowledge.PronunciationSnapshot
+import com.voicedeutsch.master.domain.model.knowledge.RecommendationsSnapshot
+import com.voicedeutsch.master.domain.model.knowledge.SessionHistorySnapshot
+import com.voicedeutsch.master.domain.model.knowledge.VocabularySnapshot
 import com.voicedeutsch.master.util.Constants
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
@@ -30,23 +36,38 @@ class StrategySelectorTest {
         currentChapter: Int = 1,
         currentLesson: Int = 1,
     ) = KnowledgeSnapshot(
-        vocabulary = KnowledgeSnapshot.VocabularyStats(
+        vocabulary = VocabularySnapshot(
             totalWords = totalWords,
-            wordsForReviewToday = wordsForReviewToday,
+            byLevel = emptyMap(),
+            byTopic = emptyMap(),
+            recentNewWords = emptyList(),
+            problemWords = emptyList(),
+            wordsForReviewToday = wordsForReviewToday
         ),
-        grammar = KnowledgeSnapshot.GrammarStats(
+        grammar = GrammarSnapshot(
             totalRules = totalRules,
-            rulesForReviewToday = rulesForReviewToday,
+            byLevel = emptyMap(),
+            knownRules = emptyList(),
+            problemRules = emptyList(),
+            rulesForReviewToday = rulesForReviewToday
         ),
-        weakPoints = weakPoints,
-        pronunciation = KnowledgeSnapshot.PronunciationStats(
-            problemSounds = problemSounds,
+        pronunciation = PronunciationSnapshot(
             overallScore = overallScore,
+            problemSounds = problemSounds,
+            goodSounds = emptyList(),
+            averageWordScore = 0f,
+            trend = ""
         ),
-        bookProgress = KnowledgeSnapshot.BookProgress(
+        bookProgress = BookProgressSnapshot(
             currentChapter = currentChapter,
             currentLesson = currentLesson,
+            totalChapters = 0,
+            completionPercentage = 0f,
+            currentTopic = ""
         ),
+        sessionHistory = SessionHistorySnapshot("", "", "", 0, 0),
+        weakPoints = weakPoints,
+        recommendations = RecommendationsSnapshot("", "", emptyList(), "")
     )
 
     // ── selectStrategy — priority 1: SRS queue ───────────────────────────
