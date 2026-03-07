@@ -2,7 +2,13 @@
 package com.voicedeutsch.master.voicecore.strategy
 
 import com.voicedeutsch.master.domain.model.LearningStrategy
+import com.voicedeutsch.master.domain.model.knowledge.BookProgressSnapshot
+import com.voicedeutsch.master.domain.model.knowledge.GrammarSnapshot
 import com.voicedeutsch.master.domain.model.knowledge.KnowledgeSnapshot
+import com.voicedeutsch.master.domain.model.knowledge.PronunciationSnapshot
+import com.voicedeutsch.master.domain.model.knowledge.RecommendationsSnapshot
+import com.voicedeutsch.master.domain.model.knowledge.SessionHistorySnapshot
+import com.voicedeutsch.master.domain.model.knowledge.VocabularySnapshot
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -20,12 +26,19 @@ class PronunciationStrategyTest {
         problemSounds: List<String>,
         overallScore: Float,
     ) = KnowledgeSnapshot(
-        vocabulary = KnowledgeSnapshot.VocabularyStats(totalWords = 0),
-        grammar = KnowledgeSnapshot.GrammarStats(totalRules = 0),
-        pronunciation = KnowledgeSnapshot.PronunciationStats(
-            problemSounds = problemSounds,
+        vocabulary = VocabularySnapshot(0, emptyMap(), emptyMap(), emptyList(), emptyList(), 0),
+        grammar = GrammarSnapshot(0, emptyMap(), emptyList(), emptyList(), 0),
+        pronunciation = PronunciationSnapshot(
             overallScore = overallScore,
+            problemSounds = problemSounds,
+            goodSounds = emptyList(),
+            averageWordScore = 0f,
+            trend = ""
         ),
+        bookProgress = BookProgressSnapshot(0, 0, 0, 0f, ""),
+        sessionHistory = SessionHistorySnapshot("", "", "", 0, 0),
+        weakPoints = emptyList(),
+        recommendations = RecommendationsSnapshot("", "", emptyList(), "")
     )
 
     // ── strategy property ────────────────────────────────────────────────
