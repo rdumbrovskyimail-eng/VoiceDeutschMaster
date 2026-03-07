@@ -208,6 +208,7 @@ dependencies {
     testImplementation(libs.turbine)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.test.core)
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
 
     // ── Android Instrumented Testing (src/androidTest/) ──────────────────────
     androidTestImplementation(platform(libs.compose.bom))
