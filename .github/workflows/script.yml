@@ -1,0 +1,24 @@
+find src/test -type f -name "*.kt" | while read -r file; do
+  # Получаем относительный путь от src/test/
+  rel_path="${file#src/test/}"
+  
+  # Целевой путь
+  target="app/src/test/${rel_path}"
+  
+  if [ -f "$target" ]; then
+    echo "⏭️ ПРОПУЩЕН (уже существует): $rel_path"
+  else
+    # Создаём директорию если нет
+    mkdir -p "$(dirname "$target")"
+    mv "$file" "$target"
+    echo "✅ ПЕРЕНЕСЁН: $rel_path"
+  fi
+done
+
+echo ""
+echo "═══════════════════════════════════════"
+echo "Готово. Проверь результат, затем удали пустую папку:"
+echo "  rm -rf src/"
+echo "  git add -A"
+echo "  git commit -m 'fix: move worker tests from root src/ to app/src/test/'"
+echo "═══════════════════════════════════════"
