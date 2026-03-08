@@ -1,24 +1,36 @@
-find src/test -type f -name "*.kt" | while read -r file; do
-  # Получаем относительный путь от src/test/
-  rel_path="${file#src/test/}"
-  
-  # Целевой путь
-  target="app/src/test/${rel_path}"
-  
-  if [ -f "$target" ]; then
-    echo "⏭️ ПРОПУЩЕН (уже существует): $rel_path"
-  else
-    # Создаём директорию если нет
-    mkdir -p "$(dirname "$target")"
-    mv "$file" "$target"
-    echo "✅ ПЕРЕНЕСЁН: $rel_path"
-  fi
-done
+name: Move tests from root src
 
-echo ""
-echo "═══════════════════════════════════════"
-echo "Готово. Проверь результат, затем удали пустую папку:"
-echo "  rm -rf src/"
-echo "  git add -A"
-echo "  git commit -m 'fix: move worker tests from root src/ to app/src/test/'"
-echo "═══════════════════════════════════════"
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  move-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Move unique test files
+        run: |
+          find src/test -type f -name "*.kt" | while read -r file; do
+            rel_path="${file#src/test/}"
+            target="app/src/test/${rel_path}"
+            if [ -f "$target" ]; then
+              echo "SKIP (exists): $rel_path"
+            else
+              mkdir -p "$(dirname "$target")"
+              mv "$file" "$target"
+              echo "MOVED: $rel_path"
+            fi
+          done
+          echo "Done. Root src/ NOT deleted - check results first."
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add -A
+          git diff --cached --quiet || git commit -m "fix: move worker tests from root src/ to app/src/test/"
+          git push
