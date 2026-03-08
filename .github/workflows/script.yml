@@ -1,4 +1,4 @@
-name: Move tests from root src
+name: Remove root src folder
 
 on:
   workflow_dispatch:
@@ -7,30 +7,32 @@ permissions:
   contents: write
 
 jobs:
-  move-tests:
+  remove-root-src:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Move unique test files
+      - name: Check for unique files before deleting
         run: |
-          find src/test -type f -name "*.kt" | while read -r file; do
-            rel_path="${file#src/test/}"
-            target="app/src/test/${rel_path}"
-            if [ -f "$target" ]; then
-              echo "SKIP (exists): $rel_path"
-            else
-              mkdir -p "$(dirname "$target")"
-              mv "$file" "$target"
-              echo "MOVED: $rel_path"
+          echo "=== Files in root src/ that are NOT in app/src/ ==="
+          found=0
+          find src/ -type f | while read -r file; do
+            rel="${file#src/}"
+            if [ ! -f "app/src/$rel" ]; then
+              echo "UNIQUE: $file"
+              found=1
             fi
           done
-          echo "Done. Root src/ NOT deleted - check results first."
+          echo "=== Check complete ==="
+
+      - name: Remove root src folder
+        run: |
+          git rm -r src/
+          echo "Root src/ removed from git"
 
       - name: Commit and push
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git add -A
-          git diff --cached --quiet || git commit -m "fix: move worker tests from root src/ to app/src/test/"
+          git diff --cached --quiet || git commit -m "fix: remove duplicate root src/ folder"
           git push
