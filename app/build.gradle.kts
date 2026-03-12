@@ -198,6 +198,7 @@ dependencies {
     // ── Unit Testing (src/test/) ─────────────────────────────────────────────
     testImplementation(libs.bundles.testing)
     testRuntimeOnly(libs.junit5.engine)
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation(libs.room.testing)
     testImplementation(libs.robolectric)
     testImplementation(libs.koin.test)
