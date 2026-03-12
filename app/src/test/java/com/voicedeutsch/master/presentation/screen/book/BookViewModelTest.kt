@@ -6,6 +6,7 @@ import com.voicedeutsch.master.domain.model.book.BookProgress
 import com.voicedeutsch.master.domain.model.book.Chapter
 import com.voicedeutsch.master.domain.model.book.Lesson
 import com.voicedeutsch.master.domain.model.book.LessonContent
+import com.voicedeutsch.master.domain.model.book.LessonFocus
 import com.voicedeutsch.master.domain.repository.BookRepository
 import com.voicedeutsch.master.domain.repository.UserRepository
 import com.voicedeutsch.master.domain.usecase.book.GetCurrentLessonUseCase
@@ -38,8 +39,8 @@ class BookViewModelTest {
         chapterTitle: String = "Erste Schritte",
         lessonTitle: String = "Begrüßung",
     ) = GetCurrentLessonUseCase.CurrentLessonData(
-        chapter = Chapter(number = chapterNumber, title = chapterTitle),
-        lesson = Lesson(number = lessonNumber, title = lessonTitle),
+        chapter = Chapter(number = chapterNumber, titleDe = chapterTitle, titleRu = chapterTitle, level = "A1", lessons = emptyList()),
+        lesson = Lesson(number = lessonNumber, chapterNumber = chapterNumber, titleDe = lessonTitle, titleRu = lessonTitle),
         content = LessonContent(
             title = lessonTitle,
             introduction = "Intro",
@@ -51,15 +52,15 @@ class BookViewModelTest {
     )
 
     private fun buildBookProgress(
-        bookId: Long = 1L,
+        id: String = "progress_1",
         userId: String = "user_1",
-        completedLessons: Int = 3,
-        totalLessons: Int = 10,
+        chapter: Int = 1,
+        lesson: Int = 1,
     ) = BookProgress(
-        bookId = bookId,
+        id = id,
         userId = userId,
-        completedLessons = completedLessons,
-        totalLessons = totalLessons,
+        chapter = chapter,
+        lesson = lesson,
     )
 
     private fun setupDefaultMocks(
@@ -107,8 +108,8 @@ class BookViewModelTest {
         mainDispatcherRule.testDispatcher.scheduler.advanceUntilIdle()
 
         assertNotNull(sut.uiState.value.currentLesson)
-        assertEquals("Kapitel 2", sut.uiState.value.currentLesson!!.chapter.title)
-        assertEquals("Essen", sut.uiState.value.currentLesson!!.lesson.title)
+        assertEquals("Kapitel 2", sut.uiState.value.currentLesson!!.chapter.titleDe)
+        assertEquals("Essen", sut.uiState.value.currentLesson!!.lesson.titleDe)
     }
 
     @Test
@@ -124,8 +125,8 @@ class BookViewModelTest {
     @Test
     fun init_success_populatesAllProgress() = runTest {
         val progress = listOf(
-            buildBookProgress(bookId = 1L, completedLessons = 5),
-            buildBookProgress(bookId = 2L, completedLessons = 2),
+            buildBookProgress(id = "1", chapter = 1, lesson = 5),
+            buildBookProgress(id = "2", chapter = 1, lesson = 2),
         )
         setupDefaultMocks(allProgress = progress)
 
@@ -133,8 +134,8 @@ class BookViewModelTest {
         mainDispatcherRule.testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals(2, sut.uiState.value.allProgress.size)
-        assertEquals(5, sut.uiState.value.allProgress[0].completedLessons)
-        assertEquals(2, sut.uiState.value.allProgress[1].completedLessons)
+        assertEquals(5, sut.uiState.value.allProgress[0].lesson)
+        assertEquals(2, sut.uiState.value.allProgress[1].lesson)
     }
 
     @Test
@@ -279,7 +280,7 @@ class BookViewModelTest {
         sut.onEvent(BookEvent.Refresh)
         mainDispatcherRule.testDispatcher.scheduler.advanceUntilIdle()
 
-        assertEquals("Familie", sut.uiState.value.currentLesson!!.lesson.title)
+        assertEquals("Familie", sut.uiState.value.currentLesson!!.lesson.titleDe)
     }
 
     @Test
@@ -339,14 +340,14 @@ class BookViewModelTest {
         sut = createViewModel()
         mainDispatcherRule.testDispatcher.scheduler.advanceUntilIdle()
 
-        val newProgress = listOf(buildBookProgress(completedLessons = 9))
+        val newProgress = listOf(buildBookProgress(lesson = 9))
         coEvery { bookRepository.getAllBookProgress(any()) } returns newProgress
 
         sut.onEvent(BookEvent.Refresh)
         mainDispatcherRule.testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals(1, sut.uiState.value.allProgress.size)
-        assertEquals(9, sut.uiState.value.allProgress[0].completedLessons)
+        assertEquals(9, sut.uiState.value.allProgress[0].lesson)
     }
 
     // ── DismissError ──────────────────────────────────────────────────────────
@@ -435,7 +436,7 @@ class BookViewModelTest {
                 if (!s.isLoading) break
             }
 
-            assertEquals("Reisen", states.last().currentLesson!!.lesson.title)
+            assertEquals("Reisen", states.last().currentLesson!!.lesson.titleDe)
             cancelAndIgnoreRemainingEvents()
         }
     }
