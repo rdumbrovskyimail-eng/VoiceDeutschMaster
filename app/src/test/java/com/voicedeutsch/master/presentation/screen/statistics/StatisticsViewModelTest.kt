@@ -12,6 +12,7 @@ import com.voicedeutsch.master.domain.usecase.progress.GetDailyProgressUseCase
 import com.voicedeutsch.master.testutil.MainDispatcherRule
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.*
@@ -33,33 +34,43 @@ class StatisticsViewModelTest {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    // FIX: OverallProgress структура изменилась — используем mockk чтобы не
+    // зависеть от всех вложенных типов (VocabularyProgress, GrammarProgress и т.д.)
     private fun buildOverallProgress(
         totalSessions: Int = 42,
         totalHours: Float = 12.5f,
-        vocabularyScore: Float = 0.7f,
-        grammarScore: Float = 0.6f,
-        pronunciationScore: Float = 0.8f,
-    ) = OverallProgress(
-        totalSessions = totalSessions,
-        totalHours = totalHours,
-        vocabularyScore = vocabularyScore,
-        grammarScore = grammarScore,
-        pronunciationScore = pronunciationScore,
-    )
+    ) = mockk<OverallProgress>(relaxed = true).also {
+        every { it.totalSessions } returns totalSessions
+        every { it.totalHours } returns totalHours
+    }
 
+    // FIX: DailyProgress теперь требует id и userId; minutesStudied → totalMinutes
     private fun buildDailyProgress(date: String = "2024-01-01", minutes: Int = 30) =
-        DailyProgress(date = date, minutesStudied = minutes)
+        DailyProgress(
+            id = date,
+            userId = "user_1",
+            date = date,
+            totalMinutes = minutes,
+        )
 
+    // FIX: SkillProgress поля переименованы:
+    //   vocabularyLevel → vocabulary
+    //   grammarLevel    → grammar
+    //   listeningLevel  → listening
+    //   speakingLevel   → speaking
+    //   добавлено поле pronunciation
     private fun buildSkillProgress(
-        vocabularyLevel: Float = 0.6f,
-        grammarLevel: Float = 0.5f,
-        listeningLevel: Float = 0.7f,
-        speakingLevel: Float = 0.4f,
+        vocabulary: Float = 0.6f,
+        grammar: Float = 0.5f,
+        listening: Float = 0.7f,
+        speaking: Float = 0.4f,
+        pronunciation: Float = 0.5f,
     ) = SkillProgress(
-        vocabularyLevel = vocabularyLevel,
-        grammarLevel = grammarLevel,
-        listeningLevel = listeningLevel,
-        speakingLevel = speakingLevel,
+        vocabulary = vocabulary,
+        grammar = grammar,
+        listening = listening,
+        speaking = speaking,
+        pronunciation = pronunciation,
     )
 
     private fun setupDefaultMocks(
@@ -160,14 +171,16 @@ class StatisticsViewModelTest {
 
     @Test
     fun init_success_populatesSkillProgress() = runTest {
-        val skill = buildSkillProgress(vocabularyLevel = 0.9f, grammarLevel = 0.3f)
+        // FIX: параметры переименованы
+        val skill = buildSkillProgress(vocabulary = 0.9f, grammar = 0.3f)
         setupDefaultMocks(skill = skill)
 
         sut = createViewModel()
         mainDispatcherRule.testDispatcher.scheduler.advanceUntilIdle()
 
-        assertEquals(0.9f, sut.uiState.value.skillProgress!!.vocabularyLevel, 0.001f)
-        assertEquals(0.3f, sut.uiState.value.skillProgress!!.grammarLevel, 0.001f)
+        // FIX: поля переименованы vocabularyLevel → vocabulary, grammarLevel → grammar
+        assertEquals(0.9f, sut.uiState.value.skillProgress!!.vocabulary, 0.001f)
+        assertEquals(0.3f, sut.uiState.value.skillProgress!!.grammar, 0.001f)
     }
 
     @Test
@@ -253,7 +266,6 @@ class StatisticsViewModelTest {
         sut = createViewModel()
         mainDispatcherRule.testDispatcher.scheduler.advanceUntilIdle()
 
-        // Update mocks for second load
         val newOverall = buildOverallProgress(totalSessions = 100)
         coEvery { calculateOverallProgress(any()) } returns newOverall
 
@@ -270,7 +282,6 @@ class StatisticsViewModelTest {
         mainDispatcherRule.testDispatcher.scheduler.advanceUntilIdle()
         assertNotNull(sut.uiState.value.errorMessage)
 
-        // Fix mock before refresh
         setupDefaultMocks()
         sut.onEvent(StatisticsEvent.Refresh)
         mainDispatcherRule.testDispatcher.scheduler.advanceUntilIdle()
@@ -286,7 +297,6 @@ class StatisticsViewModelTest {
         sut.onEvent(StatisticsEvent.Refresh)
         mainDispatcherRule.testDispatcher.scheduler.advanceUntilIdle()
 
-        // Each use case called twice (init + refresh)
         coVerify(exactly = 2) { calculateOverallProgress(any()) }
         coVerify(exactly = 2) { getDailyProgress.getWeekly(any()) }
         coVerify(exactly = 2) { getDailyProgress.getMonthly(any()) }
@@ -350,7 +360,6 @@ class StatisticsViewModelTest {
 
         sut.onEvent(StatisticsEvent.SelectTab(StatsTab.WEEKLY))
 
-        // Use cases only called once (init)
         coVerify(exactly = 1) { calculateOverallProgress(any()) }
     }
 
@@ -412,7 +421,7 @@ class StatisticsViewModelTest {
         mainDispatcherRule.testDispatcher.scheduler.advanceUntilIdle()
 
         sut.uiState.test {
-            awaitItem() // current loaded state
+            awaitItem()
 
             sut.onEvent(StatisticsEvent.SelectTab(StatsTab.WEEKLY))
             val updated = awaitItem()
@@ -428,12 +437,11 @@ class StatisticsViewModelTest {
         mainDispatcherRule.testDispatcher.scheduler.advanceUntilIdle()
 
         sut.uiState.test {
-            awaitItem() // loaded state
+            awaitItem()
 
             sut.onEvent(StatisticsEvent.Refresh)
             mainDispatcherRule.testDispatcher.scheduler.advanceUntilIdle()
 
-            // At least one more emission
             val states = mutableListOf<StatisticsUiState>()
             while (true) {
                 val s = awaitItem()
