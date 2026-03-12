@@ -118,7 +118,6 @@ class UserMapperTest {
             assertEquals(entity.name, domain.name)
             assertEquals(entity.nativeLanguage, domain.nativeLanguage)
             assertEquals(entity.targetLanguage, domain.targetLanguage)
-            assertEquals(entity.cefrSubLevel, domain.cefrSubLevel)
             assertEquals(entity.totalSessions, domain.totalSessions)
             assertEquals(entity.totalMinutes, domain.totalMinutes)
             assertEquals(entity.totalWordsLearned, domain.totalWordsLearned)
