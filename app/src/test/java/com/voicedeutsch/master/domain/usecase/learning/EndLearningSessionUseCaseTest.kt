@@ -111,7 +111,8 @@ class EndLearningSessionUseCaseTest {
         coEvery { sessionRepository.addSessionEvent(any()) }          returns Unit
         coEvery { sessionRepository.getDailyStatistics(any(), any()) } returns null
         coEvery { sessionRepository.upsertDailyStatistics(
-            any(), any(), any(), any(), any(), any(), any(), any(), any(), any()
+            any<String>(), any<String>(), any<Int>(), any<Int>(), any<Int>(),
+            any<Int>(), any<Int>(), any<Int>(), any<Float>(), any<Boolean>()
         ) } returns Unit
 
         coEvery { userRepository.getUserProfile(any()) }                    returns makeUserProfile()
