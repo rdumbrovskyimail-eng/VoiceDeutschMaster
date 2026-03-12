@@ -368,7 +368,7 @@ class GetUserKnowledgeUseCaseTest {
 
         val result = useCase("u")
 
-        assertEquals(1f, result.grammarByCategory["VERBS"], 0.001f)
+        assertEquals(1f, result.grammarByCategory["VERBS"]!!, 0.001f)
     }
 
     @Test
@@ -380,7 +380,7 @@ class GetUserKnowledgeUseCaseTest {
 
         val result = useCase("u")
 
-        assertEquals(0f, result.grammarByCategory["VERBS"], 0.001f)
+        assertEquals(0f, result.grammarByCategory["VERBS"]!!, 0.001f)
     }
 
     @Test
@@ -398,7 +398,7 @@ class GetUserKnowledgeUseCaseTest {
 
         val result = useCase("u")
 
-        assertEquals(0.5f, result.grammarByCategory["NOUNS"], 0.001f)
+        assertEquals(0.5f, result.grammarByCategory["NOUNS"]!!, 0.001f)
     }
 
     @Test
@@ -416,8 +416,8 @@ class GetUserKnowledgeUseCaseTest {
 
         val result = useCase("u")
 
-        assertEquals(1f, result.grammarByCategory["VERBS"], 0.001f)
-        assertEquals(0f, result.grammarByCategory["ARTICLES"], 0.001f)
+        assertEquals(1f, result.grammarByCategory["VERBS"]!!, 0.001f)
+        assertEquals(0f, result.grammarByCategory["ARTICLES"]!!, 0.001f)
     }
 
     @Test
@@ -431,7 +431,7 @@ class GetUserKnowledgeUseCaseTest {
 
         val result = useCase("u")
 
-        assertEquals(0f, result.grammarByCategory["VERBS"], 0.001f)
+        assertEquals(0f, result.grammarByCategory["VERBS"]!!, 0.001f)
     }
 
     // ── Recent activity ───────────────────────────────────────────────────────
