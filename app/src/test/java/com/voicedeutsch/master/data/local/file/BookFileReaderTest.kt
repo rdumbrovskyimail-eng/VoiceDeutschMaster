@@ -140,9 +140,9 @@ $exerciseMarkers
         val result = sut.readChapterInfo(1)
 
         assertNotNull(result)
-        assertEquals(1, result!!.chapterNumber)
-        assertEquals("Erste Schritte", result.title)
-        assertEquals(5, result.totalLessons)
+        assertEquals(1, result!!.number)
+        assertEquals("Erste Schritte", result.titleDe)
+        assertEquals(5, result.lessonsCount)
     }
 
     @Test
