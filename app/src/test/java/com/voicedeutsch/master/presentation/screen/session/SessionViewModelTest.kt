@@ -15,6 +15,7 @@ import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.mockkStatic
+import io.mockk.Awaits
 import io.mockk.Runs
 import io.mockk.verify
 import kotlinx.coroutines.flow.MutableSharedFlow
