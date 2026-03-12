@@ -2,12 +2,14 @@
 package com.voicedeutsch.master.domain.usecase.knowledge
 
 import com.voicedeutsch.master.domain.model.knowledge.GrammarRule
-import com.voicedeutsch.master.domain.model.knowledge.Mistake
+// FIX: Mistake → MistakeLog
+import com.voicedeutsch.master.domain.model.knowledge.MistakeLog
 import com.voicedeutsch.master.domain.model.knowledge.MistakeType
 import com.voicedeutsch.master.domain.model.knowledge.RuleKnowledge
 import com.voicedeutsch.master.domain.model.knowledge.Word
 import com.voicedeutsch.master.domain.model.knowledge.WordKnowledge
-import com.voicedeutsch.master.domain.model.speech.ProblemSound
+// FIX: ProblemSound → PhoneticTarget
+import com.voicedeutsch.master.domain.model.speech.PhoneticTarget
 import com.voicedeutsch.master.domain.model.speech.PronunciationTrend
 import com.voicedeutsch.master.domain.repository.KnowledgeRepository
 import io.mockk.coEvery
@@ -57,13 +59,14 @@ class GetWeakPointsUseCaseTest {
     private fun makeGrammarRule(nameRu: String = "Артикль"): GrammarRule =
         mockk<GrammarRule>().also { every { it.nameRu } returns nameRu }
 
+    // FIX: ProblemSound → PhoneticTarget
     private fun makeProblemSound(
         sound: String = "ü",
         ipa: String = "y",
         currentScore: Float = 0.3f,
         totalAttempts: Int = 10,
         trend: PronunciationTrend = PronunciationTrend.STABLE
-    ): ProblemSound = mockk<ProblemSound>().also {
+    ): PhoneticTarget = mockk<PhoneticTarget>().also {
         every { it.sound } returns sound
         every { it.ipa } returns ipa
         every { it.currentScore } returns currentScore
@@ -71,8 +74,9 @@ class GetWeakPointsUseCaseTest {
         every { it.trend } returns trend
     }
 
-    private fun makeMistake(type: MistakeType, item: String): Mistake =
-        mockk<Mistake>().also {
+    // FIX: Mistake → MistakeLog
+    private fun makeMistake(type: MistakeType, item: String): MistakeLog =
+        mockk<MistakeLog>().also {
             every { it.type } returns type
             every { it.item } returns item
         }
