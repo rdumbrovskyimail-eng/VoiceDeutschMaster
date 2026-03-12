@@ -526,7 +526,7 @@ class UpdateWordKnowledgeUseCaseTest {
 
         // srsEaseFactor should increase for quality=5
         assertTrue(slot.captured.srsEaseFactor > 0f)
-        assertTrue(slot.captured.nextReview > fakeNow)
+        assertTrue(slot.captured.nextReview!! > fakeNow)
     }
 
     // ── Pronunciation score averaging ─────────────────────────────────────────
