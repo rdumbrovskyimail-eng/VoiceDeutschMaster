@@ -221,27 +221,27 @@ class AudioPlayerTest {
 
     @Test
     fun write_withoutStart_doesNotThrow() = runTest {
-        assertDoesNotThrow { player.write(ByteArray(640)) }
+        player.write(ByteArray(640))
     }
 
     @Test
     fun write_emptyArray_doesNotThrow() = runTest {
         player.start()
-        assertDoesNotThrow { player.write(ByteArray(0)) }
+        player.write(ByteArray(0))
     }
 
     @Test
     fun write_afterRelease_doesNotThrow() = runTest {
         player.start()
         player.release()
-        assertDoesNotThrow { player.write(ByteArray(640)) }
+        player.write(ByteArray(640))
     }
 
     @Test
     fun write_afterPause_doesNotThrow() = runTest {
         player.start()
         player.pause()
-        assertDoesNotThrow { player.write(ByteArray(640)) }
+        player.write(ByteArray(640))
     }
 
     // ── lifecycle sequences ───────────────────────────────────────────────
@@ -266,15 +266,13 @@ class AudioPlayerTest {
 
     @Test
     fun lifecycle_fullCycle_doesNotThrow() = runTest {
-        assertDoesNotThrow {
-            player.start()
-            player.write(ByteArray(640))
-            player.pause()
-            player.flush()
-            player.resume()
-            player.stop()
-            player.release()
-        }
+        player.start()
+        player.write(ByteArray(640))
+        player.pause()
+        player.flush()
+        player.resume()
+        player.stop()
+        player.release()
     }
 
     @Test
