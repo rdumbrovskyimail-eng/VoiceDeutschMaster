@@ -209,8 +209,8 @@ class ProgressMapperTest {
         item: String = "der/die/das",
         expected: String = "der",
         actual: String = "die",
-        context: String? = "Ich sehe ___ Hund",
-        explanation: String? = "Masculine noun",
+        context: String = "Ich sehe ___ Hund",
+        explanation: String = "Masculine noun",
         timestamp: Long = 3000L,
         createdAt: Long = 3100L,
     ) = MistakeLog(
@@ -334,7 +334,7 @@ class ProgressMapperTest {
             assertEquals(entity.chapter, domain.chapter)
             assertEquals(entity.lesson, domain.lesson)
             assertEquals(LessonStatus.IN_PROGRESS, domain.status)
-            assertEquals(entity.score!!, domain.score, 0.001f)
+            assertEquals(entity.score!!, domain.score!!, 0.001f)
             assertEquals(entity.startedAt, domain.startedAt)
             assertEquals(entity.completedAt, domain.completedAt)
             assertEquals(entity.timesPracticed, domain.timesPracticed)
@@ -397,7 +397,7 @@ class ProgressMapperTest {
             assertEquals(domain.chapter, entity.chapter)
             assertEquals(domain.lesson, entity.lesson)
             assertEquals(domain.status.name, entity.status)
-            assertEquals(domain.score, entity.score, 0.001f)
+            assertEquals(domain.score!!, entity.score!!, 0.001f)
             assertEquals(domain.startedAt, entity.startedAt)
             assertEquals(domain.completedAt, entity.completedAt)
             assertEquals(domain.timesPracticed, entity.timesPracticed)
