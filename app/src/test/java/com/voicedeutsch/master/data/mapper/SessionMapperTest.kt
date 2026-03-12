@@ -128,7 +128,7 @@ class SessionMapperTest {
         sessionId: String = "ses_1",
         eventType: SessionEventType = SessionEventType.WORD_ANSWERED,
         timestamp: Long = 1500L,
-        detailsJson: String? = """{"wordId":"word_1"}""",
+        detailsJson: String = """{"wordId":"word_1"}""",
         createdAt: Long = 1600L,
     ) = SessionEvent(
         id = id,
@@ -325,17 +325,17 @@ class SessionMapperTest {
     @Test
     fun learningSession_toEntity_nullBookFields_preservedAsNull() {
         val domain = buildLearningSession(
-            bookChapterStart = null,
-            bookLessonStart = null,
-            bookChapterEnd = null,
-            bookLessonEnd = null,
+            bookChapterStart = 0,
+            bookLessonStart = 0,
+            bookChapterEnd = 0,
+            bookLessonEnd = 0,
         )
         with(SessionMapper) {
             val entity = domain.toEntity(json)
-            assertNull(entity.bookChapterStart)
-            assertNull(entity.bookLessonStart)
-            assertNull(entity.bookChapterEnd)
-            assertNull(entity.bookLessonEnd)
+            assertEquals(0, entity.bookChapterStart)
+            assertEquals(0, entity.bookLessonStart)
+            assertEquals(0, entity.bookChapterEnd)
+            assertEquals(0, entity.bookLessonEnd)
         }
     }
 
