@@ -90,7 +90,7 @@ class VoiceCoreEngineTest {
     fun initialize_doesNotThrow() = runTest {
         val config = mockk<GeminiConfig>(relaxed = true)
         coEvery { engine.initialize(any()) } returns Unit
-        assertDoesNotThrow { engine.initialize(config) }
+        assertDoesNotThrow { runTest { engine.initialize(config) } }
     }
 
     // ── startSession ──────────────────────────────────────────────────────
@@ -143,7 +143,7 @@ class VoiceCoreEngineTest {
     @Test
     fun destroy_doesNotThrow() = runTest {
         coEvery { engine.destroy() } returns Unit
-        assertDoesNotThrow { engine.destroy() }
+        assertDoesNotThrow { runTest { engine.destroy() } }
     }
 
     // ── startListening / stopListening ────────────────────────────────────
@@ -197,7 +197,7 @@ class VoiceCoreEngineTest {
     @Test
     fun sendTextMessage_doesNotThrow() = runTest {
         coEvery { engine.sendTextMessage(any()) } returns Unit
-        assertDoesNotThrow { engine.sendTextMessage("Test") }
+        assertDoesNotThrow { runTest { engine.sendTextMessage("Test") } }
     }
 
     // ── requestStrategyChange ─────────────────────────────────────────────
@@ -212,7 +212,7 @@ class VoiceCoreEngineTest {
     fun requestStrategyChange_allStrategies_doNotThrow() = runTest {
         coEvery { engine.requestStrategyChange(any()) } returns Unit
         LearningStrategy.entries.forEach { strategy ->
-            assertDoesNotThrow { engine.requestStrategyChange(strategy) }
+            assertDoesNotThrow { runTest { engine.requestStrategyChange(strategy) } }
         }
     }
 
@@ -227,7 +227,7 @@ class VoiceCoreEngineTest {
     @Test
     fun requestBookNavigation_doesNotThrow() = runTest {
         coEvery { engine.requestBookNavigation(any(), any()) } returns Unit
-        assertDoesNotThrow { engine.requestBookNavigation(1, 1) }
+        assertDoesNotThrow { runTest { engine.requestBookNavigation(1, 1) } }
     }
 
     // ── submitFunctionResult ──────────────────────────────────────────────
@@ -243,7 +243,7 @@ class VoiceCoreEngineTest {
     @Test
     fun submitFunctionResult_doesNotThrow() = runTest {
         coEvery { engine.submitFunctionResult(any(), any(), any()) } returns Unit
-        assertDoesNotThrow { engine.submitFunctionResult("id", "func", "{}") }
+        assertDoesNotThrow { runTest { engine.submitFunctionResult("id", "func", "{}") } }
     }
 
     // ── sendAudioStreamEnd ────────────────────────────────────────────────
@@ -257,7 +257,7 @@ class VoiceCoreEngineTest {
     @Test
     fun sendAudioStreamEnd_doesNotThrow() = runTest {
         coEvery { engine.sendAudioStreamEnd() } returns Unit
-        assertDoesNotThrow { engine.sendAudioStreamEnd() }
+        assertDoesNotThrow { runTest { engine.sendAudioStreamEnd() } }
     }
 
     // ── getTokenUsage ─────────────────────────────────────────────────────
