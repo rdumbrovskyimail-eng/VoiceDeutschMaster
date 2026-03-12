@@ -71,7 +71,7 @@ class UserMapperTest {
         nativeLanguage: String = "ru",
         targetLanguage: String = "de",
         cefrLevel: CefrLevel = CefrLevel.B1,
-        cefrSubLevel: String? = "B1.2",
+        cefrSubLevel: Int? = 1,
         totalSessions: Int = 42,
         totalMinutes: Int = 630,
         totalWordsLearned: Int = 200,
