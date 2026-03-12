@@ -28,7 +28,7 @@ class SearchBookContentUseCaseTest {
         chapter: Int = 1,
         lesson: Int = 1,
         snippet: String = "example"
-    ) = SearchBookContentUseCase.ChapterHit(
+    ) = BookRepository.SearchHit(
         chapter = chapter,
         lesson  = lesson,
         snippet = snippet,
