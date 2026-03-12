@@ -581,13 +581,13 @@ class FunctionRouterTest {
 
     // ── helpers ───────────────────────────────────────────────────────────
 
-    private fun buildLessonDataWithContent(content: String): GetCurrentLessonUseCase.LessonData {
+    private fun buildLessonDataWithContent(lessonText: String): GetCurrentLessonUseCase.CurrentLessonData {
         val lessonContent = mockk<com.voicedeutsch.master.domain.model.book.LessonContent>(relaxed = true) {
-            io.mockk.every { mainContent } returns content
+            io.mockk.every { mainContent } returns lessonText
             io.mockk.every { vocabulary } returns emptyList()
         }
-        return mockk<GetCurrentLessonUseCase.LessonData>(relaxed = true) {
-            io.mockk.every { this@mockk.lessonContent } returns lessonContent
+        return mockk<GetCurrentLessonUseCase.CurrentLessonData>(relaxed = true) {
+            io.mockk.every { this@mockk.content } returns lessonContent
         }
     }
 }
