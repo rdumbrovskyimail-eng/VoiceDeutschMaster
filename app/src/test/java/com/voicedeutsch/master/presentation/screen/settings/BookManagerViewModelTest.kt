@@ -58,9 +58,9 @@ class BookManagerViewModelTest {
         bookDao = mockk(relaxed = true)
         every { bookDao.getAllBooksFlow() } returns booksFlow
         coEvery { bookDao.insertBook(any()) } just Runs
-        coEvery { bookDao.deleteBook(any()) } just Runs
+        coEvery { bookDao.deleteBook(any()) } just Awaits
         coEvery { bookDao.insertChapter(any()) } just Runs
-        coEvery { bookDao.updateChapter(any()) } just Runs
+        coEvery { bookDao.updateChapter(any()) } just Awaits
         coEvery { bookDao.deleteChapter(any()) } just Runs
         coEvery { bookDao.getChapterCount(any()) } returns 0
         coEvery { bookDao.getChaptersFlow(any()) } returns flowOf(emptyList())
