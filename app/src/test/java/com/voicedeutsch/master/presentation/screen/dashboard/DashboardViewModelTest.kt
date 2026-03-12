@@ -13,6 +13,7 @@ import com.voicedeutsch.master.domain.usecase.user.GetUserProfileUseCase
 import com.voicedeutsch.master.testutil.MainDispatcherRule
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.*
@@ -43,16 +44,26 @@ class DashboardViewModelTest {
     private fun buildOverallProgress(
         totalSessions: Int = 42,
         totalHours: Float = 10f,
-        vocabularyScore: Float = 0.7f,
-        grammarScore: Float = 0.6f,
-        pronunciationScore: Float = 0.8f,
-    ) = OverallProgress(
-        totalSessions = totalSessions,
-        totalHours = totalHours,
-        vocabularyScore = vocabularyScore,
-        grammarScore = grammarScore,
-        pronunciationScore = pronunciationScore,
-    )
+        cefrLevel: CefrLevel = CefrLevel.B1,
+        subLevel: Int = 1,
+        streakDays: Int = 0,
+    ): OverallProgress {
+        val vocabularyProgress = mockk<com.voicedeutsch.master.domain.model.progress.VocabularyProgress>(relaxed = true)
+        val grammarProgress = mockk<com.voicedeutsch.master.domain.model.progress.GrammarProgress>(relaxed = true)
+        val pronunciationProgress = mockk<com.voicedeutsch.master.domain.model.progress.PronunciationProgress>(relaxed = true)
+        val bookProgress = mockk<com.voicedeutsch.master.domain.model.progress.BookOverallProgress>(relaxed = true)
+        return OverallProgress(
+            totalSessions = totalSessions,
+            totalHours = totalHours,
+            currentCefrLevel = cefrLevel,
+            currentSubLevel = subLevel,
+            vocabularyProgress = vocabularyProgress,
+            grammarProgress = grammarProgress,
+            pronunciationProgress = pronunciationProgress,
+            bookProgress = bookProgress,
+            streakDays = streakDays,
+        )
+    }
 
     private fun buildDailyProgress(
         date: String = "2024-06-01",
