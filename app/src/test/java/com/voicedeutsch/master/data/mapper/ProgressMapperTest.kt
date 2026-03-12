@@ -428,7 +428,7 @@ class ProgressMapperTest {
             assertEquals(original.chapter, restored.chapter)
             assertEquals(original.lesson, restored.lesson)
             assertEquals(original.status, restored.status)
-            assertEquals(original.score!!, restored.score, 0.001f)
+            assertEquals(original.score!!, restored.score!!, 0.001f)
             assertEquals(original.startedAt, restored.startedAt)
             assertEquals(original.completedAt, restored.completedAt)
             assertEquals(original.timesPracticed, restored.timesPracticed)
