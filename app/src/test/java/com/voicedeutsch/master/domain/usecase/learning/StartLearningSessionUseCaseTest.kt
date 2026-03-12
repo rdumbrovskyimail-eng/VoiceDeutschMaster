@@ -59,7 +59,7 @@ class StartLearningSessionUseCaseTest {
 
         coEvery { userRepository.getUserProfile(any()) }             returns makeUserProfile()
         coEvery { bookRepository.getCurrentBookPosition(any()) }     returns Pair(2, 5)
-        coEvery { sessionRepository.createSession(any()) }           returns Unit
+        coEvery { sessionRepository.createSession(any()) }           returns fixedUUID1
         coEvery { sessionRepository.addSessionEvent(any()) }         returns Unit
     }
 
@@ -79,7 +79,7 @@ class StartLearningSessionUseCaseTest {
     fun invoke_validUser_sessionHasGeneratedUUID() = runTest {
         var capturedSession: LearningSession? = null
         coEvery { sessionRepository.createSession(any()) } answers {
-            capturedSession = firstArg(); Unit
+            capturedSession = firstArg(); fixedUUID1
         }
 
         useCase("user1")
@@ -91,7 +91,7 @@ class StartLearningSessionUseCaseTest {
     fun invoke_validUser_sessionUserIdMatchesParam() = runTest {
         var capturedSession: LearningSession? = null
         coEvery { sessionRepository.createSession(any()) } answers {
-            capturedSession = firstArg(); Unit
+            capturedSession = firstArg(); fixedUUID1
         }
 
         useCase("user42")
@@ -103,7 +103,7 @@ class StartLearningSessionUseCaseTest {
     fun invoke_validUser_sessionStartedAtIsNow() = runTest {
         var capturedSession: LearningSession? = null
         coEvery { sessionRepository.createSession(any()) } answers {
-            capturedSession = firstArg(); Unit
+            capturedSession = firstArg(); fixedUUID1
         }
 
         useCase("user1")
@@ -116,7 +116,7 @@ class StartLearningSessionUseCaseTest {
     fun invoke_validUser_sessionEndedAtIsNull() = runTest {
         var capturedSession: LearningSession? = null
         coEvery { sessionRepository.createSession(any()) } answers {
-            capturedSession = firstArg(); Unit
+            capturedSession = firstArg(); fixedUUID1
         }
 
         useCase("user1")
@@ -128,7 +128,7 @@ class StartLearningSessionUseCaseTest {
     fun invoke_validUser_sessionDurationMinutesIsZero() = runTest {
         var capturedSession: LearningSession? = null
         coEvery { sessionRepository.createSession(any()) } answers {
-            capturedSession = firstArg(); Unit
+            capturedSession = firstArg(); fixedUUID1
         }
 
         useCase("user1")
@@ -140,7 +140,7 @@ class StartLearningSessionUseCaseTest {
     fun invoke_validUser_sessionStrategiesUsedIsEmpty() = runTest {
         var capturedSession: LearningSession? = null
         coEvery { sessionRepository.createSession(any()) } answers {
-            capturedSession = firstArg(); Unit
+            capturedSession = firstArg(); fixedUUID1
         }
 
         useCase("user1")
@@ -152,7 +152,7 @@ class StartLearningSessionUseCaseTest {
     fun invoke_validUser_sessionCountersAreZero() = runTest {
         var capturedSession: LearningSession? = null
         coEvery { sessionRepository.createSession(any()) } answers {
-            capturedSession = firstArg(); Unit
+            capturedSession = firstArg(); fixedUUID1
         }
 
         useCase("user1")
@@ -168,7 +168,7 @@ class StartLearningSessionUseCaseTest {
     fun invoke_validUser_sessionAveragePronunciationScoreIsZero() = runTest {
         var capturedSession: LearningSession? = null
         coEvery { sessionRepository.createSession(any()) } answers {
-            capturedSession = firstArg(); Unit
+            capturedSession = firstArg(); fixedUUID1
         }
 
         useCase("user1")
@@ -181,7 +181,7 @@ class StartLearningSessionUseCaseTest {
         coEvery { bookRepository.getCurrentBookPosition("user1") } returns Pair(3, 7)
         var capturedSession: LearningSession? = null
         coEvery { sessionRepository.createSession(any()) } answers {
-            capturedSession = firstArg(); Unit
+            capturedSession = firstArg(); fixedUUID1
         }
 
         useCase("user1")
@@ -196,7 +196,7 @@ class StartLearningSessionUseCaseTest {
     fun invoke_validUser_sessionSummaryIsEmpty() = runTest {
         var capturedSession: LearningSession? = null
         coEvery { sessionRepository.createSession(any()) } answers {
-            capturedSession = firstArg(); Unit
+            capturedSession = firstArg(); fixedUUID1
         }
 
         useCase("user1")
@@ -208,7 +208,7 @@ class StartLearningSessionUseCaseTest {
     fun invoke_validUser_sessionMoodEstimateIsNull() = runTest {
         var capturedSession: LearningSession? = null
         coEvery { sessionRepository.createSession(any()) } answers {
-            capturedSession = firstArg(); Unit
+            capturedSession = firstArg(); fixedUUID1
         }
 
         useCase("user1")
@@ -304,7 +304,7 @@ class StartLearningSessionUseCaseTest {
     @Test
     fun invoke_createSessionCalledBeforeAddSessionEvent() = runTest {
         val callOrder = mutableListOf<String>()
-        coEvery { sessionRepository.createSession(any()) } answers { callOrder.add("create"); Unit }
+        coEvery { sessionRepository.createSession(any()) } answers { callOrder.add("create"); fixedUUID1 }
         coEvery { sessionRepository.addSessionEvent(any()) } answers { callOrder.add("event"); Unit }
 
         useCase("user1")
