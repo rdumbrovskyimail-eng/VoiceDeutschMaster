@@ -36,11 +36,11 @@ class SessionMapperTest {
         exercisesCompleted: Int = 8,
         exercisesCorrect: Int = 6,
         averagePronunciationScore: Float = 0.85f,
-        bookChapterStart: Int? = 1,
-        bookLessonStart: Int? = 2,
-        bookChapterEnd: Int? = 1,
-        bookLessonEnd: Int? = 3,
-        sessionSummary: String? = "Good session",
+        bookChapterStart: Int = 1,
+        bookLessonStart: Int = 2,
+        bookChapterEnd: Int = 1,
+        bookLessonEnd: Int = 3,
+        sessionSummary: String = "Good session",
         moodEstimate: String? = "GOOD",
         createdAt: Long = 500L,
     ) = SessionEntity(
@@ -112,7 +112,7 @@ class SessionMapperTest {
         sessionId: String = "ses_1",
         eventType: String = "WORD_ANSWERED",
         timestamp: Long = 1500L,
-        detailsJson: String? = """{"wordId":"word_1"}""",
+        detailsJson: String = """{"wordId":"word_1"}""",
         createdAt: Long = 1600L,
     ) = SessionEventEntity(
         id = id,
@@ -243,27 +243,27 @@ class SessionMapperTest {
     }
 
     @Test
-    fun sessionEntity_toDomain_nullBookFields_preservedAsNull() {
+    fun sessionEntity_toDomain_defaultBookFields_mappedCorrectly() {
         val entity = buildSessionEntity(
-            bookChapterStart = null,
-            bookLessonStart = null,
-            bookChapterEnd = null,
-            bookLessonEnd = null,
+            bookChapterStart = 1,
+            bookLessonStart = 2,
+            bookChapterEnd = 1,
+            bookLessonEnd = 3,
         )
         with(SessionMapper) {
             val domain = entity.toDomain(json)
-            assertNull(domain.bookChapterStart)
-            assertNull(domain.bookLessonStart)
-            assertNull(domain.bookChapterEnd)
-            assertNull(domain.bookLessonEnd)
+            assertEquals(1, domain.bookChapterStart)
+            assertEquals(2, domain.bookLessonStart)
+            assertEquals(1, domain.bookChapterEnd)
+            assertEquals(3, domain.bookLessonEnd)
         }
     }
 
     @Test
-    fun sessionEntity_toDomain_nullSessionSummary_preservedAsNull() {
-        val entity = buildSessionEntity(sessionSummary = null)
+    fun sessionEntity_toDomain_defaultSessionSummary_mappedCorrectly() {
+        val entity = buildSessionEntity(sessionSummary = "Good session")
         with(SessionMapper) {
-            assertNull(entity.toDomain(json).sessionSummary)
+            assertEquals("Good session", entity.toDomain(json).sessionSummary)
         }
     }
 
@@ -410,23 +410,13 @@ class SessionMapperTest {
     fun learningSession_roundtrip_nullOptionalFields_preservedAsNull() {
         val original = buildSessionEntity(
             endedAt = null,
-            sessionSummary = null,
             moodEstimate = null,
-            bookChapterStart = null,
-            bookLessonStart = null,
-            bookChapterEnd = null,
-            bookLessonEnd = null,
         )
         with(SessionMapper) {
             val domain = original.toDomain(json)
             val restored = domain.toEntity(json)
             assertNull(restored.endedAt)
-            assertNull(restored.sessionSummary)
             assertNull(restored.moodEstimate)
-            assertNull(restored.bookChapterStart)
-            assertNull(restored.bookLessonStart)
-            assertNull(restored.bookChapterEnd)
-            assertNull(restored.bookLessonEnd)
         }
     }
 
@@ -473,10 +463,10 @@ class SessionMapperTest {
     }
 
     @Test
-    fun sessionEventEntity_toDomain_nullDetailsJson_preservedAsNull() {
-        val entity = buildSessionEventEntity(detailsJson = null)
+    fun sessionEventEntity_toDomain_emptyDetailsJson_preservedAsEmpty() {
+        val entity = buildSessionEventEntity(detailsJson = "")
         with(SessionMapper) {
-            assertNull(entity.toDomain().detailsJson)
+            assertEquals("", entity.toDomain().detailsJson)
         }
     }
 
@@ -516,10 +506,11 @@ class SessionMapperTest {
     }
 
     @Test
-    fun sessionEvent_toEntity_nullDetailsJson_preservedAsNull() {
-        val domain = buildSessionEvent(detailsJson = null)
+    fun sessionEvent_toEntity_nonNullDetailsJson_preservedAsIs() {
+        val details = """{"wordId":"word_1"}"""
+        val domain = buildSessionEvent(detailsJson = details)
         with(SessionMapper) {
-            assertNull(domain.toEntity().detailsJson)
+            assertEquals(details, domain.toEntity().detailsJson)
         }
     }
 
@@ -552,13 +543,13 @@ class SessionMapperTest {
     }
 
     @Test
-    fun sessionEvent_roundtrip_nullDetailsJson_preservedAsNull() {
-        val original = buildSessionEventEntity(detailsJson = null)
+    fun sessionEvent_roundtrip_detailsJson_preserved() {
+        val original = buildSessionEventEntity(detailsJson = """{"wordId":"word_1"}""")
         with(SessionMapper) {
             val domain = original.toDomain()
-            assertNull(domain.detailsJson)
+            assertEquals("""{"wordId":"word_1"}""", domain.detailsJson)
             val restored = domain.toEntity()
-            assertNull(restored.detailsJson)
+            assertEquals("""{"wordId":"word_1"}""", restored.detailsJson)
         }
     }
 }
