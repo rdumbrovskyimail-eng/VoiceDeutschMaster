@@ -77,6 +77,21 @@ jobs:
           --no-daemon \
           --quiet || true
 
+    - name: Dump model signatures
+      run: |
+        echo "=== Domain models ==="
+        find app/src/main -name "*.kt" | xargs grep -l "data class" | sort | while read f; do
+          echo "--- $f ---"
+          grep -n "data class\|enum class\|sealed class\|object " "$f"
+        done
+
+        echo "=== Session/Statistics models ==="
+        find app/src/main -path "*/domain/model/*" -name "*.kt" -exec cat {} +
+
+        echo "=== VoiceCore engine public API ==="
+        grep -n "fun \|class \|interface " app/src/main/java/com/voicedeutsch/master/voicecore/engine/GeminiClient.kt || true
+        grep -n "fun \|class \|interface " app/src/main/java/com/voicedeutsch/master/voicecore/engine/VoiceCoreEngine*.kt || true
+
     - name: Run Unit Tests
       run: |
         ./gradlew testDebugUnitTest \
