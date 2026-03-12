@@ -3,12 +3,12 @@ package com.voicedeutsch.master.presentation.util
 import android.content.Context
 import org.junit.Assert.*
 import org.junit.Test
-import org.mockito.kotlin.mock
-import org.mockito.kotlin.whenever
+import io.mockk.every
+import io.mockk.mockk
 
 class UiTextTest {
 
-    private val context: Context = mock()
+    private val context: Context = mockk()
 
     // ── DynamicString ──────────────────────────────────────────────────────
 
@@ -43,7 +43,7 @@ class UiTextTest {
     @Test
     fun `StringResource asString resolves via context`() {
         val resId = android.R.string.ok
-        whenever(context.getString(resId)).thenReturn("OK")
+        every { context.getString(resId) } returns "OK"
         val uiText = UiText.StringResource(resId)
         assertEquals("OK", uiText.asString(context))
     }
@@ -51,7 +51,7 @@ class UiTextTest {
     @Test
     fun `StringResource with args asString resolves via context`() {
         val resId = android.R.string.ok
-        whenever(context.getString(resId, "arg1")).thenReturn("OK arg1")
+        every { context.getString(resId, "arg1") } returns "OK arg1"
         val uiText = UiText.StringResource(resId, arrayOf("arg1"))
         assertEquals("OK arg1", uiText.asString(context))
     }
