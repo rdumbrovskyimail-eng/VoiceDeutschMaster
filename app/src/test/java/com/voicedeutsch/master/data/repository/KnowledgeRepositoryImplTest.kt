@@ -1234,7 +1234,7 @@ class KnowledgeRepositoryImplTest {
 
     @Test
     fun recalculateOverdueItems_noOpDoesNotThrow() = runTest {
-        assertDoesNotThrow { repository.recalculateOverdueItems("user1") }
+        repository.recalculateOverdueItems("user1")
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
