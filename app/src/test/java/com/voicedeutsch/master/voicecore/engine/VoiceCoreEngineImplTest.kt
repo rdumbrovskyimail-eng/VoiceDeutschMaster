@@ -111,7 +111,6 @@ class VoiceCoreEngineImplTest {
         modelName: String = "gemini-2.5-flash-preview-native-audio-dialog",
         maxContextTokens: Int = GeminiConfig.MAX_CONTEXT_TOKENS,
     ) = GeminiConfig(
-        apiKey           = "test_key",
         modelName        = modelName,
         maxContextTokens = maxContextTokens,
     )
@@ -166,13 +165,14 @@ class VoiceCoreEngineImplTest {
         sessionId: String = "session_001",
         currentChapter: Int = 1,
         currentLesson: Int = 1,
-    ): StartLearningSessionUseCase.SessionData {
+    ): StartLearningSessionUseCase.SessionStartData {
         val session = mockk<com.voicedeutsch.master.domain.model.session.LearningSession>(relaxed = true)
         every { session.id } returns sessionId
-        return StartLearningSessionUseCase.SessionData(
+        return StartLearningSessionUseCase.SessionStartData(
             session        = session,
             currentChapter = currentChapter,
             currentLesson  = currentLesson,
+            userName       = "Test User",
         )
     }
 
