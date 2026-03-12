@@ -119,14 +119,14 @@ class AudioPipelineTest {
     @Test
     fun stopAll_withoutRecording_doesNotThrow() = runTest {
         pipeline.initialize()
-        assertDoesNotThrow { pipeline.stopAll() }
+        pipeline.stopAll()
     }
 
     @Test
     fun stopAll_afterRelease_doesNotThrow() = runTest {
         pipeline.initialize()
         pipeline.release()
-        assertDoesNotThrow { pipeline.stopAll() }
+        pipeline.stopAll()
     }
 
     // ── audioChunks flow ──────────────────────────────────────────────────
