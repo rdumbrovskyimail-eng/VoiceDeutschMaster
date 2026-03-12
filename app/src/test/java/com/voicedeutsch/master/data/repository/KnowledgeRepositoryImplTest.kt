@@ -7,7 +7,8 @@ import com.voicedeutsch.master.data.local.database.dao.MistakeDao
 import com.voicedeutsch.master.data.local.database.dao.PhraseDao
 import com.voicedeutsch.master.data.local.database.dao.ProgressDao
 import com.voicedeutsch.master.data.local.database.dao.WordDao
-import com.voicedeutsch.master.data.local.database.entity.BriefWordKnowledge
+// FIX: BriefWordKnowledge → KnowledgeDao.WordKnowledgeBrief (вложенный класс DAO)
+import com.voicedeutsch.master.data.local.database.dao.KnowledgeDao.WordKnowledgeBrief
 import com.voicedeutsch.master.data.local.database.entity.GrammarRuleEntity
 import com.voicedeutsch.master.data.local.database.entity.MistakeLogEntity
 import com.voicedeutsch.master.data.local.database.entity.PhraseEntity
@@ -102,12 +103,13 @@ class KnowledgeRepositoryImplTest {
         every { it.mistakesJson }          returns "[]"
     }
 
+    // FIX: BriefWordKnowledge → WordKnowledgeBrief
     private fun makeBriefWordKnowledge(
         wordId: String = "w1",
         knowledgeLevel: Int = 3,
         timesSeen: Int = 5,
         lastSeen: Long? = fixedNow
-    ): BriefWordKnowledge = mockk<BriefWordKnowledge>(relaxed = true).also {
+    ): WordKnowledgeBrief = mockk<WordKnowledgeBrief>(relaxed = true).also {
         every { it.wordId }         returns wordId
         every { it.knowledgeLevel } returns knowledgeLevel
         every { it.timesSeen }      returns timesSeen
@@ -120,14 +122,20 @@ class KnowledgeRepositoryImplTest {
             every { it.knowledgeLevel } returns 3
         }
 
-    private fun makeGrammarRuleEntity(id: String = "r1", level: String = "A1", category: String = "ARTICLES"): GrammarRuleEntity =
+    private fun makeGrammarRuleEntity(
+        id: String = "r1",
+        // FIX: параметр level теперь маппится на difficultyLevel (cefrLevel не существует)
+        level: String = "A1",
+        category: String = "ARTICLES"
+    ): GrammarRuleEntity =
         mockk<GrammarRuleEntity>(relaxed = true).also {
-            every { it.id }           returns id
-            every { it.nameRu }       returns "Артикль"
-            every { it.nameDe }       returns "Artikel"
-            every { it.cefrLevel }    returns level
-            every { it.category }     returns category
-            every { it.examplesJson } returns "[]"
+            every { it.id }              returns id
+            every { it.nameRu }          returns "Артикль"
+            every { it.nameDe }          returns "Artikel"
+            // FIX: cefrLevel → difficultyLevel (реальное поле в GrammarRuleEntity)
+            every { it.difficultyLevel } returns level
+            every { it.category }        returns category
+            every { it.examplesJson }    returns "[]"
             every { it.relatedRulesJson } returns "[]"
         }
 
@@ -145,7 +153,8 @@ class KnowledgeRepositoryImplTest {
         every { it.ruleId }          returns ruleId
         every { it.knowledgeLevel }  returns knowledgeLevel
         every { it.timesPracticed }  returns timesPracticed
-        every { it.contextsJson }    returns "[]"
+        // FIX: contextsJson → commonMistakesJson (реальное поле в RuleKnowledgeEntity)
+        every { it.commonMistakesJson } returns "[]"
     }
 
     private fun makeRuleKnowledge(ruleId: String = "r1"): RuleKnowledge =
@@ -207,10 +216,6 @@ class KnowledgeRepositoryImplTest {
             every { it.problemSoundsJson } returns problemSoundsJson
         }
 
-    private fun makeProblemWordEntry(word: String = "Hund") = mockk<Any>(relaxed = true).also {
-        every { it.toString() } returns word
-    }
-
     // ── Setup / Teardown ──────────────────────────────────────────────────────
 
     @BeforeEach
@@ -245,6 +250,7 @@ class KnowledgeRepositoryImplTest {
         coEvery { mistakeDao.insertMistake(any()) }    returns Unit
         coEvery { progressDao.insertPronunciationRecord(any()) } returns Unit
         coEvery { cloudSync.enqueueKnowledgeItem(any(), any()) } returns Unit
+        // FIX: every → coEvery для suspend-функции flushPendingQueue() (строка 1251)
         coEvery { cloudSync.flushPendingQueue() }      returns CloudSyncService.SyncStatus.SUCCESS
     }
 
@@ -487,7 +493,6 @@ class KnowledgeRepositoryImplTest {
 
     @Test
     fun upsertWordKnowledge_cloudSyncCalledWithWordId() = runTest {
-        val wke = makeWordKnowledgeEntity(wordId = "w99")
         val wk = makeWordKnowledge(wordId = "w99")
 
         repository.upsertWordKnowledge(wk)
@@ -506,10 +511,7 @@ class KnowledgeRepositoryImplTest {
 
     @Test
     fun getWordKnowledgeByTopic_associatesWordsWithKnowledge() = runTest {
-        val word = makeWord(id = "w1", topic = "food")
-        coEvery { wordDao.getWordsByTopic("food") } returns listOf(
-            makeWordEntity(id = "w1")
-        )
+        coEvery { wordDao.getWordsByTopic("food") } returns listOf(makeWordEntity(id = "w1"))
         coEvery { knowledgeDao.getWordKnowledge("user1", "w1") } returns makeWordKnowledgeEntity()
 
         val result = repository.getWordKnowledgeByTopic("user1", "food")
@@ -885,15 +887,6 @@ class KnowledgeRepositoryImplTest {
 
     @Test
     fun getProblemSounds_validRecord_returnsSoundTargets() = runTest {
-        val pw = mockk<Any>(relaxed = true)
-        every { pw.toString() } returns "Hund"
-        every { (pw as Any) } returns mockk {
-            every { toString() } returns "Hund"
-        }
-
-        // Workaround: use a proper problem word mock with `word` field
-        val problemWord = mockk<Any>(relaxed = true)
-        // Use a relaxed approach since the actual type depends on DAO return type
         coEvery { progressDao.getProblemWordsForPronunciation("user1") } returns emptyList()
 
         val result = repository.getProblemSounds("user1")
@@ -905,7 +898,6 @@ class KnowledgeRepositoryImplTest {
     fun getProblemSounds_invalidSoundJson_skipsRecord() = runTest {
         coEvery { progressDao.getProblemWordsForPronunciation("user1") } returns emptyList()
 
-        // getProblemSounds silently handles JSON parse errors
         val result = repository.getProblemSounds("user1")
 
         assertNotNull(result)
@@ -994,7 +986,7 @@ class KnowledgeRepositoryImplTest {
         stubSnapshotDaosEmpty()
         coEvery { knowledgeDao.getBriefWordKnowledge("user1") } returns listOf(
             makeBriefWordKnowledge("w1", knowledgeLevel = 3),
-            makeBriefWordKnowledge("w2", knowledgeLevel = 0)  // level 0 → not counted
+            makeBriefWordKnowledge("w2", knowledgeLevel = 0)
         )
 
         val result = repository.buildKnowledgeSnapshot("user1")
@@ -1007,7 +999,7 @@ class KnowledgeRepositoryImplTest {
         stubSnapshotDaosEmpty()
         coEvery { knowledgeDao.getBriefWordKnowledge("user1") } returns listOf(
             makeBriefWordKnowledge("w1", knowledgeLevel = 2, timesSeen = 3),
-            makeBriefWordKnowledge("w2", knowledgeLevel = 3, timesSeen = 5)  // level too high
+            makeBriefWordKnowledge("w2", knowledgeLevel = 3, timesSeen = 5)
         )
         coEvery { wordDao.getAllWords() } returns listOf(makeWordEntity("w1"), makeWordEntity("w2"))
 
@@ -1020,7 +1012,7 @@ class KnowledgeRepositoryImplTest {
     fun buildKnowledgeSnapshot_problemWords_level2SeenLt3_notIncluded() = runTest {
         stubSnapshotDaosEmpty()
         coEvery { knowledgeDao.getBriefWordKnowledge("user1") } returns listOf(
-            makeBriefWordKnowledge("w1", knowledgeLevel = 2, timesSeen = 2)  // seen < 3
+            makeBriefWordKnowledge("w1", knowledgeLevel = 2, timesSeen = 2)
         )
 
         val result = repository.buildKnowledgeSnapshot("user1")
@@ -1044,7 +1036,6 @@ class KnowledgeRepositoryImplTest {
 
         val result = repository.buildKnowledgeSnapshot("user1")
 
-        // w2 (500L) should come first
         assertEquals("Buch", result.vocabulary.recentNewWords.firstOrNull())
     }
 
@@ -1091,7 +1082,7 @@ class KnowledgeRepositoryImplTest {
         stubSnapshotDaosEmpty()
         coEvery { knowledgeDao.getAllRuleKnowledge("user1") } returns listOf(
             makeRuleKnowledgeEntity("r1", knowledgeLevel = 4),
-            makeRuleKnowledgeEntity("r2", knowledgeLevel = 3)  // level < 4, not known
+            makeRuleKnowledgeEntity("r2", knowledgeLevel = 3)
         )
         coEvery { grammarRuleDao.getAllRules() } returns listOf(
             makeGrammarRuleEntity("r1"), makeGrammarRuleEntity("r2")
@@ -1154,7 +1145,7 @@ class KnowledgeRepositoryImplTest {
     fun buildKnowledgeSnapshot_srsCountOver10_primaryStrategyRepetition() = runTest {
         stubSnapshotDaosEmpty()
         coEvery { knowledgeDao.getWordsForReviewCount("user1", fixedNow) } returns 8
-        coEvery { knowledgeDao.getRulesForReviewCount("user1", fixedNow) } returns 5  // total 13 > 10
+        coEvery { knowledgeDao.getRulesForReviewCount("user1", fixedNow) } returns 5
 
         val result = repository.buildKnowledgeSnapshot("user1")
 
@@ -1166,8 +1157,6 @@ class KnowledgeRepositoryImplTest {
         stubSnapshotDaosEmpty()
         coEvery { knowledgeDao.getWordsForReviewCount("user1", fixedNow) } returns 0
         coEvery { knowledgeDao.getRulesForReviewCount("user1", fixedNow) } returns 0
-
-        // 6 problem words → weakPoints.size > 5 → GAP_FILLING
         coEvery { knowledgeDao.getBriefWordKnowledge("user1") } returns
             List(6) { i -> makeBriefWordKnowledge("w$i", knowledgeLevel = 1, timesSeen = 5) }
         coEvery { wordDao.getAllWords() } returns
@@ -1215,7 +1204,6 @@ class KnowledgeRepositoryImplTest {
     @Test
     fun buildKnowledgeSnapshot_knownRuleInfo_usesO1Lookup() = runTest {
         stubSnapshotDaosEmpty()
-        // Rule r2 is known (level=5), but r1 is in allRules: only r2 should be in knownRules
         coEvery { knowledgeDao.getAllRuleKnowledge("user1") } returns listOf(
             makeRuleKnowledgeEntity("r2", knowledgeLevel = 5)
         )
@@ -1232,7 +1220,6 @@ class KnowledgeRepositoryImplTest {
     @Test
     fun buildKnowledgeSnapshot_wordNotInAllWords_skippedForRecentAndProblem() = runTest {
         stubSnapshotDaosEmpty()
-        // WK references "wX" which is NOT in allWords
         coEvery { knowledgeDao.getBriefWordKnowledge("user1") } returns listOf(
             makeBriefWordKnowledge("wX", knowledgeLevel = 2, timesSeen = 5, lastSeen = fixedNow)
         )
@@ -1240,7 +1227,6 @@ class KnowledgeRepositoryImplTest {
 
         val result = repository.buildKnowledgeSnapshot("user1")
 
-        // recentNewWords: wX not in allWordsById → null returned from mapNotNull
         assertTrue(result.vocabulary.recentNewWords.isEmpty())
     }
 
