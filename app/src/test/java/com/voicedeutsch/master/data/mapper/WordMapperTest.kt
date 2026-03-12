@@ -108,13 +108,13 @@ class WordMapperTest {
             assertEquals(entity.plural, domain.plural)
             assertEquals(entity.conjugationJson, domain.conjugationJson)
             assertEquals(entity.declensionJson, domain.declensionJson)
-            assertEquals(entity.exampleSentenceDe, domain.exampleSentenceDe)
-            assertEquals(entity.exampleSentenceRu, domain.exampleSentenceRu)
+            assertEquals(entity.exampleSentenceDe, domain.exampleSentenceDe!!)
+            assertEquals(entity.exampleSentenceRu, domain.exampleSentenceRu!!)
             assertEquals(entity.phoneticTranscription, domain.phoneticTranscription)
             assertEquals(entity.topic, domain.topic)
             assertEquals(entity.bookChapter, domain.bookChapter)
             assertEquals(entity.bookLesson, domain.bookLesson)
-            assertEquals(entity.audioCachePath, domain.audioCachePath)
+            assertEquals(entity.audioCachePath, domain.audioCachePath!!)
             assertEquals(entity.createdAt, domain.createdAt)
         }
     }
