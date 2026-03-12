@@ -103,7 +103,7 @@ class EndLearningSessionUseCaseTest {
         every { com.voicedeutsch.master.util.DateUtils.isSameDay(any(), any()) } returns false
         every { com.voicedeutsch.master.util.DateUtils.daysBetween(any(), any()) } returns 1L
         every { com.voicedeutsch.master.util.generateUUID() }                    returns fixedUUID
-        every { com.voicedeutsch.master.util.safeDivide(any(), any()) }          returns 0f
+        every { com.voicedeutsch.master.util.safeDivide(any<Int>(), any<Int>()) } returns 0f
 
         coEvery { sessionRepository.getSession(any()) }               returns makeSession()
         coEvery { sessionRepository.getSessionEvents(any()) }         returns emptyList()
