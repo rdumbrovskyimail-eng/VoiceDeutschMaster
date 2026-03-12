@@ -7,8 +7,8 @@ import com.google.firebase.ai.ai
 import com.google.firebase.ai.FirebaseAI
 import com.google.firebase.ai.type.FunctionCallPart
 import com.google.firebase.ai.type.FunctionResponsePart
-// FIX: LiveModel не существует в .type — заменён на GenerativeLiveModel из com.google.firebase.ai
-import com.google.firebase.ai.GenerativeLiveModel
+// FIX: используем LiveModel — именно это возвращает Firebase.ai(...).liveModel(...)
+import com.google.firebase.ai.LiveModel
 import com.google.firebase.ai.type.LiveSession
 import com.google.firebase.ai.type.PublicPreviewAPI
 import com.voicedeutsch.master.voicecore.context.ContextBuilder
@@ -36,8 +36,8 @@ class GeminiClientTest {
 
     // Firebase mocks
     private lateinit var mockFirebaseAI: FirebaseAI
-    // FIX: LiveModel → GenerativeLiveModel
-    private lateinit var mockLiveModel:   GenerativeLiveModel
+    // ВЕРНО — именно это возвращает Firebase.ai(...).liveModel(...)
+    private lateinit var mockLiveModel:   LiveModel
     private lateinit var mockLiveSession: LiveSession
 
     @BeforeEach
@@ -55,7 +55,7 @@ class GeminiClientTest {
         client = GeminiClient(defaultConfig)
 
         mockFirebaseAI   = mockk(relaxed = true)
-        mockLiveModel    = mockk(relaxed = true)
+        mockLiveModel    = mockk<LiveModel>(relaxed = true)
         mockLiveSession  = mockk(relaxed = true)
 
         mockkStatic(Firebase::class)
