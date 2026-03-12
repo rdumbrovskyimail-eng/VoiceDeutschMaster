@@ -7,6 +7,7 @@ import com.voicedeutsch.master.domain.model.book.Chapter
 import com.voicedeutsch.master.domain.model.book.Lesson
 import com.voicedeutsch.master.domain.model.book.LessonContent
 import com.voicedeutsch.master.domain.model.book.LessonFocus
+import com.voicedeutsch.master.domain.model.book.LessonVocabularyEntry
 import com.voicedeutsch.master.domain.repository.BookRepository
 import com.voicedeutsch.master.domain.repository.UserRepository
 import com.voicedeutsch.master.domain.usecase.book.GetCurrentLessonUseCase
@@ -43,7 +44,7 @@ class BookViewModelTest {
         lesson = Lesson(number = lessonNumber, chapterNumber = chapterNumber, titleDe = lessonTitle, titleRu = lessonTitle),
         content = LessonContent(title = lessonTitle, introduction = "Intro", mainContent = "Content"),
         progress = null,
-        vocabulary = emptyList(),
+        vocabulary = emptyList<LessonVocabularyEntry>(),
         chapterNumber = chapterNumber,
         lessonNumber = lessonNumber,
     )
