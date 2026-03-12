@@ -83,7 +83,7 @@ class SessionMapperTest {
         bookChapterEnd: Int = 1,
         bookLessonEnd: Int = 3,
         sessionSummary: String = "Good session",
-        moodEstimate: MoodEstimate? = MoodEstimate.GOOD,
+        moodEstimate: MoodEstimate? = MoodEstimate.MOTIVATED,
         createdAt: Long = 500L,
     ) = LearningSession(
         id = id,
@@ -110,7 +110,7 @@ class SessionMapperTest {
     private fun buildSessionEventEntity(
         id: String = "evt_1",
         sessionId: String = "ses_1",
-        eventType: String = "WORD_ANSWERED",
+        eventType: String = "WORD_REVIEWED",
         timestamp: Long = 1500L,
         detailsJson: String = """{"wordId":"word_1"}""",
         createdAt: Long = 1600L,
@@ -126,7 +126,7 @@ class SessionMapperTest {
     private fun buildSessionEvent(
         id: String = "evt_1",
         sessionId: String = "ses_1",
-        eventType: SessionEventType = SessionEventType.WORD_ANSWERED,
+        eventType: SessionEventType = SessionEventType.WORD_REVIEWED,
         timestamp: Long = 1500L,
         detailsJson: String = """{"wordId":"word_1"}""",
         createdAt: Long = 1600L,
@@ -163,7 +163,7 @@ class SessionMapperTest {
             assertEquals(entity.bookChapterEnd, domain.bookChapterEnd)
             assertEquals(entity.bookLessonEnd, domain.bookLessonEnd)
             assertEquals(entity.sessionSummary, domain.sessionSummary)
-            assertEquals(MoodEstimate.GOOD, domain.moodEstimate)
+            assertEquals(MoodEstimate.MOTIVATED, domain.moodEstimate)
             assertEquals(entity.createdAt, domain.createdAt)
         }
     }
@@ -429,7 +429,7 @@ class SessionMapperTest {
             val domain = entity.toDomain()
             assertEquals(entity.id, domain.id)
             assertEquals(entity.sessionId, domain.sessionId)
-            assertEquals(SessionEventType.WORD_ANSWERED, domain.eventType)
+            assertEquals(SessionEventType.WORD_REVIEWED, domain.eventType)
             assertEquals(entity.timestamp, domain.timestamp)
             assertEquals(entity.detailsJson, domain.detailsJson)
             assertEquals(entity.createdAt, domain.createdAt)
