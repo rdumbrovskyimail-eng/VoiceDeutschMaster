@@ -41,14 +41,11 @@ class BookViewModelTest {
     ) = GetCurrentLessonUseCase.CurrentLessonData(
         chapter = Chapter(number = chapterNumber, titleDe = chapterTitle, titleRu = chapterTitle, level = "A1", lessons = emptyList()),
         lesson = Lesson(number = lessonNumber, chapterNumber = chapterNumber, titleDe = lessonTitle, titleRu = lessonTitle),
-        content = LessonContent(
-            title = lessonTitle,
-            introduction = "Intro",
-            mainContent = "Content",
-            phoneticNotes = "",
-            exerciseMarkers = emptyList(),
-            vocabulary = emptyList(),
-        ),
+        content = LessonContent(title = lessonTitle, introduction = "Intro", mainContent = "Content"),
+        progress = null,
+        vocabulary = emptyList(),
+        chapterNumber = chapterNumber,
+        lessonNumber = lessonNumber,
     )
 
     private fun buildBookProgress(
