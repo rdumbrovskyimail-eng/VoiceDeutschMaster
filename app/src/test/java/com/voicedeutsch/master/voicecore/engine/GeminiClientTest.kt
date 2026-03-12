@@ -2,10 +2,13 @@
 package com.voicedeutsch.master.voicecore.engine
 
 import com.google.firebase.Firebase
+// FIX: добавлен импорт extension-функции ai (была Unresolved reference 'ai')
+import com.google.firebase.ai.ai
 import com.google.firebase.ai.FirebaseAI
 import com.google.firebase.ai.type.FunctionCallPart
 import com.google.firebase.ai.type.FunctionResponsePart
-import com.google.firebase.ai.type.LiveModel
+// FIX: LiveModel не существует в .type — заменён на GenerativeLiveModel из com.google.firebase.ai
+import com.google.firebase.ai.GenerativeLiveModel
 import com.google.firebase.ai.type.LiveSession
 import com.google.firebase.ai.type.PublicPreviewAPI
 import com.voicedeutsch.master.voicecore.context.ContextBuilder
@@ -33,7 +36,8 @@ class GeminiClientTest {
 
     // Firebase mocks
     private lateinit var mockFirebaseAI: FirebaseAI
-    private lateinit var mockLiveModel:  LiveModel
+    // FIX: LiveModel → GenerativeLiveModel
+    private lateinit var mockLiveModel:   GenerativeLiveModel
     private lateinit var mockLiveSession: LiveSession
 
     @BeforeEach
@@ -44,8 +48,8 @@ class GeminiClientTest {
         every { android.util.Log.e(any(), any<String>(), any()) } returns 0
         every { android.util.Log.e(any(), any<String>()) } returns 0
 
+        // FIX: убран несуществующий параметр apiKey
         defaultConfig = GeminiConfig(
-            apiKey    = "test_api_key",
             modelName = "gemini-2.5-flash-preview-native-audio-dialog",
         )
         client = GeminiClient(defaultConfig)
@@ -57,10 +61,10 @@ class GeminiClientTest {
         mockkStatic(Firebase::class)
         every { Firebase.ai(backend = any()) } returns mockFirebaseAI
         every { mockFirebaseAI.liveModel(
-            modelName        = any(),
-            generationConfig = any(),
+            modelName         = any(),
+            generationConfig  = any(),
             systemInstruction = any(),
-            tools            = any(),
+            tools             = any(),
         ) } returns mockLiveModel
         coEvery { mockLiveModel.connect() } returns mockLiveSession
     }
@@ -126,7 +130,8 @@ class GeminiClientTest {
 
     @Test
     fun configSetter_updatesConfig() {
-        val newConfig = GeminiConfig(apiKey = "new_key", modelName = "new-model")
+        // FIX: убран несуществующий параметр apiKey
+        val newConfig = GeminiConfig(modelName = "new-model")
         client.config = newConfig
         assertEquals(newConfig, client.config)
     }
@@ -135,7 +140,6 @@ class GeminiClientTest {
 
     @Test
     fun release_clearsSessionResumptionHandle() {
-        // Set via internal mechanism (reflection or by testing the effect of release)
         client.release()
         assertNull(client.sessionResumptionHandle)
     }
@@ -228,10 +232,10 @@ class GeminiClientTest {
         client.connect(buildSessionContext())
         verify {
             mockFirebaseAI.liveModel(
-                modelName        = defaultConfig.modelName,
-                generationConfig = any(),
+                modelName         = defaultConfig.modelName,
+                generationConfig  = any(),
                 systemInstruction = any(),
-                tools            = any(),
+                tools             = any(),
             )
         }
     }
@@ -240,8 +244,6 @@ class GeminiClientTest {
     fun connect_success_usesSystemPromptAsSystemInstruction() = runTest {
         val ctx = buildSessionContext(systemPrompt = "MY_SYSTEM_INSTRUCTION")
         client.connect(ctx)
-        // Verifying the content contains the system prompt is done indirectly
-        // since systemInstruction is built internally; we verify connect was called
         coVerify { mockLiveModel.connect() }
     }
 
@@ -266,7 +268,6 @@ class GeminiClientTest {
     @Test
     fun connect_withEmptyDeclarations_doesNotAddFunctionsTool() = runTest {
         client.connect(buildSessionContext(declarations = emptyList()))
-        // Just verify connect succeeds without function declarations tool
         coVerify { mockLiveModel.connect() }
     }
 
@@ -281,7 +282,6 @@ class GeminiClientTest {
 
     @Test
     fun connect_declarationWithNoParams_mappedWithDummyOptionalParam() = runTest {
-        // Verifies that a declaration with null parameters does NOT crash and connects
         val decls = listOf(buildDeclarationNoParams("trigger_celebration"))
         client.connect(buildSessionContext(declarations = decls))
         coVerify { mockLiveModel.connect() }
@@ -374,14 +374,12 @@ class GeminiClientTest {
 
     @Test
     fun connect_oneDeclarationMappingFails_othersStillRegistered() = runTest {
-        // If a declaration causes an exception during mapping it is skipped
         val good = buildDeclarationWithParams("save_word")
         val bad  = GeminiFunctionDeclaration(
-            name        = "",            // empty name might cause Firebase to throw
+            name        = "",
             description = "bad",
             parameters  = null,
         )
-        // Should not throw — bad one is skipped, good one proceeds
         assertDoesNotThrow { runTest { client.connect(buildSessionContext(listOf(good, bad))) } }
     }
 
@@ -439,7 +437,6 @@ class GeminiClientTest {
     fun disconnect_afterConnect_subsequentStopConversation_doesNotThrow() = runTest {
         client.connect(buildSessionContext())
         client.disconnect()
-        // liveSession is nulled after disconnect
         assertDoesNotThrow { runTest { client.stopConversation() } }
     }
 
