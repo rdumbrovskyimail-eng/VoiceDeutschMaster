@@ -4,11 +4,7 @@ package com.voicedeutsch.master.data.remote.sync
 import android.content.Context
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
-import android.database.sqlite.SQLiteDatabase
-import androidx.sqlite.db.SupportSQLiteDatabase
-import androidx.sqlite.db.SupportSQLiteOpenHelper
 import com.google.android.gms.tasks.Task
-import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.CollectionReference
@@ -22,6 +18,10 @@ import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageReference
 import com.google.firebase.storage.UploadTask
 import com.voicedeutsch.master.data.local.database.AppDatabase
+import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.sqlite.db.SupportSQLiteOpenHelper
+// FIX: добавлен отсутствующий импорт — все "Unresolved reference 'await'" исчезнут
+import kotlinx.coroutines.tasks.await
 import io.mockk.Runs
 import io.mockk.coEvery
 import io.mockk.every
@@ -80,29 +80,19 @@ class BackupManagerTest {
         openHelper = mockk(relaxed = true)
         writableDatabase = mockk(relaxed = true)
 
-        // Context filesDir → our tempDir
         every { context.filesDir } returns tempDir
-
-        // DB open helper
         every { db.openHelper } returns openHelper
         every { openHelper.writableDatabase } returns writableDatabase
         every { writableDatabase.execSQL(any()) } just Runs
-
-        // Auth
         every { auth.currentUser } returns firebaseUser
         every { firebaseUser.uid } returns "test_uid"
-
-        // Storage chain
         every { storage.reference } returns storageRef
         every { storageRef.child(any()) } returns childRef
-
-        // Firestore chain
         every { firestore.collection("users") } returns usersCollection
         every { usersCollection.document("test_uid") } returns userDocument
         every { userDocument.collection("backups") } returns backupsCollection
         every { backupsCollection.document(any()) } returns backupDocument
 
-        // Package manager (for getAppVersion)
         val packageManager = mockk<PackageManager>(relaxed = true)
         val packageInfo = PackageInfo().apply { versionName = "1.0.0" }
         every { context.packageManager } returns packageManager
@@ -118,7 +108,6 @@ class BackupManagerTest {
     fun createLocalBackup_vacuumIntoExecuted_returnsBackupPath() = runTest {
         val sqlSlot = slot<String>()
         every { writableDatabase.execSQL(capture(sqlSlot)) } answers {
-            // Simulate VACUUM INTO by creating the actual file
             val pathRegex = Regex("VACUUM INTO '(.+)'")
             val match = pathRegex.find(sqlSlot.captured)
             match?.groupValues?.get(1)?.let { File(it).writeBytes(ByteArray(100)) }
@@ -135,7 +124,6 @@ class BackupManagerTest {
     @Test
     fun createLocalBackup_vacuumProducesEmptyFile_returnsNull() = runTest {
         every { writableDatabase.execSQL(any()) } answers {
-            // VACUUM INTO creates an empty file — simulates failure
             val pathRegex = Regex("VACUUM INTO '(.+)'")
             val match = pathRegex.find(firstArg<String>())
             match?.groupValues?.get(1)?.let { File(it).createNewFile() }
@@ -173,7 +161,6 @@ class BackupManagerTest {
 
     @Test
     fun createLocalBackup_pathContainsEscapedSingleQuotes_ifPathHasThem() = runTest {
-        // Verify SQL injection protection: single quotes in path are escaped
         val sqlSlot = slot<String>()
         every { writableDatabase.execSQL(capture(sqlSlot)) } answers {
             val pathRegex = Regex("VACUUM INTO '(.+)'")
@@ -183,8 +170,7 @@ class BackupManagerTest {
 
         sut.createLocalBackup()
 
-        // SQL must not contain unescaped problematic sequences
-        assertFalse(sqlSlot.captured.contains("''"))  // normal path — no escaping needed
+        assertFalse(sqlSlot.captured.contains("''"))
         assertTrue(sqlSlot.captured.contains("VACUUM INTO '"))
     }
 
@@ -203,8 +189,8 @@ class BackupManagerTest {
     @Test
     fun listLocalBackups_multipleFiles_sortedByLastModifiedDescending() {
         val backupsDir = File(tempDir, "backups").apply { mkdirs() }
-        val older = File(backupsDir, "backup_1000.db").apply { writeText("x"); setLastModified(1000L) }
-        val newer = File(backupsDir, "backup_2000.db").apply { writeText("x"); setLastModified(2000L) }
+        val older  = File(backupsDir, "backup_1000.db").apply { writeText("x"); setLastModified(1000L) }
+        val newer  = File(backupsDir, "backup_2000.db").apply { writeText("x"); setLastModified(2000L) }
         val newest = File(backupsDir, "backup_3000.db").apply { writeText("x"); setLastModified(3000L) }
 
         val result = sut.listLocalBackups()
@@ -349,7 +335,8 @@ class BackupManagerTest {
 
         val uploadTask = mockk<UploadTask>()
         every { childRef.putFile(any(), any()) } returns uploadTask
-        every { uploadTask.await() } throws RuntimeException("Upload failed")
+        // FIX: every → coEvery для suspend-функции await() (строка 312)
+        coEvery { uploadTask.await() } throws RuntimeException("Upload failed")
 
         val result = sut.createCloudBackup()
 
@@ -368,18 +355,20 @@ class BackupManagerTest {
         val uploadTask = mockk<UploadTask>()
         val taskSnapshot = mockk<UploadTask.TaskSnapshot>(relaxed = true)
         every { childRef.putFile(any(), any()) } returns uploadTask
-        every { uploadTask.await() } returns taskSnapshot
+        // FIX: every → coEvery для suspend await()
+        coEvery { uploadTask.await() } returns taskSnapshot
 
         val setTask = mockk<Task<Void>>(relaxed = true)
         every { backupDocument.set(any()) } returns setTask
-        every { setTask.await() } returns null
+        // FIX: every → coEvery для suspend await()
+        coEvery { setTask.await() } returns null
 
-        // listCloudBackups for pruning — return few backups (under limit)
         val query = mockk<Query>(relaxed = true)
         val querySnapshot = mockk<QuerySnapshot>(relaxed = true)
         every { backupsCollection.orderBy(any<String>(), any()) } returns query
         every { query.get() } returns mockk(relaxed = true) {
-            every { await() } returns querySnapshot
+            // FIX: every → coEvery для suspend await()
+            coEvery { await() } returns querySnapshot
         }
         every { querySnapshot.documents } returns emptyList()
 
@@ -408,7 +397,8 @@ class BackupManagerTest {
         val query = mockk<Query>(relaxed = true)
         every { backupsCollection.orderBy(any<String>(), any()) } returns query
         every { query.get() } returns mockk(relaxed = true) {
-            every { await() } throws RuntimeException("Firestore error")
+            // FIX: coEvery для suspend await()
+            coEvery { await() } throws RuntimeException("Firestore error")
         }
 
         val result = sut.listCloudBackups()
@@ -440,7 +430,8 @@ class BackupManagerTest {
         val query = mockk<Query>(relaxed = true)
         every { backupsCollection.orderBy(any<String>(), any()) } returns query
         every { query.get() } returns mockk(relaxed = true) {
-            every { await() } returns querySnapshot
+            // FIX: coEvery для suspend await()
+            coEvery { await() } returns querySnapshot
         }
 
         val result = sut.listCloudBackups()
@@ -466,7 +457,7 @@ class BackupManagerTest {
         val query = mockk<Query>(relaxed = true)
         every { backupsCollection.orderBy(any<String>(), any()) } returns query
         every { query.get() } returns mockk(relaxed = true) {
-            every { await() } returns querySnapshot
+            coEvery { await() } returns querySnapshot
         }
 
         val result = sut.listCloudBackups()
@@ -486,7 +477,7 @@ class BackupManagerTest {
         val query = mockk<Query>(relaxed = true)
         every { backupsCollection.orderBy(any<String>(), any()) } returns query
         every { query.get() } returns mockk(relaxed = true) {
-            every { await() } returns querySnapshot
+            coEvery { await() } returns querySnapshot
         }
 
         val result = sut.listCloudBackups()
@@ -500,7 +491,8 @@ class BackupManagerTest {
     fun restoreFromCloudBackup_downloadFails_returnsFalse() = runTest {
         val downloadTask = mockk<FileDownloadTask>(relaxed = true)
         every { childRef.getFile(any<File>()) } returns downloadTask
-        every { downloadTask.await() } throws RuntimeException("Download failed")
+        // FIX: coEvery для suspend await()
+        coEvery { downloadTask.await() } throws RuntimeException("Download failed")
 
         val result = sut.restoreFromCloudBackup("users/test_uid/backups/backup.db")
 
@@ -515,12 +507,12 @@ class BackupManagerTest {
         val downloadTask = mockk<FileDownloadTask>(relaxed = true)
         val taskSnapshot = mockk<FileDownloadTask.TaskSnapshot>(relaxed = true)
         every { childRef.getFile(any<File>()) } answers {
-            // Simulate download by writing to the temp file
             val file = firstArg<File>()
             file.writeBytes(ByteArray(256))
             downloadTask
         }
-        every { downloadTask.await() } returns taskSnapshot
+        // FIX: coEvery для suspend await()
+        coEvery { downloadTask.await() } returns taskSnapshot
 
         every { db.close() } just Runs
         val dbFile = File(tempDir, "restored.db")
@@ -545,7 +537,8 @@ class BackupManagerTest {
             file.writeBytes(ByteArray(64))
             downloadTask
         }
-        every { downloadTask.await() } returns taskSnapshot
+        // FIX: coEvery для suspend await()
+        coEvery { downloadTask.await() } returns taskSnapshot
         every { db.close() } throws RuntimeException("Cannot close DB")
 
         val result = sut.restoreFromCloudBackup("users/test_uid/backups/backup.db")
