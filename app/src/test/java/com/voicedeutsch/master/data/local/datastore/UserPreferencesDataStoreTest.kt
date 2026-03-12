@@ -24,7 +24,6 @@ import org.robolectric.annotation.Config
 import java.io.File
 
 @OptIn(ExperimentalCoroutinesApi::class)
-@ExtendWith(org.robolectric.junit.rules.ErrorCollector::class)
 @Config(sdk = [33])
 class UserPreferencesDataStoreTest {
 
