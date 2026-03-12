@@ -1,4 +1,5 @@
 // Путь: src/test/java/com/voicedeutsch/master/data/remote/sync/CloudSyncServiceTest.kt
+@file:Suppress("NULL_FOR_NONNULL_TYPE")
 package com.voicedeutsch.master.data.remote.sync
 
 import app.cash.turbine.test
