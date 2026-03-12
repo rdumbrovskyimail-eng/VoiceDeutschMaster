@@ -955,7 +955,7 @@ class BookRepositoryImplTest {
     @Test
     fun searchContent_nullVocabularyInContent_treatedAsEmpty() = runTest {
         val content = mockk<LessonContent>(relaxed = true).also {
-            every { it.vocabulary } returns null
+            every { it.vocabulary } returns emptyList()
         }
         coEvery { bookFileReader.readMetadata() }           returns makeBookMetadata(totalChapters = 1)
         coEvery { bookFileReader.readChapterInfo(1) }       returns makeChapterInfo(lessonsCount = 1)
