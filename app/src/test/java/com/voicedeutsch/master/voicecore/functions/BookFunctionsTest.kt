@@ -37,7 +37,7 @@ class BookFunctionsTest {
     @Test
     fun getCurrentLesson_hasNoRequiredParams() {
         val decl = declarations.first { it.name == "get_current_lesson" }
-        assertTrue(decl.required.isNullOrEmpty())
+        assertTrue(decl.required.isEmpty())
     }
 
     // ── advance_to_next_lesson ───────────────────────────────────────────
@@ -68,7 +68,7 @@ class BookFunctionsTest {
     @Test
     fun advanceToNextLesson_scoreIsRequired() {
         val decl = declarations.first { it.name == "advance_to_next_lesson" }
-        assertTrue(decl.required.orEmpty().contains("score"))
+        assertTrue(decl.required.contains("score"))
     }
 
     // ── mark_lesson_complete ─────────────────────────────────────────────
@@ -136,7 +136,7 @@ class BookFunctionsTest {
     @Test
     fun readLessonParagraph_indexIsRequired() {
         val decl = declarations.first { it.name == "read_lesson_paragraph" }
-        assertTrue(decl.required.orEmpty().contains("index"))
+        assertTrue(decl.required.contains("index"))
     }
 
     // ── declaration order ────────────────────────────────────────────────
