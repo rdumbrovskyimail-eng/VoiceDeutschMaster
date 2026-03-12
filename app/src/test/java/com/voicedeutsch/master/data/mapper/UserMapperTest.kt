@@ -29,7 +29,7 @@ class UserMapperTest {
         nativeLanguage: String = "ru",
         targetLanguage: String = "de",
         cefrLevel: String = "B1",
-        cefrSubLevel: String? = "B1.2",
+        cefrSubLevel: Int = 1,
         totalSessions: Int = 42,
         totalMinutes: Int = 630,
         totalWordsLearned: Int = 200,
@@ -215,7 +215,7 @@ class UserMapperTest {
     @Test
     fun userEntity_toDomain_nullOptionalFields_preservedAsNull() {
         val entity = buildUserEntity(
-            cefrSubLevel = null,
+            cefrSubLevel = 0,
             age = null,
             hobbies = null,
             learningGoals = null,
@@ -310,7 +310,6 @@ class UserMapperTest {
     @Test
     fun userProfile_toEntity_nullOptionalFields_preservedAsNull() {
         val domain = buildUserProfile(
-            cefrSubLevel = null,
             age = null,
             hobbies = null,
             learningGoals = null,
@@ -403,7 +402,7 @@ class UserMapperTest {
     @Test
     fun userProfile_roundtrip_nullOptionalFields_preservedAsNull() {
         val original = buildUserEntity(
-            cefrSubLevel = null,
+            cefrSubLevel = 0,
             age = null,
             hobbies = null,
             learningGoals = null,
