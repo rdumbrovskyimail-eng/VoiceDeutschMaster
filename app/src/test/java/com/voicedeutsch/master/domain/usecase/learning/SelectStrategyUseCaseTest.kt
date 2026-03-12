@@ -4,7 +4,7 @@ package com.voicedeutsch.master.domain.usecase.learning
 import com.voicedeutsch.master.domain.model.LearningStrategy
 import com.voicedeutsch.master.domain.model.knowledge.GrammarRule
 import com.voicedeutsch.master.domain.model.knowledge.Word
-import com.voicedeutsch.master.domain.model.session.Session
+import com.voicedeutsch.master.domain.model.session.LearningSession
 import com.voicedeutsch.master.domain.repository.BookRepository
 import com.voicedeutsch.master.domain.repository.KnowledgeRepository
 import com.voicedeutsch.master.domain.repository.SessionRepository
@@ -44,7 +44,7 @@ class SelectStrategyUseCaseTest {
     private fun makeSession(
         strategiesUsed: List<String> = emptyList(),
         startedAt: Long = fixedNow - 86_400_000L
-    ): Session = mockk<Session>(relaxed = true).also {
+    ): LearningSession = mockk<LearningSession>(relaxed = true).also {
         every { it.strategiesUsed } returns strategiesUsed
         every { it.startedAt }      returns startedAt
     }
