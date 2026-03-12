@@ -295,12 +295,12 @@ class BackupManagerTest {
     fun cleanOldLocalBackups_emptyDir_doesNotThrow() = runTest {
         File(tempDir, "backups").mkdirs()
 
-        assertDoesNotThrow { sut.cleanOldLocalBackups() }
+        sut.cleanOldLocalBackups()
     }
 
     @Test
     fun cleanOldLocalBackups_noDirExists_doesNotThrow() = runTest {
-        assertDoesNotThrow { sut.cleanOldLocalBackups() }
+        sut.cleanOldLocalBackups()
     }
 
     // ── createCloudBackup ─────────────────────────────────────────────────────
@@ -361,7 +361,7 @@ class BackupManagerTest {
         val setTask = mockk<Task<Void>>(relaxed = true)
         every { backupDocument.set(any()) } returns setTask
         // FIX: every → coEvery для suspend await()
-        coEvery { setTask.await() } returns null
+        coEvery { setTask.await() } returns mockk()
 
         val query = mockk<Query>(relaxed = true)
         val querySnapshot = mockk<QuerySnapshot>(relaxed = true)
