@@ -62,14 +62,14 @@ class FunctionRouterTest {
 
     @Test
     fun functionCallResult_equals_twoIdentical() {
-        val a = FunctionRouter.FunctionCallResult("f", true, "{}")
-        val b = FunctionRouter.FunctionCallResult("f", true, "{}")
+        val a = FunctionCallResult("f", true, "{}")
+        val b = FunctionCallResult("f", true, "{}")
         assertEquals(a, b)
     }
 
     @Test
     fun functionCallResult_copy_changesOnlySpecifiedField() {
-        val original = FunctionRouter.FunctionCallResult("f", true, "{}")
+        val original = FunctionCallResult("f", true, "{}")
         val copied = original.copy(success = false)
         assertEquals("f", copied.functionName)
         assertFalse(copied.success)
@@ -579,13 +579,13 @@ class FunctionRouterTest {
 
     // ── helpers ───────────────────────────────────────────────────────────
 
-    private fun buildLessonDataWithContent(content: String): GetCurrentLessonUseCase.Result {
+    private fun buildLessonDataWithContent(content: String): GetCurrentLessonUseCase.LessonData {
         val lessonContent = mockk<com.voicedeutsch.master.domain.model.book.LessonContent>(relaxed = true) {
             io.mockk.every { mainContent } returns content
             io.mockk.every { vocabulary } returns emptyList()
         }
         return mockk(relaxed = true) {
-            io.mockk.every { this@mockk.content } returns lessonContent
+            io.mockk.every { this@mockk.lessonContent } returns lessonContent
         }
     }
 }
