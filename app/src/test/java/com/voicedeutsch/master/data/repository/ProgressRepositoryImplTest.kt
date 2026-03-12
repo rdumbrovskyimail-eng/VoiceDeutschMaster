@@ -11,7 +11,7 @@ import com.voicedeutsch.master.data.local.database.dao.WordDao
 import com.voicedeutsch.master.data.local.database.entity.BookProgressEntity
 import com.voicedeutsch.master.data.local.database.entity.DailyStatisticsEntity
 import com.voicedeutsch.master.data.local.database.entity.GrammarRuleEntity
-import com.voicedeutsch.master.data.local.database.entity.ProblemWordEntry
+
 import com.voicedeutsch.master.data.local.database.entity.RuleKnowledgeEntity
 import com.voicedeutsch.master.data.local.database.entity.UserEntity
 import com.voicedeutsch.master.data.local.database.entity.WordEntity
@@ -96,16 +96,13 @@ class ProgressRepositoryImplTest {
     ): RuleKnowledgeEntity = mockk<RuleKnowledgeEntity>(relaxed = true).also {
         every { it.ruleId }         returns ruleId
         every { it.knowledgeLevel } returns knowledgeLevel
-        every { it.contextsJson }   returns "[]"
     }
 
     private fun makeGrammarRuleEntity(
         id: String = "r1",
-        level: String = "A1",
         category: String = "ARTICLES"
     ): GrammarRuleEntity = mockk<GrammarRuleEntity>(relaxed = true).also {
         every { it.id }           returns id
-        every { it.cefrLevel }    returns level
         every { it.category }     returns category
         every { it.examplesJson } returns "[]"
         every { it.relatedRulesJson } returns "[]"
@@ -123,11 +120,6 @@ class ProgressRepositoryImplTest {
 
     private fun makeDailyStatisticsEntity(): DailyStatisticsEntity =
         mockk<DailyStatisticsEntity>(relaxed = true)
-
-    private fun makeProblemWordEntry(word: String = "Hund"): ProblemWordEntry =
-        mockk<ProblemWordEntry>(relaxed = true).also {
-            every { it.word } returns word
-        }
 
     // ── Setup / Teardown ──────────────────────────────────────────────────────
 
@@ -168,7 +160,6 @@ class ProgressRepositoryImplTest {
         coEvery { bookProgressDao.getCompletedCount(any()) }         returns 0
         coEvery { bookProgressDao.getAllProgress(any()) }            returns emptyList()
         coEvery { progressDao.getAveragePronunciationScore(any()) }  returns 0f
-        coEvery { progressDao.getProblemWordsForPronunciation(any()) } returns emptyList()
         coEvery { progressDao.getDailyStatsRange(any(), any(), any()) } returns emptyList()
         every  { userDao.getUserFlow(any()) }                        returns flowOf(null)
     }
@@ -331,7 +322,7 @@ class ProgressRepositoryImplTest {
             makeWordKnowledgeEntity("w3", knowledgeLevel = 3)
         )
         coEvery { grammarRuleDao.getRulesByLevel("A1") } returns
-            listOf(makeGrammarRuleEntity())
+            listOf(makeGrammarRuleEntity("r1"))
         coEvery { knowledgeDao.getAllRuleKnowledge("user1") } returns listOf(
             makeRuleKnowledgeEntity("r1", knowledgeLevel = 4)
         )
@@ -617,18 +608,6 @@ class ProgressRepositoryImplTest {
     }
 
     @Test
-    fun getPronunciationProgress_problemSoundsMappedFromProblemWords() = runTest {
-        coEvery { progressDao.getProblemWordsForPronunciation("user1") } returns listOf(
-            makeProblemWordEntry("Hund"),
-            makeProblemWordEntry("Bach")
-        )
-
-        val result = repository.getPronunciationProgress("user1")
-
-        assertEquals(listOf("Hund", "Bach"), result.problemSounds)
-    }
-
-    @Test
     fun getPronunciationProgress_goodSoundsAlwaysEmpty() = runTest {
         val result = repository.getPronunciationProgress("user1")
 
@@ -640,15 +619,6 @@ class ProgressRepositoryImplTest {
         val result = repository.getPronunciationProgress("user1")
 
         assertEquals("stable", result.trend)
-    }
-
-    @Test
-    fun getPronunciationProgress_noProblemWords_emptyList() = runTest {
-        coEvery { progressDao.getProblemWordsForPronunciation("user1") } returns emptyList()
-
-        val result = repository.getPronunciationProgress("user1")
-
-        assertTrue(result.problemSounds.isEmpty())
     }
 
     // ── getBookOverallProgress ────────────────────────────────────────────────
