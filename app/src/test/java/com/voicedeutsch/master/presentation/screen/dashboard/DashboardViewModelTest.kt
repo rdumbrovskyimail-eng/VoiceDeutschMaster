@@ -69,7 +69,7 @@ class DashboardViewModelTest {
         date: String = "2024-06-01",
         wordsLearned: Int = 15,
         totalMinutes: Int = 30,
-    ) = DailyProgress(date = date, wordsLearned = wordsLearned, totalMinutes = totalMinutes)
+    ) = DailyProgress(id = "", userId = "", date = date, wordsLearned = wordsLearned, totalMinutes = totalMinutes)
 
     private fun setupDefaultMocks(
         userId: String? = "user_1",
