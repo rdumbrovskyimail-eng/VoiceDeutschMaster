@@ -37,7 +37,7 @@ class BookFunctionsTest {
     @Test
     fun getCurrentLesson_hasNoRequiredParams() {
         val decl = declarations.first { it.name == "get_current_lesson" }
-        assertTrue(decl.required.isEmpty())
+        assertNull(decl.parameters)
     }
 
     // ── advance_to_next_lesson ───────────────────────────────────────────
@@ -56,19 +56,19 @@ class BookFunctionsTest {
     @Test
     fun advanceToNextLesson_hasScoreParam() {
         val decl = declarations.first { it.name == "advance_to_next_lesson" }
-        assertNotNull(decl.params["score"])
+        assertNotNull(decl.parameters?.properties?.get("score"))
     }
 
     @Test
     fun advanceToNextLesson_scoreParamTypeIsNumber() {
         val decl = declarations.first { it.name == "advance_to_next_lesson" }
-        assertEquals("number", decl.params["score"]?.first)
+        assertEquals("number", decl.parameters?.properties?.get("score")?.type)
     }
 
     @Test
     fun advanceToNextLesson_scoreIsRequired() {
         val decl = declarations.first { it.name == "advance_to_next_lesson" }
-        assertTrue(decl.required.contains("score"))
+        assertTrue((decl.parameters?.required ?: emptyList()).contains("score"))
     }
 
     // ── mark_lesson_complete ─────────────────────────────────────────────
@@ -87,13 +87,13 @@ class BookFunctionsTest {
     @Test
     fun markLessonComplete_hasScoreParam() {
         val decl = declarations.first { it.name == "mark_lesson_complete" }
-        assertNotNull(decl.params["score"])
+        assertNotNull(decl.parameters?.properties?.get("score"))
     }
 
     @Test
     fun markLessonComplete_scoreParamTypeIsNumber() {
         val decl = declarations.first { it.name == "mark_lesson_complete" }
-        assertEquals("number", decl.params["score"]?.first)
+        assertEquals("number", decl.parameters?.properties?.get("score")?.type)
     }
 
     // ── read_lesson_paragraph ────────────────────────────────────────────
@@ -124,19 +124,19 @@ class BookFunctionsTest {
     @Test
     fun readLessonParagraph_hasIndexParam() {
         val decl = declarations.first { it.name == "read_lesson_paragraph" }
-        assertNotNull(decl.params["index"])
+        assertNotNull(decl.parameters?.properties?.get("index"))
     }
 
     @Test
     fun readLessonParagraph_indexParamTypeIsInteger() {
         val decl = declarations.first { it.name == "read_lesson_paragraph" }
-        assertEquals("integer", decl.params["index"]?.first)
+        assertEquals("integer", decl.parameters?.properties?.get("index")?.type)
     }
 
     @Test
     fun readLessonParagraph_indexIsRequired() {
         val decl = declarations.first { it.name == "read_lesson_paragraph" }
-        assertTrue(decl.required.contains("index"))
+        assertTrue((decl.parameters?.required ?: emptyList()).contains("index"))
     }
 
     // ── declaration order ────────────────────────────────────────────────
