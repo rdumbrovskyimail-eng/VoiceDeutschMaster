@@ -37,7 +37,7 @@ class OnboardingViewModelTest {
         getUserProfile = mockk(relaxed = true)
 
         coEvery { userRepository.createUser(any()) } just Runs
-        coEvery { preferencesDataStore.setOnboardingComplete(any()) } returns Unit
+        coEvery { preferencesDataStore.setOnboardingComplete(any()) } just Runs
 
         sut = OnboardingViewModel(userRepository, preferencesDataStore, getUserProfile)
     }
