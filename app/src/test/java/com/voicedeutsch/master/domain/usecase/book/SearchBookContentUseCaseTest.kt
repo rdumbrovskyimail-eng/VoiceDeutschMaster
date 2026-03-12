@@ -28,11 +28,11 @@ class SearchBookContentUseCaseTest {
         chapter: Int = 1,
         lesson: Int = 1,
         snippet: String = "example"
-    ) = mockk<com.voicedeutsch.master.domain.model.book.ContentSearchHit>(relaxed = true).also {
-        every { it.chapter } returns chapter
-        every { it.lesson }  returns lesson
-        every { it.snippet } returns snippet
-    }
+    ) = SearchBookContentUseCase.ChapterHit(
+        chapter = chapter,
+        lesson  = lesson,
+        snippet = snippet,
+    )
 
     // ── Setup ─────────────────────────────────────────────────────────────────
 
