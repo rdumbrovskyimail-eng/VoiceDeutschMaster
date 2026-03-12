@@ -30,7 +30,7 @@ class RuleMapperTest {
         descriptionRu: String = "Описание артиклей",
         descriptionDe: String = "Beschreibung der Artikel",
         difficultyLevel: String = "A1",
-        examplesJson: String = """[{"german":"Der Hund","translation":"Собака","explanation":"Мужской род"}]""",
+        examplesJson: String = """[{"german":"Der Hund","russian":"Собака","explanation":"Мужской род"}]""",
         exceptionsJson: String = """["исключение1","исключение2"]""",
         relatedRulesJson: String = """["rule_2","rule_3"]""",
         bookChapter: Int? = 1,
@@ -61,7 +61,7 @@ class RuleMapperTest {
         descriptionDe: String = "Beschreibung der Artikel",
         difficultyLevel: CefrLevel = CefrLevel.A1,
         examples: List<GrammarExample> = listOf(
-            GrammarExample(german = "Der Hund", translation = "Собака", explanation = "Мужской род")
+            GrammarExample(german = "Der Hund", russian = "Собака", explanation = "Мужской род")
         ),
         exceptions: List<String> = listOf("исключение1", "исключение2"),
         relatedRuleIds: List<String> = listOf("rule_2", "rule_3"),
@@ -170,7 +170,7 @@ class RuleMapperTest {
             val domain = entity.toDomain(json)
             assertEquals(1, domain.examples.size)
             assertEquals("Der Hund", domain.examples[0].german)
-            assertEquals("Собака", domain.examples[0].translation)
+            assertEquals("Собака", domain.examples[0].russian)
             assertEquals("Мужской род", domain.examples[0].explanation)
         }
     }
