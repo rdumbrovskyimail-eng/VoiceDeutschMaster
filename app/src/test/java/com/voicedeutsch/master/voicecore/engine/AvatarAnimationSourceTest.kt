@@ -83,11 +83,9 @@ class AvatarAnimationSourceTest {
 
     @Test
     fun createActiveFlow_cancelledExternally_doesNotThrow() = runTest {
-        assertDoesNotThrow {
-            source.createActiveFlow().test {
-                awaitItem()
-                cancel()
-            }
+        source.createActiveFlow().test {
+            awaitItem()
+            cancel()
         }
     }
 
@@ -161,11 +159,9 @@ class AvatarAnimationSourceTest {
 
     @Test
     fun createIdleFlow_cancelledExternally_doesNotThrow() = runTest {
-        assertDoesNotThrow {
-            source.createIdleFlow().test {
-                awaitItem()
-                cancel()
-            }
+        source.createIdleFlow().test {
+            awaitItem()
+            cancel()
         }
     }
 
