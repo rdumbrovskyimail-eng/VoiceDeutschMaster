@@ -78,15 +78,19 @@ class EndLearningSessionUseCaseTest {
         exercisesCompleted: Int = 8,
         exercisesCorrect: Int = 6,
         averageScore: Float = 0.75f
-    ): DailyProgress = mockk<DailyProgress>(relaxed = true).also {
-        every { it.sessionsCount }       returns sessionsCount
-        every { it.totalMinutes }        returns totalMinutes
-        every { it.wordsLearned }        returns wordsLearned
-        every { it.wordsReviewed }       returns wordsReviewed
-        every { it.exercisesCompleted }  returns exercisesCompleted
-        every { it.exercisesCorrect }    returns exercisesCorrect
-        every { it.averageScore }        returns averageScore
-    }
+    ) = DailyProgress(
+        id = "daily_1",
+        userId = "user1",
+        date = "2024-01-01",
+        sessionsCount = sessionsCount,
+        totalMinutes = totalMinutes,
+        wordsLearned = wordsLearned,
+        wordsReviewed = wordsReviewed,
+        exercisesCompleted = exercisesCompleted,
+        exercisesCorrect = exercisesCorrect,
+        averageScore = averageScore,
+        streakMaintained = false,
+    )
 
     // ── Setup / Teardown ──────────────────────────────────────────────────────
 
