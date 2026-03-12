@@ -5,6 +5,7 @@ import com.google.firebase.Firebase
 // FIX: добавлен импорт extension-функции ai (была Unresolved reference 'ai')
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.FirebaseAI
+import com.google.firebase.ai.type.Content
 import com.google.firebase.ai.type.FunctionCallPart
 import com.google.firebase.ai.type.FunctionResponsePart
 import com.google.firebase.ai.type.LiveSession
@@ -199,7 +200,7 @@ class GeminiClientTest {
     @Test
     fun sendText_whenNoSession_doesNotCallSessionSend() = runTest {
         client.sendText("ignored")
-        coVerify(exactly = 0) { mockLiveSession.send(any()) }
+        coVerify(exactly = 0) { mockLiveSession.send(any<Content>()) }
     }
 
     // ── startConversation: no session ─────────────────────────────────────────
@@ -414,7 +415,7 @@ class GeminiClientTest {
     fun startConversation_afterConnect_doesNotThrow() = runTest {
         client.connect(buildSessionContext())
         assertDoesNotThrow {
-            runTest { client.startConversation { mockk(relaxed = true) } }
+            runTest { client.startConversation { _: FunctionCallPart -> mockk<FunctionResponsePart>(relaxed = true) } }
         }
     }
 
@@ -463,13 +464,13 @@ class GeminiClientTest {
     fun sendText_afterConnect_callsSessionSend() = runTest {
         client.connect(buildSessionContext())
         client.sendText("Guten Tag!")
-        coVerify { mockLiveSession.send(any()) }
+        coVerify { mockLiveSession.send(any<Content>()) }
     }
 
     @Test
     fun sendText_afterConnect_sessionSendFails_doesNotThrow() = runTest {
         client.connect(buildSessionContext())
-        coEvery { mockLiveSession.send(any()) } throws RuntimeException("Send failed")
+        coEvery { mockLiveSession.send(any<Content>()) } throws RuntimeException("Send failed")
         assertDoesNotThrow { runTest { client.sendText("text") } }
     }
 
