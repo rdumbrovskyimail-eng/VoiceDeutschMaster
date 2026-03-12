@@ -1,8 +1,8 @@
 // Путь: src/test/java/com/voicedeutsch/master/domain/usecase/learning/EndLearningSessionUseCaseTest.kt
 package com.voicedeutsch.master.domain.usecase.learning
 
-import com.voicedeutsch.master.domain.model.session.DailyStatistics
-import com.voicedeutsch.master.domain.model.session.Session
+import com.voicedeutsch.master.domain.model.progress.DailyProgress
+import com.voicedeutsch.master.domain.model.session.LearningSession
 import com.voicedeutsch.master.domain.model.session.SessionEvent
 import com.voicedeutsch.master.domain.model.session.SessionEventType
 import com.voicedeutsch.master.domain.model.session.SessionResult
@@ -41,7 +41,7 @@ class EndLearningSessionUseCaseTest {
         id: String = "session1",
         userId: String = "user1",
         startedAt: Long = fixedStart
-    ): Session = mockk<Session>(relaxed = true).also {
+    ): LearningSession = mockk<LearningSession>(relaxed = true).also {
         every { it.id }        returns id
         every { it.userId }    returns userId
         every { it.startedAt } returns startedAt
@@ -78,7 +78,7 @@ class EndLearningSessionUseCaseTest {
         exercisesCompleted: Int = 8,
         exercisesCorrect: Int = 6,
         averageScore: Float = 0.75f
-    ): DailyStatistics = mockk<DailyStatistics>(relaxed = true).also {
+    ): DailyProgress = mockk<DailyProgress>(relaxed = true).also {
         every { it.sessionsCount }       returns sessionsCount
         every { it.totalMinutes }        returns totalMinutes
         every { it.wordsLearned }        returns wordsLearned
@@ -712,7 +712,7 @@ class EndLearningSessionUseCaseTest {
     @Test
     fun invoke_bookPositionFromRepository_passedToSessionUpdate() = runTest {
         coEvery { bookRepository.getCurrentBookPosition("user1") } returns Pair(3, 7)
-        var capturedSession: Session? = null
+        var capturedSession: LearningSession? = null
         coEvery { sessionRepository.updateSession(any()) } answers {
             capturedSession = firstArg(); Unit
         }
