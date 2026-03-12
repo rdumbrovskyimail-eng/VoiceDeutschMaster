@@ -12,7 +12,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.just
 import io.mockk.mockk
-import io.mockk.Runs
+import io.mockk.Awaits
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
@@ -36,8 +36,8 @@ class OnboardingViewModelTest {
         preferencesDataStore = mockk(relaxed = true)
         getUserProfile = mockk(relaxed = true)
 
-        coEvery { userRepository.createUser(any()) } just Runs
-        coEvery { preferencesDataStore.setOnboardingComplete(any()) } just Runs
+        coEvery { userRepository.createUser(any()) } just Awaits
+        coEvery { preferencesDataStore.setOnboardingComplete(any()) } just Awaits
 
         sut = OnboardingViewModel(userRepository, preferencesDataStore, getUserProfile)
     }
