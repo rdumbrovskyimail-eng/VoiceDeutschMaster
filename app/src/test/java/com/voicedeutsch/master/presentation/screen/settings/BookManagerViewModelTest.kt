@@ -9,6 +9,7 @@ import com.voicedeutsch.master.testutil.MainDispatcherRule
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
+import io.mockk.Awaits
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.Runs
