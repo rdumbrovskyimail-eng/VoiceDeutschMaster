@@ -191,9 +191,10 @@ class BookContextProviderTest {
     fun buildBookContext_withUserBooks_containsUserBooksSectionHeader() = runTest {
         coEvery { bookRepository.getLessonContent(any(), any()) } returns null
         coEvery { bookRepository.getChapterVocabulary(any()) } returns emptyList()
-        val book = buildUserBook(id = "b1", title = "Mein Buch")
+        // FIX: id is Long, not String
+        val book = buildUserBook(id = 1L, title = "Mein Buch")
         coEvery { bookDao.getAllBooks() } returns listOf(book)
-        coEvery { bookDao.getChapters("b1") } returns listOf(
+        coEvery { bookDao.getChapters(1L) } returns listOf(
             buildUserChapter(chapterNumber = 1, title = "Kapitel 1", content = "Content here")
         )
         val result = provider.buildBookContext(1, 1)
@@ -205,10 +206,11 @@ class BookContextProviderTest {
     fun buildBookContext_userBookChaptersExceed5_onlyFirst5Shown() = runTest {
         coEvery { bookRepository.getLessonContent(any(), any()) } returns null
         coEvery { bookRepository.getChapterVocabulary(any()) } returns emptyList()
-        val book = buildUserBook(id = "b1", title = "Buch")
+        // FIX: id is Long
+        val book = buildUserBook(id = 1L, title = "Buch")
         coEvery { bookDao.getAllBooks() } returns listOf(book)
         val chapters = (1..7).map { buildUserChapter(it, "Kapitel $it", "text $it") }
-        coEvery { bookDao.getChapters("b1") } returns chapters
+        coEvery { bookDao.getChapters(1L) } returns chapters
         val result = provider.buildBookContext(1, 1)
         assertTrue(result.contains("Kapitel 5"))
         assertFalse(result.contains("Kapitel 6"))
@@ -218,7 +220,8 @@ class BookContextProviderTest {
     fun buildBookContext_userBooksExceed3_onlyFirst3Processed() = runTest {
         coEvery { bookRepository.getLessonContent(any(), any()) } returns null
         coEvery { bookRepository.getChapterVocabulary(any()) } returns emptyList()
-        val books = (1..5).map { buildUserBook("b$it", "Buch $it") }
+        // FIX: id is Long — use it.toLong()
+        val books = (1..5).map { buildUserBook(it.toLong(), "Buch $it") }
         coEvery { bookDao.getAllBooks() } returns books
         books.forEach { b ->
             coEvery { bookDao.getChapters(b.id) } returns listOf(
@@ -234,10 +237,11 @@ class BookContextProviderTest {
     fun buildBookContext_chapterContentExceedsLimit_showsTruncationHint() = runTest {
         coEvery { bookRepository.getLessonContent(any(), any()) } returns null
         coEvery { bookRepository.getChapterVocabulary(any()) } returns emptyList()
-        val book = buildUserBook("b1", "Buch")
+        // FIX: id is Long
+        val book = buildUserBook(1L, "Buch")
         coEvery { bookDao.getAllBooks() } returns listOf(book)
         val longContent = "X".repeat(3_000)
-        coEvery { bookDao.getChapters("b1") } returns listOf(
+        coEvery { bookDao.getChapters(1L) } returns listOf(
             buildUserChapter(1, "Ch", longContent)
         )
         val result = provider.buildBookContext(1, 1)
@@ -248,10 +252,11 @@ class BookContextProviderTest {
     fun buildBookContext_chapterContentWithinLimit_noTruncationHint() = runTest {
         coEvery { bookRepository.getLessonContent(any(), any()) } returns null
         coEvery { bookRepository.getChapterVocabulary(any()) } returns emptyList()
-        val book = buildUserBook("b1", "Buch")
+        // FIX: id is Long
+        val book = buildUserBook(1L, "Buch")
         coEvery { bookDao.getAllBooks() } returns listOf(book)
         val shortContent = "Short content"
-        coEvery { bookDao.getChapters("b1") } returns listOf(
+        coEvery { bookDao.getChapters(1L) } returns listOf(
             buildUserChapter(1, "Ch", shortContent)
         )
         val result = provider.buildBookContext(1, 1)
@@ -262,9 +267,10 @@ class BookContextProviderTest {
     fun buildBookContext_bookWithNoChapters_skippedSilently() = runTest {
         coEvery { bookRepository.getLessonContent(any(), any()) } returns null
         coEvery { bookRepository.getChapterVocabulary(any()) } returns emptyList()
-        val book = buildUserBook("b1", "Пустая книга")
+        // FIX: id is Long
+        val book = buildUserBook(1L, "Пустая книга")
         coEvery { bookDao.getAllBooks() } returns listOf(book)
-        coEvery { bookDao.getChapters("b1") } returns emptyList()
+        coEvery { bookDao.getChapters(1L) } returns emptyList()
         val result = provider.buildBookContext(1, 1)
         assertFalse(result.contains("Пустая книга"))
     }
@@ -279,20 +285,23 @@ class BookContextProviderTest {
         io.mockk.every { this@mockk.exerciseMarkers } returns exerciseMarkers
     }
 
+    // FIX: VocabularyEntry → LessonVocabularyEntry (класс переименован)
     private fun buildVocabEntry(german: String, russian: String) =
-        mockk<com.voicedeutsch.master.domain.model.book.VocabularyEntry>(relaxed = true) {
+        mockk<com.voicedeutsch.master.domain.model.book.LessonVocabularyEntry>(relaxed = true) {
             io.mockk.every { this@mockk.german } returns german
             io.mockk.every { this@mockk.russian } returns russian
         }
 
-    private fun buildUserBook(id: String, title: String) =
+    // FIX: id: String → id: Long (BookEntity.id теперь Long)
+    private fun buildUserBook(id: Long, title: String) =
         mockk<com.voicedeutsch.master.data.local.database.entity.BookEntity>(relaxed = true) {
             io.mockk.every { this@mockk.id } returns id
             io.mockk.every { this@mockk.title } returns title
         }
 
+    // FIX: ChapterEntity → BookChapterEntity (правильное имя класса)
     private fun buildUserChapter(chapterNumber: Int, title: String, content: String) =
-        mockk<com.voicedeutsch.master.data.local.database.entity.ChapterEntity>(relaxed = true) {
+        mockk<com.voicedeutsch.master.data.local.database.entity.BookChapterEntity>(relaxed = true) {
             io.mockk.every { this@mockk.chapterNumber } returns chapterNumber
             io.mockk.every { this@mockk.title } returns title
             io.mockk.every { this@mockk.content } returns content
