@@ -2,7 +2,7 @@
 package com.voicedeutsch.master.domain.usecase.speech
 
 import com.voicedeutsch.master.domain.model.speech.PhoneticTarget
-import com.voicedeutsch.master.domain.model.speech.PronunciationRecord
+import com.voicedeutsch.master.domain.model.speech.PronunciationResult
 import com.voicedeutsch.master.domain.model.speech.PronunciationTrend
 import com.voicedeutsch.master.domain.repository.KnowledgeRepository
 import io.mockk.coEvery
@@ -26,12 +26,14 @@ class AnalyzePronunciationUseCaseTest {
         score: Float = 0.4f,
         problemSounds: List<String> = listOf("ü"),
         timestamp: Long = 1_000L
-    ): PronunciationRecord = mockk<PronunciationRecord>(relaxed = true).also {
-        every { it.word }          returns word
-        every { it.score }         returns score
-        every { it.problemSounds } returns problemSounds
-        every { it.timestamp }     returns timestamp
-    }
+    ): PronunciationResult = PronunciationResult(
+        id = java.util.UUID.randomUUID().toString(),
+        userId = "user1",
+        word = word,
+        score = score,
+        problemSounds = problemSounds,
+        timestamp = timestamp
+    )
 
     // ── Setup ─────────────────────────────────────────────────────────────────
 
