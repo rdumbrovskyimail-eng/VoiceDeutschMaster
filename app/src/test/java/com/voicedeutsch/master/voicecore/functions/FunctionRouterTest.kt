@@ -22,6 +22,8 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
+private typealias FunctionCallResult = FunctionRouter.FunctionCallResult
+
 class FunctionRouterTest {
 
     private lateinit var router: FunctionRouter
@@ -584,7 +586,7 @@ class FunctionRouterTest {
             io.mockk.every { mainContent } returns content
             io.mockk.every { vocabulary } returns emptyList()
         }
-        return mockk(relaxed = true) {
+        return mockk<GetCurrentLessonUseCase.LessonData>(relaxed = true) {
             io.mockk.every { this@mockk.lessonContent } returns lessonContent
         }
     }
