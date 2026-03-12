@@ -327,7 +327,7 @@ class SessionViewModelTest {
 
     @Test
     fun togglePause_whenListening_callsStopListening() = runTest {
-        sessionStateFlow.value = VoiceSessionState(isListening = true, isSessionActive = true)
+        sessionStateFlow.value = VoiceSessionState(isListening = true)
 
         sut.onEvent(SessionEvent.PauseResume)
 
@@ -336,7 +336,7 @@ class SessionViewModelTest {
 
     @Test
     fun togglePause_whenSessionActiveNotListening_callsStartListening() = runTest {
-        sessionStateFlow.value = VoiceSessionState(isListening = false, isSessionActive = true)
+        sessionStateFlow.value = VoiceSessionState(isListening = false)
 
         sut.onEvent(SessionEvent.PauseResume)
 
@@ -345,7 +345,7 @@ class SessionViewModelTest {
 
     @Test
     fun togglePause_whenSessionInactive_neitherStartNorStop() = runTest {
-        sessionStateFlow.value = VoiceSessionState(isListening = false, isSessionActive = false)
+        sessionStateFlow.value = VoiceSessionState(isListening = false)
 
         sut.onEvent(SessionEvent.PauseResume)
 
