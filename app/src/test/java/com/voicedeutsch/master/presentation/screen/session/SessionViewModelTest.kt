@@ -67,7 +67,7 @@ class SessionViewModelTest {
         coEvery { userRepository.getActiveUserId() } returns "user_1"
         coEvery { preferencesDataStore.loadGeminiConfig() } returns buildGeminiConfig()
         coEvery { voiceCoreEngine.initialize(any()) } just Runs
-        coEvery { voiceCoreEngine.startSession(any()) } just Runs
+        coEvery { voiceCoreEngine.startSession(any()) } just Awaits
         coEvery { voiceCoreEngine.endSession() } returns mockk(relaxed = true)
         coEvery { voiceCoreEngine.sendTextMessage(any()) } just Runs
 
