@@ -7,8 +7,6 @@ import com.google.firebase.ai.ai
 import com.google.firebase.ai.FirebaseAI
 import com.google.firebase.ai.type.FunctionCallPart
 import com.google.firebase.ai.type.FunctionResponsePart
-// FIX: используем LiveModel — именно это возвращает Firebase.ai(...).liveModel(...)
-import com.google.firebase.ai.LiveModel
 import com.google.firebase.ai.type.LiveSession
 import com.google.firebase.ai.type.PublicPreviewAPI
 import com.voicedeutsch.master.voicecore.context.ContextBuilder
@@ -35,9 +33,9 @@ class GeminiClientTest {
     private lateinit var defaultConfig: GeminiConfig
 
     // Firebase mocks
-    private lateinit var mockFirebaseAI: FirebaseAI
-    // ВЕРНО — именно это возвращает Firebase.ai(...).liveModel(...)
-    private lateinit var mockLiveModel:   LiveModel
+    private lateinit var mockFirebaseAI:  FirebaseAI
+    // Храним как Any, чтобы не зависеть от прямого импорта LiveModel
+    private lateinit var mockLiveModel:   Any
     private lateinit var mockLiveSession: LiveSession
 
     @BeforeEach
@@ -55,18 +53,22 @@ class GeminiClientTest {
         client = GeminiClient(defaultConfig)
 
         mockFirebaseAI   = mockk(relaxed = true)
-        mockLiveModel    = mockk<LiveModel>(relaxed = true)
+        // Используем relaxed = true без явного типа LiveModel, чтобы избежать
+        // Unresolved reference 'LiveModel' при компиляции теста
+        mockLiveModel    = mockk(relaxed = true)
         mockLiveSession  = mockk(relaxed = true)
 
         mockkStatic(Firebase::class)
         every { Firebase.ai(backend = any()) } returns mockFirebaseAI
+        // liveModel(...) возвращает Any (внутренний тип SDK), используем cast
+        @Suppress("UNCHECKED_CAST")
         every { mockFirebaseAI.liveModel(
             modelName         = any(),
             generationConfig  = any(),
             systemInstruction = any(),
             tools             = any(),
-        ) } returns mockLiveModel
-        coEvery { mockLiveModel.connect() } returns mockLiveSession
+        ) } answers { mockLiveModel as com.google.firebase.ai.LiveModel }
+        coEvery { (mockLiveModel as com.google.firebase.ai.LiveModel).connect() } returns mockLiveSession
     }
 
     @AfterEach
@@ -218,7 +220,7 @@ class GeminiClientTest {
     @Test
     fun connect_success_callsLiveModelConnect() = runTest {
         client.connect(buildSessionContext())
-        coVerify { mockLiveModel.connect() }
+        coVerify { (mockLiveModel as com.google.firebase.ai.LiveModel).connect() }
     }
 
     @Test
@@ -244,12 +246,12 @@ class GeminiClientTest {
     fun connect_success_usesSystemPromptAsSystemInstruction() = runTest {
         val ctx = buildSessionContext(systemPrompt = "MY_SYSTEM_INSTRUCTION")
         client.connect(ctx)
-        coVerify { mockLiveModel.connect() }
+        coVerify { (mockLiveModel as com.google.firebase.ai.LiveModel).connect() }
     }
 
     @Test
     fun connect_whenLiveModelConnectThrows_throwsGeminiConnectionException() = runTest {
-        coEvery { mockLiveModel.connect() } throws RuntimeException("Network error")
+        coEvery { (mockLiveModel as com.google.firebase.ai.LiveModel).connect() } throws RuntimeException("Network error")
         assertThrows(GeminiConnectionException::class.java) {
             runTest { client.connect(buildSessionContext()) }
         }
@@ -258,7 +260,7 @@ class GeminiClientTest {
     @Test
     fun connect_whenLiveModelConnectThrows_causeIsOriginalException() = runTest {
         val original = RuntimeException("Network error")
-        coEvery { mockLiveModel.connect() } throws original
+        coEvery { (mockLiveModel as com.google.firebase.ai.LiveModel).connect() } throws original
         val thrown = assertThrows(GeminiConnectionException::class.java) {
             runTest { client.connect(buildSessionContext()) }
         }
@@ -268,14 +270,14 @@ class GeminiClientTest {
     @Test
     fun connect_withEmptyDeclarations_doesNotAddFunctionsTool() = runTest {
         client.connect(buildSessionContext(declarations = emptyList()))
-        coVerify { mockLiveModel.connect() }
+        coVerify { (mockLiveModel as com.google.firebase.ai.LiveModel).connect() }
     }
 
     @Test
     fun connect_withDeclarations_registersDeclarationsInTool() = runTest {
         val decls = listOf(buildDeclarationWithParams("save_word"))
         client.connect(buildSessionContext(declarations = decls))
-        coVerify { mockLiveModel.connect() }
+        coVerify { (mockLiveModel as com.google.firebase.ai.LiveModel).connect() }
     }
 
     // ── connect: mapToFirebaseDeclaration — no params → dummy param ───────────
@@ -284,7 +286,7 @@ class GeminiClientTest {
     fun connect_declarationWithNoParams_mappedWithDummyOptionalParam() = runTest {
         val decls = listOf(buildDeclarationNoParams("trigger_celebration"))
         client.connect(buildSessionContext(declarations = decls))
-        coVerify { mockLiveModel.connect() }
+        coVerify { (mockLiveModel as com.google.firebase.ai.LiveModel).connect() }
     }
 
     @Test
@@ -295,7 +297,7 @@ class GeminiClientTest {
             parameters  = GeminiParameters(properties = emptyMap(), required = emptyList()),
         )
         client.connect(buildSessionContext(declarations = listOf(decl)))
-        coVerify { mockLiveModel.connect() }
+        coVerify { (mockLiveModel as com.google.firebase.ai.LiveModel).connect() }
     }
 
     // ── connect: mapPropertyToSchema — type mapping ───────────────────────────
