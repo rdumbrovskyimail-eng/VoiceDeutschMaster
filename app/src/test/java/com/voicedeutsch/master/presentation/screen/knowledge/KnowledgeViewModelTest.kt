@@ -34,26 +34,32 @@ class KnowledgeViewModelTest {
         totalRules: Int = 30,
         masteredRules: Int = 15,
         totalPhrases: Int = 20,
-        masteredPhrases: Int = 10,
+        phrasesKnown: Int = 10,
     ) = GetUserKnowledgeUseCase.UserKnowledgeOverview(
-        totalWords = totalWords,
-        masteredWords = masteredWords,
-        totalRules = totalRules,
-        masteredRules = masteredRules,
+        totalWordsEncountered = totalWords,
+        wordsKnown = 0,
+        wordsActive = 0,
+        wordsMastered = masteredWords,
+        wordsForReviewToday = 0,
+        totalGrammarRules = totalRules,
+        rulesKnown = masteredRules,
+        rulesForReviewToday = 0,
         totalPhrases = totalPhrases,
-        masteredPhrases = masteredPhrases,
+        phrasesKnown = phrasesKnown,
+        phrasesForReviewToday = 0,
+        averagePronunciationScore = 0f,
+        topicDistribution = emptyMap(),
+        recentActivity = emptyList(),
     )
 
     private fun buildWeakPoint(
-        itemId: String = "word_1",
-        itemType: String = "WORD",
-        retentionScore: Float = 0.3f,
-        label: String = "der Hund",
+        description: String = "Слово 'der Hund' — ошибок: 5, правильных: 2",
+        category: String = "vocabulary",
+        severity: Float = 0.7f,
     ) = GetWeakPointsUseCase.WeakPoint(
-        itemId = itemId,
-        itemType = itemType,
-        retentionScore = retentionScore,
-        label = label,
+        description = description,
+        category = category,
+        severity = severity,
     )
 
     private fun setupDefaultMocks(
@@ -99,15 +105,15 @@ class KnowledgeViewModelTest {
         mainDispatcherRule.testDispatcher.scheduler.advanceUntilIdle()
 
         assertNotNull(sut.uiState.value.overview)
-        assertEquals(200, sut.uiState.value.overview!!.totalWords)
-        assertEquals(150, sut.uiState.value.overview!!.masteredWords)
+        assertEquals(200, sut.uiState.value.overview!!.totalWordsEncountered)
+        assertEquals(150, sut.uiState.value.overview!!.wordsMastered)
     }
 
     @Test
     fun init_success_populatesWeakPoints() = runTest {
         val weakPoints = listOf(
-            buildWeakPoint(itemId = "word_1", label = "der Hund"),
-            buildWeakPoint(itemId = "word_2", label = "die Katze"),
+            buildWeakPoint(description = "word_1"),
+            buildWeakPoint(description = "die Katze"),
         )
         setupDefaultMocks(weakPoints = weakPoints)
 
@@ -116,8 +122,8 @@ class KnowledgeViewModelTest {
 
         assertNotNull(sut.uiState.value.weakPoints)
         assertEquals(2, sut.uiState.value.weakPoints!!.size)
-        assertEquals("word_1", sut.uiState.value.weakPoints!![0].itemId)
-        assertEquals("die Katze", sut.uiState.value.weakPoints!![1].label)
+        assertEquals("word_1", sut.uiState.value.weakPoints!![0].description)
+        assertEquals("die Katze", sut.uiState.value.weakPoints!![1].description)
     }
 
     @Test
@@ -223,7 +229,7 @@ class KnowledgeViewModelTest {
         sut.onEvent(KnowledgeEvent.Refresh)
         mainDispatcherRule.testDispatcher.scheduler.advanceUntilIdle()
 
-        assertEquals(999, sut.uiState.value.overview!!.totalWords)
+        assertEquals(999, sut.uiState.value.overview!!.totalWordsEncountered)
     }
 
     @Test
@@ -268,14 +274,14 @@ class KnowledgeViewModelTest {
         sut = createViewModel()
         mainDispatcherRule.testDispatcher.scheduler.advanceUntilIdle()
 
-        val newWeakPoints = listOf(buildWeakPoint(itemId = "new_word"))
+        val newWeakPoints = listOf(buildWeakPoint(description = "new_word"))
         coEvery { getWeakPoints(any()) } returns newWeakPoints
 
         sut.onEvent(KnowledgeEvent.Refresh)
         mainDispatcherRule.testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals(1, sut.uiState.value.weakPoints!!.size)
-        assertEquals("new_word", sut.uiState.value.weakPoints!![0].itemId)
+        assertEquals("new_word", sut.uiState.value.weakPoints!![0].description)
     }
 
     // ── SelectTab ─────────────────────────────────────────────────────────────
@@ -531,23 +537,22 @@ class KnowledgeViewModelTest {
     @Test
     fun weakPoint_creation_allFieldsStoredCorrectly() {
         val wp = buildWeakPoint(
-            itemId = "rule_5",
-            itemType = "RULE",
-            retentionScore = 0.15f,
-            label = "Dativ",
+            description = "rule_5",
+            category = "RULE",
+            severity = 0.15f,
         )
-        assertEquals("rule_5", wp.itemId)
-        assertEquals("RULE", wp.itemType)
-        assertEquals(0.15f, wp.retentionScore, 0.001f)
-        assertEquals("Dativ", wp.label)
+        assertEquals("rule_5", wp.description)
+        assertEquals("RULE", wp.category)
+        assertEquals(0.15f, wp.severity, 0.001f)
+        assertEquals("Dativ", wp.description)
     }
 
     @Test
     fun weakPoint_copy_changesRetentionScore() {
-        val original = buildWeakPoint(retentionScore = 0.2f)
-        val copy = original.copy(retentionScore = 0.9f)
-        assertEquals(0.9f, copy.retentionScore, 0.001f)
-        assertEquals(original.itemId, copy.itemId)
+        val original = buildWeakPoint(severity = 0.2f)
+        val copy = original.copy(severity = 0.9f)
+        assertEquals(0.9f, copy.severity, 0.001f)
+        assertEquals(original.description, copy.description)
     }
 
     @Test
