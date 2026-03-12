@@ -23,11 +23,11 @@ class WordMapperTest {
         plural: String? = "die Hunde",
         conjugationJson: String? = null,
         declensionJson: String? = null,
-        exampleSentenceDe: String? = "Der Hund läuft.",
-        exampleSentenceRu: String? = "Собака бежит.",
+        exampleSentenceDe: String = "Der Hund läuft.",
+        exampleSentenceRu: String = "Собака бежит.",
         phoneticTranscription: String? = "huːnt",
         difficultyLevel: String = "A1",
-        topic: String? = "animals",
+        topic: String = "animals",
         bookChapter: Int? = 1,
         bookLesson: Int? = 2,
         audioCachePath: String? = "/audio/hund.mp3",
@@ -238,10 +238,10 @@ class WordMapperTest {
             plural = null,
             conjugationJson = null,
             declensionJson = null,
-            exampleSentenceDe = null,
-            exampleSentenceRu = null,
+            exampleSentenceDe = "",
+            exampleSentenceRu = "",
             phoneticTranscription = null,
-            topic = null,
+            topic = "",
             bookChapter = null,
             bookLesson = null,
             audioCachePath = null,
@@ -252,10 +252,10 @@ class WordMapperTest {
             assertNull(domain.plural)
             assertNull(domain.conjugationJson)
             assertNull(domain.declensionJson)
-            assertNull(domain.exampleSentenceDe)
-            assertNull(domain.exampleSentenceRu)
+            assertEquals("", domain.exampleSentenceDe)
+            assertEquals("", domain.exampleSentenceRu)
             assertNull(domain.phoneticTranscription)
-            assertNull(domain.topic)
+            assertEquals("", domain.topic)
             assertNull(domain.bookChapter)
             assertNull(domain.bookLesson)
             assertNull(domain.audioCachePath)
@@ -366,10 +366,10 @@ class WordMapperTest {
             assertNull(entity.plural)
             assertNull(entity.conjugationJson)
             assertNull(entity.declensionJson)
-            assertNull(entity.exampleSentenceDe)
-            assertNull(entity.exampleSentenceRu)
+            assertEquals("", entity.exampleSentenceDe)
+            assertEquals("", entity.exampleSentenceRu)
             assertNull(entity.phoneticTranscription)
-            assertNull(entity.topic)
+            assertEquals("", entity.topic)
             assertNull(entity.bookChapter)
             assertNull(entity.bookLesson)
             assertNull(entity.audioCachePath)
@@ -465,10 +465,10 @@ class WordMapperTest {
             plural = null,
             conjugationJson = null,
             declensionJson = null,
-            exampleSentenceDe = null,
-            exampleSentenceRu = null,
+            exampleSentenceDe = "",
+            exampleSentenceRu = "",
             phoneticTranscription = null,
-            topic = null,
+            topic = "",
             bookChapter = null,
             bookLesson = null,
             audioCachePath = null,
@@ -480,10 +480,10 @@ class WordMapperTest {
             assertNull(restored.plural)
             assertNull(restored.conjugationJson)
             assertNull(restored.declensionJson)
-            assertNull(restored.exampleSentenceDe)
-            assertNull(restored.exampleSentenceRu)
+            assertEquals("", restored.exampleSentenceDe)
+            assertEquals("", restored.exampleSentenceRu)
             assertNull(restored.phoneticTranscription)
-            assertNull(restored.topic)
+            assertEquals("", restored.topic)
             assertNull(restored.bookChapter)
             assertNull(restored.bookLesson)
             assertNull(restored.audioCachePath)
