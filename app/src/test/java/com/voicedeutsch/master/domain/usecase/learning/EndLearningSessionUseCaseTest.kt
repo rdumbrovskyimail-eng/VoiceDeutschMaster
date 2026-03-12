@@ -41,18 +41,11 @@ class EndLearningSessionUseCaseTest {
         id: String = "session1",
         userId: String = "user1",
         startedAt: Long = fixedStart
-    ): LearningSession = mockk<LearningSession>(relaxed = true).also {
-        every { it.id }        returns id
-        every { it.userId }    returns userId
-        every { it.startedAt } returns startedAt
-        every { it.copy(
-            endedAt = any(), durationMinutes = any(), strategiesUsed = any(),
-            wordsLearned = any(), wordsReviewed = any(), rulesPracticed = any(),
-            exercisesCompleted = any(), exercisesCorrect = any(),
-            averagePronunciationScore = any(), bookChapterEnd = any(),
-            bookLessonEnd = any(), sessionSummary = any()
-        ) } returns mockk(relaxed = true)
-    }
+    ): LearningSession = LearningSession(
+        id = id,
+        userId = userId,
+        startedAt = startedAt,
+    )
 
     private fun makeEvent(
         type: SessionEventType,
