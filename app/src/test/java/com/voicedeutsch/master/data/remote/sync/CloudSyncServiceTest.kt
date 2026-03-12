@@ -118,7 +118,7 @@ class CloudSyncServiceTest {
 
         val batchTask = mockk<com.google.android.gms.tasks.Task<Void>>(relaxed = true)
         every { writeBatch.commit() } returns batchTask
-        every { batchTask.await() } returns null
+        coEvery { batchTask.await() } answers { null }
 
         sut.flushPendingQueue()
         assertEquals(0, sut.pendingQueueSize())
@@ -148,7 +148,7 @@ class CloudSyncServiceTest {
 
         val batchTask = mockk<com.google.android.gms.tasks.Task<Void>>(relaxed = true)
         every { writeBatch.commit() } returns batchTask
-        every { batchTask.await() } returns null
+        coEvery { batchTask.await() } answers { null }
 
         val result = sut.flushPendingQueue()
 
@@ -162,7 +162,7 @@ class CloudSyncServiceTest {
 
         val batchTask = mockk<com.google.android.gms.tasks.Task<Void>>(relaxed = true)
         every { writeBatch.commit() } returns batchTask
-        every { batchTask.await() } returns null
+        coEvery { batchTask.await() } answers { null }
 
         sut.flushPendingQueue()
 
@@ -175,7 +175,7 @@ class CloudSyncServiceTest {
 
         val batchTask = mockk<com.google.android.gms.tasks.Task<Void>>(relaxed = true)
         every { writeBatch.commit() } returns batchTask
-        every { batchTask.await() } throws RuntimeException("Network error")
+        coEvery { batchTask.await() } throws RuntimeException("Network error")
 
         val result = sut.flushPendingQueue()
 
@@ -189,7 +189,7 @@ class CloudSyncServiceTest {
 
         val batchTask = mockk<com.google.android.gms.tasks.Task<Void>>(relaxed = true)
         every { writeBatch.commit() } returns batchTask
-        every { batchTask.await() } throws RuntimeException("Firestore unavailable")
+        coEvery { batchTask.await() } throws RuntimeException("Firestore unavailable")
 
         sut.flushPendingQueue()
 
@@ -206,7 +206,7 @@ class CloudSyncServiceTest {
 
         val batchTask = mockk<com.google.android.gms.tasks.Task<Void>>(relaxed = true)
         every { writeBatch.commit() } returns batchTask
-        every { batchTask.await() } returns null
+        coEvery { batchTask.await() } answers { null }
 
         val result = sut.flushPendingQueue()
 
@@ -222,7 +222,7 @@ class CloudSyncServiceTest {
 
         val batchTask = mockk<com.google.android.gms.tasks.Task<Void>>(relaxed = true)
         every { writeBatch.commit() } returns batchTask
-        every { batchTask.await() } returns null
+        coEvery { batchTask.await() } answers { null }
 
         val result = sut.flushPendingQueue()
 
@@ -236,7 +236,7 @@ class CloudSyncServiceTest {
 
         val batchTask = mockk<com.google.android.gms.tasks.Task<Void>>(relaxed = true)
         every { writeBatch.commit() } returns batchTask
-        every { batchTask.await() } returns null
+        coEvery { batchTask.await() } answers { null }
 
         sut.flushPendingQueue()
 
@@ -258,7 +258,7 @@ class CloudSyncServiceTest {
     fun pushUserProfile_success_returnsSuccess() = runTest {
         val task = mockk<com.google.android.gms.tasks.Task<Void>>(relaxed = true)
         every { profileDocument.set(any(), any<SetOptions>()) } returns task
-        every { task.await() } returns null
+        coEvery { task.await() } answers { null }
 
         val result = sut.pushUserProfile(mapOf("name" to "Max", "level" to "B1"))
 
@@ -269,7 +269,7 @@ class CloudSyncServiceTest {
     fun pushUserProfile_firestoreThrows_returnsError() = runTest {
         val task = mockk<com.google.android.gms.tasks.Task<Void>>(relaxed = true)
         every { profileDocument.set(any(), any<SetOptions>()) } returns task
-        every { task.await() } throws RuntimeException("Firestore error")
+        coEvery { task.await() } throws RuntimeException("Firestore error")
 
         val result = sut.pushUserProfile(mapOf("name" to "Max"))
 
@@ -280,7 +280,7 @@ class CloudSyncServiceTest {
     fun pushUserProfile_usesSetOptionsMerge() = runTest {
         val task = mockk<com.google.android.gms.tasks.Task<Void>>(relaxed = true)
         every { profileDocument.set(any(), any<SetOptions>()) } returns task
-        every { task.await() } returns null
+        coEvery { task.await() } answers { null }
 
         sut.pushUserProfile(mapOf("name" to "Max"))
 
@@ -302,7 +302,7 @@ class CloudSyncServiceTest {
     fun pushKnowledgeItem_success_returnsSuccess() = runTest {
         val task = mockk<com.google.android.gms.tasks.Task<Void>>(relaxed = true)
         every { progressDocument.set(any(), any<SetOptions>()) } returns task
-        every { task.await() } returns null
+        coEvery { task.await() } answers { null }
 
         val result = sut.pushKnowledgeItem("word_1", mapOf("level" to 3))
 
@@ -313,7 +313,7 @@ class CloudSyncServiceTest {
     fun pushKnowledgeItem_firestoreThrows_returnsOffline() = runTest {
         val task = mockk<com.google.android.gms.tasks.Task<Void>>(relaxed = true)
         every { progressDocument.set(any(), any<SetOptions>()) } returns task
-        every { task.await() } throws RuntimeException("No network")
+        coEvery { task.await() } throws RuntimeException("No network")
 
         val result = sut.pushKnowledgeItem("word_1", mapOf("level" to 3))
 
@@ -324,7 +324,7 @@ class CloudSyncServiceTest {
     fun pushKnowledgeItem_writesToCorrectDocument() = runTest {
         val task = mockk<com.google.android.gms.tasks.Task<Void>>(relaxed = true)
         every { progressDocument.set(any(), any<SetOptions>()) } returns task
-        every { task.await() } returns null
+        coEvery { task.await() } answers { null }
 
         sut.pushKnowledgeItem("word_42", mapOf("level" to 1))
 
@@ -346,7 +346,7 @@ class CloudSyncServiceTest {
     fun pushDailyStatistics_success_returnsSuccess() = runTest {
         val task = mockk<com.google.android.gms.tasks.Task<Void>>(relaxed = true)
         every { statisticsDocument.set(any(), any<SetOptions>()) } returns task
-        every { task.await() } returns null
+        coEvery { task.await() } answers { null }
 
         val result = sut.pushDailyStatistics("2024-01-15", mapOf("sessions" to 3))
 
@@ -357,7 +357,7 @@ class CloudSyncServiceTest {
     fun pushDailyStatistics_firestoreThrows_returnsOffline() = runTest {
         val task = mockk<com.google.android.gms.tasks.Task<Void>>(relaxed = true)
         every { statisticsDocument.set(any(), any<SetOptions>()) } returns task
-        every { task.await() } throws RuntimeException("Offline")
+        coEvery { task.await() } throws RuntimeException("Offline")
 
         val result = sut.pushDailyStatistics("2024-01-15", mapOf("sessions" to 3))
 
@@ -368,7 +368,7 @@ class CloudSyncServiceTest {
     fun pushDailyStatistics_writesToCorrectDateDocument() = runTest {
         val task = mockk<com.google.android.gms.tasks.Task<Void>>(relaxed = true)
         every { statisticsDocument.set(any(), any<SetOptions>()) } returns task
-        every { task.await() } returns null
+        coEvery { task.await() } answers { null }
 
         sut.pushDailyStatistics("2024-06-30", mapOf("sessions" to 1))
 
@@ -397,7 +397,7 @@ class CloudSyncServiceTest {
 
         val queryTask = mockk<com.google.android.gms.tasks.Task<QuerySnapshot>>(relaxed = true)
         every { progressCollection.get() } returns queryTask
-        every { queryTask.await() } returns snapshot
+        coEvery { queryTask.await() } returns snapshot
 
         val result = sut.pullKnowledgeProgress()
 
@@ -416,7 +416,7 @@ class CloudSyncServiceTest {
 
         val queryTask = mockk<com.google.android.gms.tasks.Task<QuerySnapshot>>(relaxed = true)
         every { progressCollection.get() } returns queryTask
-        every { queryTask.await() } returns snapshot
+        coEvery { queryTask.await() } returns snapshot
 
         val result = sut.pullKnowledgeProgress()
 
@@ -427,7 +427,7 @@ class CloudSyncServiceTest {
     fun pullKnowledgeProgress_firestoreThrows_returnsEmptyList() = runTest {
         val queryTask = mockk<com.google.android.gms.tasks.Task<QuerySnapshot>>(relaxed = true)
         every { progressCollection.get() } returns queryTask
-        every { queryTask.await() } throws RuntimeException("Network error")
+        coEvery { queryTask.await() } throws RuntimeException("Network error")
 
         val result = sut.pullKnowledgeProgress()
 
@@ -459,7 +459,7 @@ class CloudSyncServiceTest {
         every { statisticsCollection.whereGreaterThanOrEqualTo("date", any<String>()) } returns query
         every { query.orderBy("date", Query.Direction.DESCENDING) } returns queryOrdered
         every { queryOrdered.get() } returns queryTask
-        every { queryTask.await() } returns snapshot
+        coEvery { queryTask.await() } returns snapshot
 
         val result = sut.pullStatistics(days = 30)
 
@@ -476,7 +476,7 @@ class CloudSyncServiceTest {
         every { statisticsCollection.whereGreaterThanOrEqualTo("date", any<String>()) } returns query
         every { query.orderBy("date", Query.Direction.DESCENDING) } returns queryOrdered
         every { queryOrdered.get() } returns queryTask
-        every { queryTask.await() } throws RuntimeException("Offline")
+        coEvery { queryTask.await() } throws RuntimeException("Offline")
 
         val result = sut.pullStatistics()
 
@@ -650,7 +650,7 @@ class CloudSyncServiceTest {
     fun syncAll_validItems_enqueuedAndFlushed() = runTest {
         val batchTask = mockk<com.google.android.gms.tasks.Task<Void>>(relaxed = true)
         every { writeBatch.commit() } returns batchTask
-        every { batchTask.await() } returns null
+        coEvery { batchTask.await() } answers { null }
 
         val items = listOf(
             "word_1" to mapOf<String, Any>("level" to 1),
@@ -667,7 +667,7 @@ class CloudSyncServiceTest {
     fun syncAll_batchFails_returnsOfflineAndRestoresQueue() = runTest {
         val batchTask = mockk<com.google.android.gms.tasks.Task<Void>>(relaxed = true)
         every { writeBatch.commit() } returns batchTask
-        every { batchTask.await() } throws RuntimeException("Network down")
+        coEvery { batchTask.await() } throws RuntimeException("Network down")
 
         val items = listOf(
             "word_1" to mapOf<String, Any>("level" to 1),
@@ -686,7 +686,7 @@ class CloudSyncServiceTest {
 
         val batchTask = mockk<com.google.android.gms.tasks.Task<Void>>(relaxed = true)
         every { writeBatch.commit() } returns batchTask
-        every { batchTask.await() } returns null
+        coEvery { batchTask.await() } answers { null }
 
         val result = sut.syncAll(listOf("word_new" to mapOf("level" to 1)))
 
