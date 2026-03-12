@@ -62,11 +62,7 @@ class NavRoutesTest {
         assertTrue(route is NavRoute.RuntimeTests)
     }
 
-    @Test
-    fun comprehensiveTests_isNavRoute() {
-        val route: NavRoute = NavRoute.ComprehensiveTests
-        assertTrue(route is NavRoute.ComprehensiveTests)
-    }
+
 
     // ── Singleton identity ─────────────────────────────────────────────────
 
@@ -93,9 +89,9 @@ class NavRoutesTest {
     // ── All routes are distinct ────────────────────────────────────────────
 
     @Test
-    fun allRoutes_totalCount_isTen() {
+    fun allRoutes_totalCount_isNine() {
         val routes = allRoutes()
-        assertEquals(10, routes.size)
+        assertEquals(9, routes.size)
     }
 
     @Test
@@ -117,11 +113,6 @@ class NavRoutesTest {
     @Test
     fun book_notEqualsBookManager() {
         assertNotEquals(NavRoute.Book, NavRoute.BookManager)
-    }
-
-    @Test
-    fun runtimeTests_notEqualsComprehensiveTests() {
-        assertNotEquals(NavRoute.RuntimeTests, NavRoute.ComprehensiveTests)
     }
 
     @Test
@@ -185,11 +176,7 @@ class NavRoutesTest {
         assertEquals("RuntimeTests", name)
     }
 
-    @Test
-    fun whenExhaustive_comprehensiveTests_returnsCorrectName() {
-        val name = routeName(NavRoute.ComprehensiveTests)
-        assertEquals("ComprehensiveTests", name)
-    }
+
 
     // ── helpers ───────────────────────────────────────────────────────────
 
@@ -203,7 +190,6 @@ class NavRoutesTest {
         NavRoute.Statistics,
         NavRoute.BookManager,
         NavRoute.RuntimeTests,
-        NavRoute.ComprehensiveTests,
     )
 
     private fun routeName(route: NavRoute): String = when (route) {
@@ -216,6 +202,5 @@ class NavRoutesTest {
         is NavRoute.Statistics -> "Statistics"
         is NavRoute.BookManager -> "BookManager"
         is NavRoute.RuntimeTests -> "RuntimeTests"
-        is NavRoute.ComprehensiveTests -> "ComprehensiveTests"
     }
 }
