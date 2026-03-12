@@ -89,7 +89,7 @@ class ProgressMapperTest {
         chapter: Int = 2,
         lesson: Int = 3,
         status: String = "IN_PROGRESS",
-        score: Float = 0.75f,
+        score: Float? = 0.75f,
         startedAt: Long? = 500L,
         completedAt: Long? = null,
         timesPracticed: Int = 4,
@@ -138,7 +138,7 @@ class ProgressMapperTest {
         score: Float = 0.9f,
         problemSoundsJson: String = """["ʊ","n"]""",
         attemptNumber: Int = 1,
-        sessionId: String = "ses_1",
+        sessionId: String? = "ses_1",
         timestamp: Long = 2000L,
         createdAt: Long = 2100L,
     ) = PronunciationRecordEntity(
@@ -183,8 +183,8 @@ class ProgressMapperTest {
         item: String = "der/die/das",
         expected: String = "der",
         actual: String = "die",
-        context: String? = "Ich sehe ___ Hund",
-        explanation: String? = "Masculine noun",
+        context: String = "Ich sehe ___ Hund",
+        explanation: String = "Masculine noun",
         timestamp: Long = 3000L,
         createdAt: Long = 3100L,
     ) = MistakeLogEntity(
@@ -334,7 +334,7 @@ class ProgressMapperTest {
             assertEquals(entity.chapter, domain.chapter)
             assertEquals(entity.lesson, domain.lesson)
             assertEquals(LessonStatus.IN_PROGRESS, domain.status)
-            assertEquals(entity.score, domain.score, 0.001f)
+            assertEquals(entity.score!!, domain.score, 0.001f)
             assertEquals(entity.startedAt, domain.startedAt)
             assertEquals(entity.completedAt, domain.completedAt)
             assertEquals(entity.timesPracticed, domain.timesPracticed)
@@ -428,7 +428,7 @@ class ProgressMapperTest {
             assertEquals(original.chapter, restored.chapter)
             assertEquals(original.lesson, restored.lesson)
             assertEquals(original.status, restored.status)
-            assertEquals(original.score, restored.score, 0.001f)
+            assertEquals(original.score!!, restored.score, 0.001f)
             assertEquals(original.startedAt, restored.startedAt)
             assertEquals(original.completedAt, restored.completedAt)
             assertEquals(original.timesPracticed, restored.timesPracticed)
@@ -610,11 +610,11 @@ class ProgressMapperTest {
 
     @Test
     fun mistakeLogEntity_toDomain_nullOptionalFields_preservedAsNull() {
-        val entity = buildMistakeLogEntity(context = null, explanation = null)
+        val entity = buildMistakeLogEntity(context = "", explanation = "")
         with(ProgressMapper) {
             val domain = entity.toDomain()
-            assertNull(domain.context)
-            assertNull(domain.explanation)
+            assertEquals("", domain.context)
+            assertEquals("", domain.explanation)
         }
     }
 
@@ -684,12 +684,12 @@ class ProgressMapperTest {
 
     @Test
     fun mistakeLog_roundtrip_nullFields_preservedAsNull() {
-        val original = buildMistakeLogEntity(context = null, explanation = null)
+        val original = buildMistakeLogEntity(context = "", explanation = "")
         with(ProgressMapper) {
             val domain = original.toDomain()
             val restored = domain.toEntity()
-            assertNull(restored.context)
-            assertNull(restored.explanation)
+            assertEquals("", restored.context)
+            assertEquals("", restored.explanation)
         }
     }
 }
