@@ -135,9 +135,7 @@ class AudioRecorderTest {
     fun audioFrameFlow_afterRelease_channelClosedDoesNotThrow() = runTest {
         recorder.release()
         // Collecting from a closed channel should complete normally
-        assertDoesNotThrow {
-            recorder.audioFrameFlow.collect { }
-        }
+        recorder.audioFrameFlow.collect { }
     }
 
     // ── lifecycle sequences ───────────────────────────────────────────────
