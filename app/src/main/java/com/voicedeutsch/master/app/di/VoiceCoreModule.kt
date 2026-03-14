@@ -23,8 +23,8 @@ import com.voicedeutsch.master.voicecore.strategy.PronunciationStrategy
 import com.voicedeutsch.master.voicecore.strategy.RepetitionStrategy
 import com.voicedeutsch.master.voicecore.strategy.StrategySelector
 import com.voicedeutsch.master.voicecore.strategy.VocabularyStrategy
-import com.voicedeutsch.master.avatar.AvatarAudioAnalyzer
-import com.voicedeutsch.master.avatar.AvatarRepository
+import com.voicedeutsch.master.voicecore.engine.AvatarAudioAnalyzer
+import com.voicedeutsch.master.data.repository.AvatarRepository
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
 
