@@ -190,6 +190,9 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.play.services)
 
+    // ── Image Loading (Coil) ─────────────────────────────────────────────────
+    implementation("io.coil-kt:coil-compose:2.7.0")
+
     // ── UI Polish ─────────────────────────────────────────────────────────────
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.compose.ui:ui-text-google-fonts")
