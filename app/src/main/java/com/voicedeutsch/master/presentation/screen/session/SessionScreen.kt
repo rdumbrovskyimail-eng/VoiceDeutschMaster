@@ -77,6 +77,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 
 import com.voicedeutsch.master.avatar.AvatarViewModel
+import com.voicedeutsch.master.avatar.AvatarSceneView
 import com.voicedeutsch.master.presentation.components.AvatarSceneView
 import com.voicedeutsch.master.presentation.components.SessionTimer
 import com.voicedeutsch.master.presentation.components.StatusBadge
