@@ -266,10 +266,10 @@ fun SessionScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
                 .background(Background)
-                .padding(horizontal = 20.dp),
+                .padding(horizontal = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(8.dp))
 
             // ── Loading indicator ────────────────────────────────────────────
             if (uiState.isLoading) {
@@ -298,7 +298,18 @@ fun SessionScreen(
                 Spacer(Modifier.height(8.dp))
             }
 
-            // ── Avatar (3D если есть .glb, иначе 2D fallback) ────────────────
+            // ── AI Process Panel (компактно под топбаром) ─────────────────
+            AiProcessPanel(
+                engineState = voiceState.engineState,
+                isSessionActive = uiState.isSessionActive,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 110.dp),
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            // ── Avatar (квадрат, влево) ───────────────────────────────────
             val context = androidx.compose.ui.platform.LocalContext.current
             val has3DModel = remember {
                 runCatching {
@@ -307,42 +318,51 @@ fun SessionScreen(
                 }.getOrDefault(false)
             }
 
-            if (has3DModel) {
-                val avatarViewModel: AvatarViewModel = koinViewModel()
-                val avatarAudioData by avatarViewModel.audioData.collectAsStateWithLifecycle()
-                val avatarGender by avatarViewModel.gender.collectAsStateWithLifecycle()
-                AvatarSceneView(
-                    gender    = avatarGender,
-                    audioData = avatarAudioData,
-                    modifier  = Modifier
-                        .fillMaxWidth()
-                        .height(350.dp)
-                        .padding(vertical = 16.dp),
-                )
-            } else {
-                VirtualAvatar(
-                    engineState      = voiceState.engineState,
-                    currentAmplitude = viewModel.currentAmplitude,
-                    modifier         = Modifier.padding(vertical = 16.dp),
-                )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                if (has3DModel) {
+                    val avatarViewModel: AvatarViewModel = koinViewModel()
+                    val avatarAudioData by avatarViewModel.audioData.collectAsStateWithLifecycle()
+                    val avatarGender by avatarViewModel.gender.collectAsStateWithLifecycle()
+                    AvatarSceneView(
+                        gender    = avatarGender,
+                        audioData = avatarAudioData,
+                        modifier  = Modifier
+                            .size(200.dp)
+                            .padding(start = 4.dp),
+                    )
+                } else {
+                    VirtualAvatar(
+                        engineState      = voiceState.engineState,
+                        currentAmplitude = viewModel.currentAmplitude,
+                        modifier         = Modifier
+                            .size(200.dp)
+                            .padding(start = 4.dp),
+                    )
+                }
             }
 
-            // ── AI Process Panel ─────────────────────────────────────────
-            AiProcessPanel(
-                engineState = voiceState.engineState,
-                isSessionActive = uiState.isSessionActive,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Spacer(Modifier.height(8.dp))
 
             // ── Strategy canvas ──────────────────────────────────────────────
-            voiceState.currentStrategy?.let { strategy ->
-                StrategyTestCanvas(
-                    strategy           = strategy,
-                    wordsLearned       = voiceState.wordsLearnedInSession,
-                    exercisesCompleted = voiceState.exercisesCompleted,
-                    modifier           = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(8.dp))
+            AnimatedVisibility(visible = voiceState.currentStrategy != null) {
+                voiceState.currentStrategy?.let { strategy ->
+                    Column {
+                        StrategyTestCanvas(
+                            strategy           = strategy,
+                            wordsLearned       = voiceState.wordsLearnedInSession,
+                            exercisesCompleted = voiceState.exercisesCompleted,
+                            modifier           = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 80.dp),
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
             }
 
             // ── Парящая карточка с транскриптом (Gemini Style) ───────────────
@@ -391,7 +411,6 @@ fun SessionScreen(
                 )
             }
 
-            Spacer(Modifier.height(16.dp))
         }
 
         // ── Post-session summary overlay ─────────────────────────────────────
