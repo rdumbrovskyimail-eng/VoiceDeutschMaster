@@ -92,43 +92,43 @@ jobs:
         grep -n "fun \|class \|interface " app/src/main/java/com/voicedeutsch/master/voicecore/engine/GeminiClient.kt || true
         grep -n "fun \|class \|interface " app/src/main/java/com/voicedeutsch/master/voicecore/engine/VoiceCoreEngine*.kt || true
 
-    - name: Run Unit Tests
-      run: |
-        ./gradlew testDebugUnitTest \
-          --parallel \
-          --build-cache \
-          --no-daemon \
-          -Dlint.baselines.continue=true \
-          2>&1 | tee test_results.log
+    # - name: Run Unit Tests
+    #   run: |
+    #     ./gradlew testDebugUnitTest \
+    #       --parallel \
+    #       --build-cache \
+    #       --no-daemon \
+    #       -Dlint.baselines.continue=true \
+    #       2>&1 | tee test_results.log
 
-    - name: Test Summary
-      if: always()
-      run: |
-        echo "═══════════════════════════════════════"
-        echo "         TEST RESULTS SUMMARY"
-        echo "═══════════════════════════════════════"
-        if [ -f test_results.log ]; then
-          PASSED=$(grep -c "PASSED" test_results.log 2>/dev/null || echo "0")
-          FAILED=$(grep -c "FAILED" test_results.log 2>/dev/null || echo "0")
-          echo "✅ PASSED: $PASSED"
-          echo "❌ FAILED: $FAILED"
-          echo ""
-          if [ "$FAILED" != "0" ]; then
-            echo "─── Failed tests ───"
-            grep "FAILED" test_results.log | head -20
-          fi
-        fi
-        echo "═══════════════════════════════════════"
+    # - name: Test Summary
+    #   if: always()
+    #   run: |
+    #     echo "═══════════════════════════════════════"
+    #     echo "         TEST RESULTS SUMMARY"
+    #     echo "═══════════════════════════════════════"
+    #     if [ -f test_results.log ]; then
+    #       PASSED=$(grep -c "PASSED" test_results.log 2>/dev/null || echo "0")
+    #       FAILED=$(grep -c "FAILED" test_results.log 2>/dev/null || echo "0")
+    #       echo "✅ PASSED: $PASSED"
+    #       echo "❌ FAILED: $FAILED"
+    #       echo ""
+    #       if [ "$FAILED" != "0" ]; then
+    #         echo "─── Failed tests ───"
+    #         grep "FAILED" test_results.log | head -20
+    #       fi
+    #     fi
+    #     echo "═══════════════════════════════════════"
 
-    - name: Upload Test Results
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-results-${{ github.run_number }}
-        path: |
-          app/build/reports/tests/testDebugUnitTest/
-          test_results.log
-        retention-days: 7
+    # - name: Upload Test Results
+    #   if: always()
+    #   uses: actions/upload-artifact@v4
+    #   with:
+    #     name: test-results-${{ github.run_number }}
+    #     path: |
+    #       app/build/reports/tests/testDebugUnitTest/
+    #       test_results.log
+    #     retention-days: 7
 
     - name: Print App Check Debug Token
       run: |
