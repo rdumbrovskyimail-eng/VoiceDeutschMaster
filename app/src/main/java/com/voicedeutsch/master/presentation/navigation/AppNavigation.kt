@@ -44,6 +44,7 @@ import com.voicedeutsch.master.presentation.screen.session.SessionScreen
 import com.voicedeutsch.master.presentation.screen.settings.BookManagerScreen
 import com.voicedeutsch.master.presentation.screen.settings.RuntimeTestScreen
 import com.voicedeutsch.master.presentation.screen.settings.SettingsScreen
+import com.voicedeutsch.master.presentation.screen.history.SessionHistoryScreen
 import com.voicedeutsch.master.presentation.screen.statistics.StatisticsScreen
 import kotlinx.coroutines.flow.firstOrNull
 import org.koin.compose.koinInject
@@ -229,6 +230,13 @@ fun AppNavigation() {
 
             composable<NavRoute.Statistics> {
                 StatisticsScreen(
+                    onBack = { navController.popBackStack() },
+                    onStartSession = { navController.navigate(NavRoute.Session) },
+                )
+            }
+
+            composable<NavRoute.SessionHistory> {
+                SessionHistoryScreen(
                     onBack = { navController.popBackStack() },
                     onStartSession = { navController.navigate(NavRoute.Session) },
                 )
