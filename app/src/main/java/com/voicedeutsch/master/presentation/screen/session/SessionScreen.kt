@@ -82,7 +82,13 @@ import com.voicedeutsch.master.presentation.components.SessionTimer
 import com.voicedeutsch.master.presentation.components.StatusBadge
 import com.voicedeutsch.master.presentation.components.AiProcessPanel
 import com.voicedeutsch.master.presentation.components.VirtualAvatar
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.unit.TextUnit
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.platform.LocalContext
 import com.voicedeutsch.master.presentation.theme.Background
 import com.voicedeutsch.master.presentation.theme.Secondary
 import com.voicedeutsch.master.voicecore.session.VoiceEngineState
@@ -395,6 +401,37 @@ fun SessionScreen(
                     modifier      = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 8.dp),
+                )
+            }
+
+            // ── Avatar debug button ──────────────────────────────────────────
+            var debugText by remember { mutableStateOf("") }
+            var showDebug by remember { mutableStateOf(false) }
+            val debugContext = LocalContext.current
+
+            Button(onClick = {
+                debugText = debugContext.openFileInput("avatar_debug.txt")
+                    .bufferedReader().readText()
+                showDebug = true
+            }) {
+                Text("Показать инфо аватара")
+            }
+
+            if (showDebug) {
+                AlertDialog(
+                    onDismissRequest = { showDebug = false },
+                    title = { Text("Avatar Debug") },
+                    text = {
+                        Text(
+                            text = debugText,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            modifier = Modifier.verticalScroll(rememberScrollState())
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showDebug = false }) { Text("OK") }
+                    }
                 )
             }
 
