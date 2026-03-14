@@ -509,13 +509,15 @@ class VoiceCoreEngineImpl(
 
         val snapshot = withContext(Dispatchers.IO) { buildKnowledgeSummary(uid) }
         val strategy = strategySelector.selectStrategy(snapshot)
+        val bookRepo = org.koin.core.context.GlobalContext.get().get<com.voicedeutsch.master.domain.repository.BookRepository>()
+        val (reconnectChapter, reconnectLesson) = bookRepo.getCurrentBookPosition(uid)
         val sessionContext = withContext(Dispatchers.IO) {
             contextBuilder.buildSessionContext(
                 userId            = uid,
                 knowledgeSnapshot = snapshot,
                 currentStrategy   = strategy,
-                currentChapter    = 1,
-                currentLesson     = 1,
+                currentChapter    = reconnectChapter,
+                currentLesson     = reconnectLesson,
                 maxContextTokens  = config?.maxContextTokens ?: GeminiConfig.MAX_CONTEXT_TOKENS,
             )
         }
