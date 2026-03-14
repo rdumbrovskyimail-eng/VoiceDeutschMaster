@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
@@ -121,6 +122,7 @@ class SessionViewModel(
                 // Запись в mutableFloatStateOf на Main не нужна — Compose
                 // читает floatValue в Canvas на draw-фазе, поток Dispatchers.Default.
                 amplitudeJob = voiceCoreEngine.amplitudeFlow
+                    .conflate()
                     .onEach  { amp -> currentAmplitude.floatValue = amp }
                     .catch   { e -> android.util.Log.w("SessionViewModel", "amplitudeFlow error: ${e.message}") }
                     .launchIn(viewModelScope)
