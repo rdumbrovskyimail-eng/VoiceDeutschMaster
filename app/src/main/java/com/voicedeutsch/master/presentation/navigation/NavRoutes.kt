@@ -53,4 +53,7 @@ sealed interface NavRoute {
     /** Runtime Tests — diagnostic tests for Firebase, Room, mic, network. */
     @Serializable
     data object RuntimeTests : NavRoute
+
+    @Serializable
+    data object SessionHistory : NavRoute
 }
