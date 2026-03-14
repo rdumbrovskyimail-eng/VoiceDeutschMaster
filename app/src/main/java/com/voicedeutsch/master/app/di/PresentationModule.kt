@@ -26,6 +26,7 @@ val presentationModule = module {
             userRepository       = get(),
             preferencesDataStore = get(),
             getUserProfile       = get(),
+            bookRepository       = get(),
         )
     }
     viewModel {
