@@ -1,5 +1,6 @@
 package com.voicedeutsch.master.app.di
 
+import com.voicedeutsch.master.presentation.screen.avatar.AvatarViewModel
 import com.voicedeutsch.master.presentation.screen.book.BookViewModel
 import com.voicedeutsch.master.presentation.screen.dashboard.DashboardViewModel
 import com.voicedeutsch.master.presentation.screen.knowledge.KnowledgeViewModel
@@ -76,6 +77,13 @@ val presentationModule = module {
         SessionHistoryViewModel(
             sessionRepository = get(),
             userRepository = get(),
+        )
+    }
+    viewModel {
+        AvatarViewModel(
+            voiceCoreEngine  = get(),
+            avatarRepository = get(),
+            audioAnalyzer    = get(),
         )
     }
 }
