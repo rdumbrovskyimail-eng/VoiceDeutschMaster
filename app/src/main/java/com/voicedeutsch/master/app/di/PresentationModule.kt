@@ -7,6 +7,7 @@ import com.voicedeutsch.master.presentation.screen.onboarding.OnboardingViewMode
 import com.voicedeutsch.master.presentation.screen.session.SessionViewModel
 import com.voicedeutsch.master.presentation.screen.settings.BookManagerViewModel
 import com.voicedeutsch.master.presentation.screen.settings.SettingsViewModel
+import com.voicedeutsch.master.presentation.screen.history.SessionHistoryViewModel
 import com.voicedeutsch.master.presentation.screen.statistics.StatisticsViewModel
 import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.dsl.module
@@ -68,6 +69,12 @@ val presentationModule = module {
             getDailyProgress         = get(),
             progressRepository       = get(),
             userRepository           = get(),
+        )
+    }
+    viewModel {
+        SessionHistoryViewModel(
+            sessionRepository = get(),
+            userRepository = get(),
         )
     }
 }
