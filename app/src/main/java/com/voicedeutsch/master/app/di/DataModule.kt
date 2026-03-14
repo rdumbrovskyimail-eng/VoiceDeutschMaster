@@ -44,6 +44,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.json.Json
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
@@ -77,15 +79,19 @@ val dataModule = module {
 
     // ─── Firebase Auth ────────────────────────────────────────────────────────
     single<FirebaseAuth> {
-        Firebase.auth.apply {
-            if (currentUser == null) {
-                signInAnonymously()
-                    .addOnSuccessListener { result ->
-                        android.util.Log.d("FirebaseAuth", "✅ Anonymous sign-in: uid=${result.user?.uid}")
-                    }
-                    .addOnFailureListener { e ->
+        Firebase.auth.also { auth ->
+            if (auth.currentUser == null) {
+                // ✅ FIX #3: Ждём завершения анонимного логина через runBlocking.
+                // Выполняется один раз при первом старте. Без этого currentUid() == null
+                // в CloudSyncService/BackupManager при быстром переходе к сессии.
+                runBlocking {
+                    try {
+                        auth.signInAnonymously().await()
+                        android.util.Log.d("FirebaseAuth", "✅ Anonymous sign-in: uid=${auth.currentUser?.uid}")
+                    } catch (e: Exception) {
                         android.util.Log.w("FirebaseAuth", "⚠️ Anonymous sign-in failed: ${e.message}")
                     }
+                }
             }
         }
     }
