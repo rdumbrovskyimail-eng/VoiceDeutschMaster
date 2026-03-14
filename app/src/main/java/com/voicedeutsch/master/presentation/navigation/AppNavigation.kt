@@ -38,6 +38,7 @@ import androidx.navigation.compose.rememberNavController
 import com.voicedeutsch.master.data.local.datastore.UserPreferencesDataStore
 import com.voicedeutsch.master.presentation.screen.book.BookScreen
 import com.voicedeutsch.master.presentation.screen.dashboard.DashboardScreen
+import com.voicedeutsch.master.presentation.screen.knowledge.KnowledgeBaseScreen
 import com.voicedeutsch.master.presentation.screen.knowledge.KnowledgeScreen
 import com.voicedeutsch.master.presentation.screen.onboarding.OnboardingScreen
 import com.voicedeutsch.master.presentation.screen.session.SessionScreen
@@ -198,6 +199,13 @@ fun AppNavigation() {
                 KnowledgeScreen(
                     onBack = { navController.popBackStack() },
                     onStartSession = { navController.navigate(NavRoute.Session) },
+                    onNavigateToKnowledgeBase = { navController.navigate(NavRoute.KnowledgeBase) },
+                )
+            }
+
+            composable<NavRoute.KnowledgeBase> {
+                KnowledgeBaseScreen(
+                    onBack = { navController.popBackStack() },
                 )
             }
 
