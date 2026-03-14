@@ -1,6 +1,7 @@
 package com.voicedeutsch.master.domain.model.knowledge
 
 import com.voicedeutsch.master.domain.model.user.CefrLevel
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -20,14 +21,17 @@ data class GrammarRule(
     val id: String,
     val nameRu: String,
     val nameDe: String,
-    val category: GrammarCategory,
-    val descriptionRu: String,
+    val category: GrammarCategory = GrammarCategory.OTHER,
+    @SerialName("description")
+    val descriptionRu: String = "",
     val descriptionDe: String = "",
-    val difficultyLevel: CefrLevel,
+    @SerialName("level")
+    val difficultyLevel: CefrLevel = CefrLevel.A1,
     val examples: List<GrammarExample> = emptyList(),
     val exceptions: List<String> = emptyList(),
     val relatedRuleIds: List<String> = emptyList(),
     val bookChapter: Int? = null,
+    @SerialName("lesson")
     val bookLesson: Int? = null,
     val createdAt: Long = System.currentTimeMillis()
 )
