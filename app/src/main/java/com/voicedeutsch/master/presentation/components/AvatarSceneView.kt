@@ -157,7 +157,7 @@ private fun lerp(a: Float, b: Float, t: Float): Float = a + (b - a) * t
 
 // Extension helpers for ModelNode morph targets
 private fun ModelNode.setMorphTargetWeight(name: String, weight: Float) {
-    // TODO: implement via RenderableManager.setMorphWeights() when models ready
+    // TODO: implement via RenderableManager.setMorphWeights() when .glb models ready
 }
 
 private fun ModelNode.getMorphTargetWeight(name: String): Float = 0f
