@@ -64,6 +64,7 @@ import org.koin.androidx.compose.koinViewModel
 fun KnowledgeScreen(
     onBack: () -> Unit,
     onStartSession: () -> Unit = {},
+    onNavigateToKnowledgeBase: () -> Unit = {},
     viewModel: KnowledgeViewModel = koinViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
