@@ -4,9 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.voicedeutsch.master.data.local.datastore.UserPreferencesDataStore
 import com.voicedeutsch.master.domain.model.user.CefrLevel
-import com.voicedeutsch.master.domain.usecase.user.GetUserProfileUseCase
-
+import com.voicedeutsch.master.domain.model.user.UserProfile
+import com.voicedeutsch.master.domain.repository.BookRepository
 import com.voicedeutsch.master.domain.repository.UserRepository
+import com.voicedeutsch.master.domain.usecase.user.GetUserProfileUseCase
 import com.voicedeutsch.master.util.generateUUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -41,20 +42,23 @@ sealed interface OnboardingEvent {
  * ViewModel for [OnboardingScreen].
  *
  * Manages a step-by-step flow:
- *   Welcome → Name → Level → Done
+ *   Welcome → Name → Level → Microphone → Done
  *
  * On completion it:
  *  1. Creates the user profile via UserRepository
- *  2. Sets onboarding complete flag
+ *  2. ✅ FIX #1: Загружает книгу (словарь + грамматику) в Room DB
+ *  3. Sets onboarding complete flag
  *
  * @param userRepository        Create user, set active user ID.
  * @param preferencesDataStore  Save onboarding flags.
  * @param getUserProfile        Verify profile was saved correctly.
+ * @param bookRepository        ✅ FIX #1: Load vocabulary + grammar into Room.
  */
 class OnboardingViewModel(
     private val userRepository: UserRepository,
     private val preferencesDataStore: UserPreferencesDataStore,
     private val getUserProfile: GetUserProfileUseCase,
+    private val bookRepository: BookRepository, // ✅ FIX #1: добавлена зависимость
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(OnboardingUiState())
@@ -110,13 +114,19 @@ class OnboardingViewModel(
                 val state = _uiState.value
                 val userId = generateUUID()
 
-                val profile = com.voicedeutsch.master.domain.model.user.UserProfile(
+                val profile = UserProfile(
                     id        = userId,
                     name      = state.name.trim(),
                     cefrLevel = state.selectedLevel,
                 )
 
                 userRepository.createUser(profile)
+
+                // ✅ FIX #1: Загружаем книгу (словарь + грамматику) в Room DB.
+                // Без этого вызова Room содержит 0 слов и 0 правил,
+                // что ломает SRS, Knowledge snapshot и Gemini context.
+                bookRepository.loadBookIntoDatabase()
+
                 preferencesDataStore.setOnboardingComplete(true)
 
             }.onSuccess {
