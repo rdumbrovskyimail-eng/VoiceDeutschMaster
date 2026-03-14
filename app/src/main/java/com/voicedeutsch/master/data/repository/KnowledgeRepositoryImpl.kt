@@ -129,8 +129,12 @@ class KnowledgeRepositoryImpl(
     override suspend fun getWordsForReview(userId: String, limit: Int): List<Pair<Word, WordKnowledge>> {
         val now = DateUtils.nowTimestamp()
         val wkEntities = knowledgeDao.getWordsForReview(userId, now, limit)
+        if (wkEntities.isEmpty()) return emptyList()
+        val wordIds = wkEntities.map { it.wordId }
+        val allWords = wordDao.getAllWords()
+        val wordsById = allWords.associateBy { it.id }
         return wkEntities.mapNotNull { wke ->
-            val word = wordDao.getWord(wke.wordId)?.toDomain() ?: return@mapNotNull null
+            val word = wordsById[wke.wordId]?.toDomain() ?: return@mapNotNull null
             Pair(word, wke.toDomain(json))
         }
     }
