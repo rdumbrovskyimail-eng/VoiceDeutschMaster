@@ -157,15 +157,7 @@ private fun lerp(a: Float, b: Float, t: Float): Float = a + (b - a) * t
 
 // Extension helpers for ModelNode morph targets
 private fun ModelNode.setMorphTargetWeight(name: String, weight: Float) {
-    modelInstance?.let { instance ->
-        val entity = instance.entity
-        // SceneView 2.x API for morph targets
-        runCatching {
-            val animator = instance.animator
-            // Implementation depends on SceneView version
-            // For models with blend shapes, use filament's morphing API
-        }
-    }
+    // TODO: implement via RenderableManager.setMorphWeights() when models ready
 }
 
-private fun ModelNode.getMorphTargetWeight(name: String): Float = 0f // placeholder
+private fun ModelNode.getMorphTargetWeight(name: String): Float = 0f
