@@ -104,7 +104,7 @@ val domainModule = module {
     factory { RecordPronunciationResultUseCase(get()) }
     // AnalyzePronunciationUseCase(speechRepository)
     factory { AnalyzePronunciationUseCase(get()) }
-    // GetPronunciationTargetsUseCase(speechRepository, knowledgeRepository)
+    // GetPronunciationTargetsUseCase(knowledgeRepository, analyzePronunciationUseCase)
     factory { GetPronunciationTargetsUseCase(get(), get()) }
 
     // ─── Progress ─────────────────────────────────────────────────────────────
