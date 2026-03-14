@@ -38,7 +38,7 @@ class MainActivity : ComponentActivity() {
                 else    -> isSystemInDarkTheme()
             }
 
-            VoiceDeutschMasterTheme {
+            VoiceDeutschMasterTheme(darkTheme = isDarkTheme) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     AppNavigation()
                 }
