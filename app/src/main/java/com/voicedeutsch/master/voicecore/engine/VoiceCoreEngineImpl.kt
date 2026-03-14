@@ -461,8 +461,9 @@ class VoiceCoreEngineImpl(
         Log.e(TAG, "Session error [attempts=${reconnectAttempts.get()}/$maxAttempts]: ${error.message}", error)
 
         engineScope.launch {
+            // ✅ FIX #2: Один tryLock, reconnectInternal() вызывается внутри
             if (!reconnectMutex.tryLock()) {
-                Log.w(TAG, "handleSessionError: reconnect already in progress — ignoring duplicate call")
+                Log.w(TAG, "handleSessionError: reconnect already in progress — ignoring")
                 return@launch
             }
             try {
@@ -471,27 +472,27 @@ class VoiceCoreEngineImpl(
 
                 if (reconnectAttempts.get() < maxAttempts) {
                     val attempt = reconnectAttempts.incrementAndGet()
-                    val delayMs = (config?.reconnectDelayMs ?: GeminiConfig.DEFAULT_RECONNECT_DELAY_MS) * attempt
+                    val delayMs = (config?.reconnectDelayMs
+                        ?: GeminiConfig.DEFAULT_RECONNECT_DELAY_MS) * attempt
 
                     Log.d(TAG, "Reconnecting in ${delayMs}ms [attempt $attempt/$maxAttempts]")
                     transitionEngine(VoiceEngineState.RECONNECTING)
                     transitionConnection(ConnectionState.RECONNECTING)
                     delay(delayMs)
 
-                    var lockAcquired = false
-                    try {
-                        lockAcquired = reconnectMutex.tryLock()
-                        if (lockAcquired) reconnectInternal()
-                    } finally {
-                        if (lockAcquired) reconnectMutex.unlock()
-                    }
+                    // ✅ FIX: вызываем reconnect напрямую, мьютекс уже захвачен
+                    reconnectInternal()
                 } else {
                     Log.e(TAG, "Max reconnect attempts reached — giving up")
                     transitionConnection(ConnectionState.FAILED)
                     transitionEngine(VoiceEngineState.IDLE)
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "Reconnect failed: ${e.message}", e)
+                transitionEngine(VoiceEngineState.ERROR)
+                transitionConnection(ConnectionState.FAILED)
             } finally {
-                if (reconnectMutex.isLocked) reconnectMutex.unlock()
+                reconnectMutex.unlock()
             }
         }
     }
