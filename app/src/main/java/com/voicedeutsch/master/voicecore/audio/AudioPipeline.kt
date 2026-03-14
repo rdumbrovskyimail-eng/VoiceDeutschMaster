@@ -40,6 +40,8 @@ class AudioPipeline(private val context: Context) {
         _isInitialized = true
     }
 
+    fun isInitialized(): Boolean = _isInitialized
+
     fun release() {
         if (!_isInitialized) return
         recorder.stop()
