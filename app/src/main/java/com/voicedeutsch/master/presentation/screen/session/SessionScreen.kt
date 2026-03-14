@@ -78,6 +78,7 @@ import androidx.compose.material3.HorizontalDivider
 
 import com.voicedeutsch.master.presentation.components.SessionTimer
 import com.voicedeutsch.master.presentation.components.StatusBadge
+import com.voicedeutsch.master.presentation.components.AiProcessPanel
 import com.voicedeutsch.master.presentation.components.VirtualAvatar
 import androidx.compose.ui.text.font.FontWeight
 import com.voicedeutsch.master.presentation.theme.Background
@@ -301,6 +302,13 @@ fun SessionScreen(
                 engineState      = voiceState.engineState,
                 currentAmplitude = viewModel.currentAmplitude, // ИСПРАВЛЕНО: amplitudes → currentAmplitude
                 modifier         = Modifier.padding(vertical = 16.dp),
+            )
+
+            // ── AI Process Panel ─────────────────────────────────────────
+            AiProcessPanel(
+                engineState = voiceState.engineState,
+                isSessionActive = uiState.isSessionActive,
+                modifier = Modifier.fillMaxWidth(),
             )
 
             // ── Strategy canvas ──────────────────────────────────────────────
