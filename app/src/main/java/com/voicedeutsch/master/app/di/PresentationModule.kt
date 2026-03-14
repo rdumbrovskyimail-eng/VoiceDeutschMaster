@@ -1,6 +1,6 @@
 package com.voicedeutsch.master.app.di
 
-import com.voicedeutsch.master.avatar.AvatarViewModel
+import com.voicedeutsch.master.presentation.screen.session.AvatarViewModel
 import com.voicedeutsch.master.presentation.screen.book.BookViewModel
 import com.voicedeutsch.master.presentation.screen.dashboard.DashboardViewModel
 import com.voicedeutsch.master.presentation.screen.knowledge.KnowledgeViewModel
