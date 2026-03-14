@@ -56,4 +56,8 @@ sealed interface NavRoute {
 
     @Serializable
     data object SessionHistory : NavRoute
+
+    /** Knowledge Base — user's custom word/phrase collection. */
+    @Serializable
+    data object KnowledgeBase : NavRoute
 }
