@@ -160,6 +160,7 @@ fun AvatarSceneView(
     gender: AvatarGender,
     audioData: AvatarAudioData,
     modifier: Modifier = Modifier,
+    context: android.content.Context = androidx.compose.ui.platform.LocalContext.current,
 ) {
     val engine      = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
@@ -177,6 +178,29 @@ fun AvatarSceneView(
         modelNode?.destroy()
         runCatching {
             val instance = modelLoader.createModelInstance(modelPath)
+
+            // ── DEBUG: собираем инфо о модели ────────────────────
+            val sb = StringBuilder()
+            sb.appendLine("=== ANIMATIONS ===")
+            val animCount = instance.animator.animationCount
+            if (animCount == 0) sb.appendLine("НЕТ АНИМАЦИЙ")
+            repeat(animCount) { i ->
+                sb.appendLine("[$i] ${instance.animator.getAnimationName(i)}")
+            }
+            sb.appendLine("\n=== MORPH TARGETS ===")
+            val morphs = instance.filamentAsset.morphTargetNames
+            if (morphs.isNullOrEmpty()) sb.appendLine("НЕТ МОРФ ТАРГЕТОВ")
+            morphs?.forEachIndexed { i, name -> sb.appendLine("[$i] $name") }
+            sb.appendLine("\n=== BONES ===")
+            instance.filamentAsset.entities.forEach { e ->
+                instance.filamentAsset.getName(e)?.let { sb.appendLine(it) }
+            }
+            // Записываем в файл
+            context.openFileOutput("avatar_debug.txt", android.content.Context.MODE_PRIVATE)
+                .use { it.write(sb.toString().toByteArray()) }
+            Log.d(TAG, "Debug info written to avatar_debug.txt")
+            // ── END DEBUG ─────────────────────────────────────────
+
             modelNode = ModelNode(
                 modelInstance = instance,
                 scaleToUnits  = 1.8f,           // fill portrait frame
