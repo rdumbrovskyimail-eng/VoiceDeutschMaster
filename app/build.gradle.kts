@@ -190,6 +190,9 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.play.services)
 
+    // ── 3D Avatar (SceneView / Filament) ─────────────────────────────────────
+    implementation("io.github.sceneview:sceneview:2.2.1")
+
     // ── Image Loading (Coil) ─────────────────────────────────────────────────
     implementation("io.coil-kt:coil-compose:2.7.0")
 
