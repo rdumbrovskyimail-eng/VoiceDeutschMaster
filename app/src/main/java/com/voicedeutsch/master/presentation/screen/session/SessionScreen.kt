@@ -76,8 +76,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 
-import com.voicedeutsch.master.avatar.AvatarViewModel
-import com.voicedeutsch.master.avatar.AvatarSceneView
 import com.voicedeutsch.master.presentation.components.AvatarSceneView
 import com.voicedeutsch.master.presentation.components.SessionTimer
 import com.voicedeutsch.master.presentation.components.StatusBadge
@@ -310,10 +308,10 @@ fun SessionScreen(
             }
 
             if (has3DModel) {
-                val avatarViewModel: com.voicedeutsch.master.avatar.AvatarViewModel = koinViewModel()
+                val avatarViewModel: AvatarViewModel = koinViewModel()
                 val avatarAudioData by avatarViewModel.audioData.collectAsStateWithLifecycle()
                 val avatarGender by avatarViewModel.gender.collectAsStateWithLifecycle()
-                com.voicedeutsch.master.avatar.AvatarSceneView(
+                AvatarSceneView(
                     gender    = avatarGender,
                     audioData = avatarAudioData,
                     modifier  = Modifier
