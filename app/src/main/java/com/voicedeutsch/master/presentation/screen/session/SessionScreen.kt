@@ -297,12 +297,34 @@ fun SessionScreen(
                 Spacer(Modifier.height(8.dp))
             }
 
-            // ── VirtualAvatar (заменяет VoiceWaveform) ───────────────────────
-            VirtualAvatar(
-                engineState      = voiceState.engineState,
-                currentAmplitude = viewModel.currentAmplitude, // ИСПРАВЛЕНО: amplitudes → currentAmplitude
-                modifier         = Modifier.padding(vertical = 16.dp),
-            )
+            // ── Avatar (3D если есть .glb, иначе 2D fallback) ────────────────
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val has3DModel = remember {
+                runCatching {
+                    context.assets.open("avatar_female.glb").close()
+                    true
+                }.getOrDefault(false)
+            }
+
+            if (has3DModel) {
+                val avatarViewModel: com.voicedeutsch.master.avatar.AvatarViewModel = koinViewModel()
+                val avatarAudioData by avatarViewModel.audioData.collectAsStateWithLifecycle()
+                val avatarGender by avatarViewModel.gender.collectAsStateWithLifecycle()
+                com.voicedeutsch.master.avatar.AvatarSceneView(
+                    gender    = avatarGender,
+                    audioData = avatarAudioData,
+                    modifier  = Modifier
+                        .fillMaxWidth()
+                        .height(350.dp)
+                        .padding(vertical = 16.dp),
+                )
+            } else {
+                VirtualAvatar(
+                    engineState      = voiceState.engineState,
+                    currentAmplitude = viewModel.currentAmplitude,
+                    modifier         = Modifier.padding(vertical = 16.dp),
+                )
+            }
 
             // ── AI Process Panel ─────────────────────────────────────────
             AiProcessPanel(
