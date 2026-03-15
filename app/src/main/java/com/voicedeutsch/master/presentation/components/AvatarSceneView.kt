@@ -46,14 +46,15 @@ fun AvatarSceneView(
     // Load model
     LaunchedEffect(gender) {
         modelNode?.destroy()
+        modelNode = null
         runCatching {
             val instance = modelLoader.createModelInstance(modelPath)
-            modelNode = ModelNode(
+            val node = ModelNode(
                 modelInstance = instance,
                 scaleToUnits  = 1.8f,
             ).apply {
                 position = Position(x = 0f, y = -0.95f, z = 0f)
-                val animator = node.modelInstance.animator
+                val animator = modelInstance.animator
                 if (animator.animationCount > 0) {
                     val idleIdx = (0 until animator.animationCount).firstOrNull { i ->
                         animator.getAnimationName(i).lowercase().contains("idle")
@@ -64,7 +65,8 @@ fun AvatarSceneView(
                     }
                 }
             }
-        }.onSuccess { node ->
+
+            // Записываем имена костей в файл для отладки
             runCatching {
                 val asset = node.modelInstance.asset
                 val sb = StringBuilder()
@@ -77,6 +79,10 @@ fun AvatarSceneView(
                     .use { it.write(sb.toString().toByteArray()) }
                 android.util.Log.d("BONES", sb.toString())
             }
+
+            modelNode = node
+        }.onFailure { e ->
+            android.util.Log.e("AvatarSceneView", "Model load failed: ${e.message}")
         }
     }
 
