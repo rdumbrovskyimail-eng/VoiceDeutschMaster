@@ -87,6 +87,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import com.voicedeutsch.master.presentation.theme.Background
 import com.voicedeutsch.master.presentation.theme.Secondary
@@ -386,34 +388,23 @@ fun SessionScreen(
             }
 
             // ── Avatar debug button ──────────────────────────────────────────
-            var debugText by remember { mutableStateOf("") }
-            var showDebug by remember { mutableStateOf(false) }
             val debugContext = LocalContext.current
 
-            Button(onClick = {
-                debugText = debugContext.openFileInput("avatar_debug.txt")
-                    .bufferedReader().readText()
-                showDebug = true
-            }) {
-                Text("Показать инфо аватара")
+            val saveLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.CreateDocument("text/plain")
+            ) { uri ->
+                if (uri == null) return@rememberLauncherForActivityResult
+                runCatching {
+                    val text = debugContext.openFileInput("avatar_debug.txt")
+                        .bufferedReader().readText()
+                    debugContext.contentResolver.openOutputStream(uri)?.use {
+                        it.write(text.toByteArray())
+                    }
+                }
             }
 
-            if (showDebug) {
-                AlertDialog(
-                    onDismissRequest = { showDebug = false },
-                    title = { Text("Avatar Debug") },
-                    text = {
-                        Text(
-                            text = debugText,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 11.sp,
-                            modifier = Modifier.verticalScroll(rememberScrollState())
-                        )
-                    },
-                    confirmButton = {
-                        TextButton(onClick = { showDebug = false }) { Text("OK") }
-                    }
-                )
+            Button(onClick = { saveLauncher.launch("avatar_debug.txt") }) {
+                Text("Сохранить кости аватара")
             }
 
             // ── Text input (accessibility fallback) ──────────────────────────
