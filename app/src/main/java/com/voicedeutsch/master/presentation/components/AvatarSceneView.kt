@@ -12,8 +12,10 @@ import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberModelLoader
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 
 private const val TAG = "AvatarSceneView"
 
@@ -49,36 +51,38 @@ fun AvatarSceneView(
         behavior.reset()
         modelNode = null
 
-        runCatching {
-            val instance = modelLoader.createModelInstance(modelPath)
-            val node = ModelNode(
-                modelInstance = instance,
-                scaleToUnits = 1.8f,
-            ).apply {
-                position = Position(x = 0f, y = -0.95f, z = 0f)
-                // Slight rotation toward camera for better framing
-                rotation = Rotation(x = 0f, y = 0f, z = 0f)
-            }
-
-            boneCtrl.init(node)
-            morphCtrl.init(node)
-
-            // Debug: log discovered capabilities
-            Log.d(TAG, "Bones found: ${boneCtrl.getDiscoveredBones()}")
-            Log.d(TAG, "Morph targets found: ${morphCtrl.getAvailableNames()}")
-
-            if (!boneCtrl.isReady()) {
-                Log.w(TAG, "⚠ No bones found! All entities: ${boneCtrl.getAllEntityNames()}")
-            }
-            if (!morphCtrl.isReady()) {
-                Log.w(TAG, "⚠ No morph targets found! Check if model has blend shapes.")
-            }
-
-            modelNode = node
-            Log.d(TAG, "Model loaded successfully")
-        }.onFailure { e ->
+        val instance = withContext(Dispatchers.IO) {
+            runCatching { modelLoader.createModelInstance(modelPath) }
+        }.getOrElse { e ->
             Log.e(TAG, "Model load failed: ${e.message}", e)
+            return@LaunchedEffect
         }
+
+        val node = ModelNode(
+            modelInstance = instance,
+            scaleToUnits = 1.8f,
+        ).apply {
+            position = Position(x = 0f, y = -0.95f, z = 0f)
+            // Slight rotation toward camera for better framing
+            rotation = Rotation(x = 0f, y = 0f, z = 0f)
+        }
+
+        boneCtrl.init(node)
+        morphCtrl.init(node)
+
+        // Debug: log discovered capabilities
+        Log.d(TAG, "Bones found: ${boneCtrl.getDiscoveredBones()}")
+        Log.d(TAG, "Morph targets found: ${morphCtrl.getAvailableNames()}")
+
+        if (!boneCtrl.isReady()) {
+            Log.w(TAG, "⚠ No bones found! All entities: ${boneCtrl.getAllEntityNames()}")
+        }
+        if (!morphCtrl.isReady()) {
+            Log.w(TAG, "⚠ No morph targets found! Check if model has blend shapes.")
+        }
+
+        modelNode = node
+        Log.d(TAG, "Model loaded successfully")
     }
 
     // ── Animation loop (30fps) ────────────────────────────────────────
