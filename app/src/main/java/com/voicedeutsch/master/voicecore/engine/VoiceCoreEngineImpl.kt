@@ -91,29 +91,98 @@ class VoiceCoreEngineImpl(
     private val _audioState      = MutableStateFlow(AudioState.IDLE)
     override val audioState:     StateFlow<AudioState> = _audioState.asStateFlow()
 
+    /**
+     * Generates conversational amplitude pattern.
+     *
+     * Since Firebase AI SDK manages audio internally via startAudioConversation(),
+     * we cannot access the raw audio stream. Instead, we generate a realistic
+     * conversational pattern that alternates between "AI speaking" and "listening"
+     * phases with natural prosody.
+     *
+     * During RECORDING/PLAYING (active session):
+     *   Phase 1 (SPEAKING, 2-5s): syllable-rate pulses with prosody envelope
+     *   Phase 2 (PAUSE, 0.5-2s): near-silence (listening/breathing)
+     *   Repeats with random variation
+     *
+     * During IDLE: gentle breathing sine (very low amplitude)
+     */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     override val amplitudeFlow: Flow<Float> = _audioState
         .flatMapLatest { state ->
             when (state) {
-                AudioState.RECORDING,
-                AudioState.PLAYING -> flow {
+                AudioState.RECORDING, AudioState.PLAYING -> flow {
+                    // Conversational rhythm generator
                     var phase = 0f
-                    var targetAmp = 0.6f
-                    var currentAmp = 0f
-                    var frameCount = 0
+                    var isSpeakingPhase = true
+                    var phaseTimer = Random.nextFloat() * 2000f + 2000f // 2-4s initial speech
+                    var phaseStartMs = System.currentTimeMillis()
+                    var syllablePhase = 0f
+                    var phraseEnvelope = 0.5f
+                    var targetEnvelope = 0.7f
+
                     while (currentCoroutineContext().isActive) {
-                        phase = (phase + 0.15f) % (2f * PI.toFloat())
-                        if (++frameCount % 20 == 0) targetAmp = Random.nextFloat() * 0.6f + 0.3f
-                        currentAmp += (targetAmp - currentAmp) * 0.15f
-                        emit((currentAmp * 0.5f + (sin(phase) * 0.5f + 0.5f) * 0.4f + Random.nextFloat() * 0.1f).coerceIn(0f, 1f))
-                        delay(33L)
+                        val now = System.currentTimeMillis()
+                        val elapsed = now - phaseStartMs
+
+                        // Check if current phase is over
+                        if (elapsed >= phaseTimer) {
+                            isSpeakingPhase = !isSpeakingPhase
+                            phaseStartMs = now
+                            phaseTimer = if (isSpeakingPhase) {
+                                // Speaking phase: 2-5 seconds
+                                Random.nextFloat() * 3000f + 2000f
+                            } else {
+                                // Pause phase: 0.5-2 seconds
+                                Random.nextFloat() * 1500f + 500f
+                            }
+                            if (isSpeakingPhase) {
+                                targetEnvelope = Random.nextFloat() * 0.3f + 0.5f // 0.5-0.8
+                            }
+                        }
+
+                        val amp: Float
+                        if (isSpeakingPhase) {
+                            // Smooth envelope transition
+                            phraseEnvelope += (targetEnvelope - phraseEnvelope) * 0.02f
+
+                            // Change target envelope occasionally (prosody)
+                            if (Random.nextFloat() < 0.005f) {
+                                targetEnvelope = Random.nextFloat() * 0.3f + 0.5f
+                            }
+
+                            // Syllable-rate modulation (~5-7 Hz)
+                            syllablePhase += 0.18f + Random.nextFloat() * 0.04f
+                            val syllable = (sin(syllablePhase) * 0.5f + 0.5f)
+
+                            // Combine: envelope × syllable + jitter
+                            val jitter = Random.nextFloat() * 0.08f
+                            amp = (phraseEnvelope * (syllable * 0.5f + 0.5f) + jitter)
+                                .coerceIn(0.15f, 0.85f)
+
+                            // Micro-pauses within speech (natural)
+                            val microPause = Random.nextFloat() < 0.02f
+                            if (microPause) {
+                                emit(Random.nextFloat() * 0.05f + 0.02f)
+                                delay(33L)
+                                continue
+                            }
+                        } else {
+                            // Listening/pause phase: gentle breathing
+                            phase += 0.05f
+                            amp = (sin(phase) * 0.02f + 0.03f)
+                                .coerceIn(0f, 0.06f)
+                        }
+
+                        emit(amp)
+                        delay(33L) // ~30fps
                     }
                 }
                 else -> flow {
+                    // Idle: very gentle breathing
                     var phase = 0f
                     while (currentCoroutineContext().isActive) {
-                        phase = (phase + 0.03f) % (2f * PI.toFloat())
-                        emit((sin(phase) * 0.05f + 0.05f).coerceIn(0f, 1f))
+                        phase += 0.03f
+                        emit((sin(phase) * 0.03f + 0.03f).coerceIn(0f, 1f))
                         delay(50L)
                     }
                 }
