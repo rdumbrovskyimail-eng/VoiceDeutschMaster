@@ -81,7 +81,7 @@ import com.voicedeutsch.master.presentation.components.AvatarSceneView
 import com.voicedeutsch.master.presentation.components.SessionTimer
 import com.voicedeutsch.master.presentation.components.StatusBadge
 import com.voicedeutsch.master.presentation.components.AiProcessPanel
-import com.voicedeutsch.master.presentation.components.VirtualAvatar
+
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
