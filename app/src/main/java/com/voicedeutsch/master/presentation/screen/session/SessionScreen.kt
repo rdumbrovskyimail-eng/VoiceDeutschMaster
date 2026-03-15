@@ -123,6 +123,10 @@ fun SessionScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val voiceState by viewModel.voiceState.collectAsStateWithLifecycle()
 
+    val avatarViewModel: AvatarViewModel = koinViewModel()
+    val avatarAudioData by avatarViewModel.audioData.collectAsStateWithLifecycle()
+    val avatarGender by avatarViewModel.gender.collectAsStateWithLifecycle()
+
     val hasRecordAudioPermission = rememberPermissionState(Manifest.permission.RECORD_AUDIO).status.isGranted
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -324,9 +328,6 @@ fun SessionScreen(
                     .height(200.dp),
                 contentAlignment = Alignment.CenterStart,
             ) {
-                val avatarViewModel: AvatarViewModel = koinViewModel()
-                val avatarAudioData by avatarViewModel.audioData.collectAsStateWithLifecycle()
-                val avatarGender by avatarViewModel.gender.collectAsStateWithLifecycle()
                 AvatarSceneView(
                     gender    = avatarGender,
                     audioData = avatarAudioData,
