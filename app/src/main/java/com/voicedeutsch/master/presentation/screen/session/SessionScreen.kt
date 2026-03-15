@@ -178,6 +178,7 @@ fun SessionScreen(
                 return@LaunchedEffect
             }
             // ⏱ Запускаем ANR Watchdog — через 7 сек сдампит все потоки и крашнет
+            avatarViewModel.startCapture()
             AnrWatchdog.startWatching(context, timeoutMs = 7_000L, crashAfterDump = true)
             viewModel.onEvent(SessionEvent.StartSession)
         }
