@@ -84,7 +84,6 @@ import com.voicedeutsch.master.presentation.components.AiProcessPanel
 import com.voicedeutsch.master.presentation.components.VirtualAvatar
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
