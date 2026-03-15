@@ -66,7 +66,6 @@ fun AvatarSceneView(
                 }
             }
 
-            // Записываем имена костей в файл для отладки
             runCatching {
                 val asset = node.modelInstance.asset
                 val sb = StringBuilder()
