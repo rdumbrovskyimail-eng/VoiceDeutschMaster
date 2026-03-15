@@ -184,7 +184,7 @@ class MorphTargetHelper(private val engine: Engine) {
             val me = morphableEntities[idx]
             if (!rm.hasComponent(me.entity)) continue
             val ri = rm.getInstance(me.entity)
-            rm.setMorphWeights(ri, me.weights, me.count, 0)
+            rm.setMorphWeights(ri, me.weights, me.count)
         }
     }
 
