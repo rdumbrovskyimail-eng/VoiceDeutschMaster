@@ -201,6 +201,7 @@ class CrashLogger private constructor(
                 file.name.startsWith(CRASH_PREFIX)             -> LogFile(file, LogType.CRASH,   file.lastModified())
                 file.name.startsWith(LOGCAT_PREFIX)            -> LogFile(file, LogType.LOGCAT,  file.lastModified())
                 file.name.startsWith(AppLogger.SESSION_PREFIX) -> LogFile(file, LogType.SESSION, file.lastModified())
+                file.name.startsWith("anr_dump_")              -> LogFile(file, LogType.ANR,     file.lastModified())
                 else -> null
             }
         }?.sortedByDescending { it.timestamp } ?: emptyList()
@@ -273,7 +274,7 @@ data class LogFile(val file: File, val type: LogType, val timestamp: Long) {
         SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(timestamp))
 }
 
-enum class LogType { CRASH, LOGCAT, SESSION }
+enum class LogType { CRASH, LOGCAT, SESSION, ANR }
 
 data class LogStats(
     val totalCrashes:   Int,
