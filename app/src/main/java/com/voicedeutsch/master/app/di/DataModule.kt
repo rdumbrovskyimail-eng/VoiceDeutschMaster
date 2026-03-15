@@ -18,6 +18,7 @@ import com.voicedeutsch.master.data.local.file.BookFileReader
 import com.voicedeutsch.master.data.local.file.ExportImportManager
 import com.voicedeutsch.master.data.remote.sync.BackupManager
 import com.voicedeutsch.master.data.remote.sync.CloudSyncService
+import com.voicedeutsch.master.voicecore.engine.AvatarAudioAnalyzer
 import com.voicedeutsch.master.data.repository.AchievementRepositoryImpl
 import com.voicedeutsch.master.data.repository.BookRepositoryImpl
 import com.voicedeutsch.master.data.repository.KnowledgeRepositoryImpl
@@ -220,6 +221,9 @@ val dataModule = module {
     // ─── File Managers ───────────────────────────────────────────────────────
     single { AudioCacheManager(androidContext()) }
     single { ExportImportManager(androidContext(), get()) }
+
+    // ─── Voice Core ──────────────────────────────────────────────────────────
+    single { AvatarAudioAnalyzer() }
 
     // ─── Use Cases: Knowledge Sync ───────────────────────────────────────────
     // ✅ ДОБАВЛЕНО: FlushKnowledgeSyncUseCase — вызывается в VoiceCoreEngineImpl.endSession().
