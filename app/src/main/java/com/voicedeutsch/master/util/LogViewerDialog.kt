@@ -159,6 +159,7 @@ private fun LogListItem(
                     LogType.CRASH   -> Icons.Default.Warning
                     LogType.LOGCAT  -> Icons.Default.Description
                     LogType.SESSION -> Icons.Default.Article
+                    LogType.ANR     -> Icons.Default.Timer
                 },
                 null,
                 modifier = Modifier.size(32.dp),
@@ -167,6 +168,7 @@ private fun LogListItem(
                     LogType.CRASH   -> Color(0xFFEF4444)  // красный
                     LogType.LOGCAT  -> Color(0xFF3B82F6)  // синий
                     LogType.SESSION -> Color(0xFF22C55E)  // зелёный
+                    LogType.ANR     -> Color(0xFFF59E0B)  // оранжевый
                 },
             )
 
@@ -336,6 +338,7 @@ fun LogContentDialog(
                                             LogType.CRASH   -> Color(0xFFEF4444)  // красный
                                             LogType.LOGCAT  -> Color(0xFF10B981)  // зелёный
                                             LogType.SESSION -> Color(0xFF8B5CF6)  // фиолетовый
+                                            LogType.ANR     -> Color(0xFFF59E0B)  // оранжевый
                                         },
                                         shape = MaterialTheme.shapes.small,
                                     ) {
