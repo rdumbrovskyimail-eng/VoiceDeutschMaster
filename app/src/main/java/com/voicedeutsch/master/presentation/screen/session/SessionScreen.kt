@@ -316,40 +316,22 @@ fun SessionScreen(
             Spacer(Modifier.height(8.dp))
 
             // ── Avatar (квадрат, влево) ───────────────────────────────────
-            val context = androidx.compose.ui.platform.LocalContext.current
-            val has3DModel = remember {
-                runCatching {
-                    context.assets.open("avatar_female.glb").close()
-                    true
-                }.getOrDefault(false)
-            }
-
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(200.dp),
                 contentAlignment = Alignment.CenterStart,
             ) {
-                if (has3DModel) {
-                    val avatarViewModel: AvatarViewModel = koinViewModel()
-                    val avatarAudioData by avatarViewModel.audioData.collectAsStateWithLifecycle()
-                    val avatarGender by avatarViewModel.gender.collectAsStateWithLifecycle()
-                    AvatarSceneView(
-                        gender    = avatarGender,
-                        audioData = avatarAudioData,
-                        modifier  = Modifier
-                            .size(200.dp)
-                            .padding(start = 4.dp),
-                    )
-                } else {
-                    VirtualAvatar(
-                        engineState      = voiceState.engineState,
-                        currentAmplitude = viewModel.currentAmplitude,
-                        modifier         = Modifier
-                            .size(200.dp)
-                            .padding(start = 4.dp),
-                    )
-                }
+                val avatarViewModel: AvatarViewModel = koinViewModel()
+                val avatarAudioData by avatarViewModel.audioData.collectAsStateWithLifecycle()
+                val avatarGender by avatarViewModel.gender.collectAsStateWithLifecycle()
+                AvatarSceneView(
+                    gender    = avatarGender,
+                    audioData = avatarAudioData,
+                    modifier  = Modifier
+                        .size(200.dp)
+                        .padding(start = 4.dp),
+                )
             }
 
             Spacer(Modifier.height(8.dp))
