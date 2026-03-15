@@ -27,8 +27,6 @@ class VoiceDeutschApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        initAppLogger()
-
         try {
             CrashLogger.init(this).apply {
                 cleanOldLogs(keepCount = 20)
@@ -36,6 +34,8 @@ class VoiceDeutschApp : Application() {
         } catch (e: Exception) {
             Log.e(TAG, "❌ CrashLogger init failed", e)
         }
+
+        initAppLogger()
 
         startKoin {
             androidLogger(if (BuildConfig.DEBUG) Level.DEBUG else Level.NONE)
