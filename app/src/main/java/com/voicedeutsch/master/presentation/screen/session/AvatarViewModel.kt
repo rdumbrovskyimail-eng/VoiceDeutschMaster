@@ -20,6 +20,14 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/**
+ * Manages avatar animation state.
+ *
+ * IMPORTANT: Visualizer is NOT started in init{}.
+ * It requires RECORD_AUDIO permission to be already granted.
+ * Call [startCapture] after permission is confirmed and session starts.
+ * Until then, synthetic fallback runs automatically.
+ */
 class AvatarViewModel(
     private val voiceCoreEngine: VoiceCoreEngine,
     private val avatarRepository: AvatarRepository,
@@ -39,48 +47,69 @@ class AvatarViewModel(
     @Volatile
     private var usingRealAudio = false
 
+    @Volatile
+    private var captureStarted = false
+
     init {
-        // CRITICAL: launch on background — Visualizer constructor blocks main thread
+        // Start with synthetic fallback immediately — safe, no permissions needed
+        startSyntheticFallback()
+    }
+
+    /**
+     * Call this AFTER RECORD_AUDIO permission is granted and session is starting.
+     * Attempts to upgrade from synthetic to real Visualizer audio.
+     * Safe to call multiple times — only runs once.
+     */
+    fun startCapture() {
+        if (captureStarted) return
+        captureStarted = true
+
         viewModelScope.launch {
-            startAudioCapture()
+            tryStartVisualizer()
         }
     }
 
-    private suspend fun startAudioCapture() {
+    private suspend fun tryStartVisualizer() {
         val started = try {
             withContext(Dispatchers.IO) {
                 audioCapture.start(audioSessionId = 0)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Visualizer init crashed: ${e.message}", e)
+            Log.e(TAG, "Visualizer failed: ${e.message}", e)
             false
         }
 
         if (started) {
             usingRealAudio = true
-            Log.d(TAG, "✅ Real audio capture active")
+            Log.d(TAG, "✅ Upgraded to real audio capture")
 
+            // Cancel synthetic, switch to real
             audioCapture.frames
                 .conflate()
                 .onEach { frame -> audioAnalyzer.onAudioFrame(frame) }
                 .catch { e ->
-                    Log.e(TAG, "Audio frame error, fallback: ${e.message}")
-                    fallbackToSynthetic()
+                    Log.e(TAG, "Audio frame error: ${e.message}")
+                    // Don't restart synthetic — it's already running as base
                 }
                 .launchIn(viewModelScope)
         } else {
-            Log.w(TAG, "⚠ Visualizer unavailable — synthetic fallback")
-            fallbackToSynthetic()
+            Log.w(TAG, "⚠ Visualizer unavailable — staying on synthetic")
+            // Synthetic already running from init, nothing to do
         }
     }
 
-    private fun fallbackToSynthetic() {
-        usingRealAudio = false
-        runCatching { audioCapture.stop() }
-
+    /**
+     * Synthetic amplitude from VoiceCoreEngine — always works, no permissions.
+     */
+    private fun startSyntheticFallback() {
         voiceCoreEngine.amplitudeFlow
             .conflate()
-            .onEach { amp -> audioAnalyzer.onAmplitude(amp) }
+            .onEach { amp ->
+                // Only use synthetic if real audio is not active
+                if (!usingRealAudio) {
+                    audioAnalyzer.onAmplitude(amp)
+                }
+            }
             .catch { e -> Log.w(TAG, "Synthetic amplitude error: ${e.message}") }
             .launchIn(viewModelScope)
     }
