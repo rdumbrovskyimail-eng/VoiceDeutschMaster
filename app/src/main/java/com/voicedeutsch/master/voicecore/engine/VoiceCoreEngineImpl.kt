@@ -26,14 +26,19 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.math.PI
+import kotlin.math.sin
+import kotlin.random.Random
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -90,9 +95,28 @@ class VoiceCoreEngineImpl(
     override val amplitudeFlow: Flow<Float> = _audioState
         .flatMapLatest { state ->
             when (state) {
-                AudioState.RECORDING -> avatarAnimation.createActiveFlow()
-                AudioState.PLAYING   -> avatarAnimation.createActiveFlow()
-                else                 -> avatarAnimation.createIdleFlow()
+                AudioState.RECORDING,
+                AudioState.PLAYING -> flow {
+                    var phase = 0f
+                    var targetAmp = 0.6f
+                    var currentAmp = 0f
+                    var frameCount = 0
+                    while (currentCoroutineContext().isActive) {
+                        phase = (phase + 0.15f) % (2f * PI.toFloat())
+                        if (++frameCount % 20 == 0) targetAmp = Random.nextFloat() * 0.6f + 0.3f
+                        currentAmp += (targetAmp - currentAmp) * 0.15f
+                        emit((currentAmp * 0.5f + (sin(phase) * 0.5f + 0.5f) * 0.4f + Random.nextFloat() * 0.1f).coerceIn(0f, 1f))
+                        delay(33L)
+                    }
+                }
+                else -> flow {
+                    var phase = 0f
+                    while (currentCoroutineContext().isActive) {
+                        phase = (phase + 0.03f) % (2f * PI.toFloat())
+                        emit((sin(phase) * 0.05f + 0.05f).coerceIn(0f, 1f))
+                        delay(50L)
+                    }
+                }
             }
         }
 
@@ -102,7 +126,6 @@ class VoiceCoreEngineImpl(
     private val reconnectAttempts = AtomicInteger(0)
     @Volatile private var sessionStartMs: Long = 0L
     private val reconnectMutex = Mutex()
-    private val avatarAnimation = AvatarAnimationSource()
 
     // ── State helpers ─────────────────────────────────────────────────────────
 
