@@ -6,17 +6,17 @@ import kotlin.math.*
 import kotlin.random.Random
 
 /**
- * Avatar brain — generates realistic procedural behavior every frame (30fps).
+ * Avatar brain v3 — generates realistic procedural behavior from spectral audio features.
  *
- * v2 improvements:
- *  - Perlin noise for ALL micro-movements (not sin+Random)
- *  - Proper state machine with blend transitions (no instant snaps)
- *  - Eye micro-saccades (tiny random eye movements that make it feel alive)
- *  - Breathing modulated by speech (faster when speaking)
- *  - Better gesture system with arm IK-like blending
- *  - Head movement follows speech emphasis (amplitude-driven nods)
- *  - Natural blink patterns (double blinks, speech-correlated)
- *  - Viseme cycling with variety (not just aa/O)
+ * v3 improvements over v2:
+ *  - REAL spectral data drives all animation (not synthetic)
+ *  - Smile-in-voice → smile morph driven by spectral centroid shift
+ *  - Pitch contour → eyebrow raises, head tilt, question expression
+ *  - Emphasis/stress → head nods, gesture triggers, brow emphasis
+ *  - Band energy → viseme selection (sibilants, vowels, plosives)
+ *  - Vowel openness → jaw opening (spectral, not just amplitude)
+ *  - Question intonation → brow raise + head tilt up
+ *  - Spectral flux → plosive/transient detection for gesture timing
  */
 class AvatarBehaviorEngine {
 
@@ -59,18 +59,18 @@ class AvatarBehaviorEngine {
     private var time = 0f
     private var state = AvatarState.IDLE
     private var prevState = AvatarState.IDLE
-    private var stateBlend = 1f  // 0 = fully prevState, 1 = fully currentState
+    private var stateBlend = 1f
     private var stateChangeTime = 0f
 
     // ── Speech tracking ───────────────────────────────────────────────────
     private var lastSpeakingMs = System.currentTimeMillis()
     private var silenceStartMs = 0L
     private var lastAmp = 0f
-    private var ampVelocity = 0f  // rate of amplitude change
+    private var ampVelocity = 0f
 
     // ── Gesture system ────────────────────────────────────────────────────
     private var gestureTimer = 0f
-    private var gesturePhase = 0   // 0=none, 1=left, 2=right, 3=both
+    private var gesturePhase = 0
     private var gestureBlend = 0f
     private var gestureIntensity = 0.7f
 
@@ -79,7 +79,7 @@ class AvatarBehaviorEngine {
     private var blinkR = 0f
     private var nextBlinkMs = System.currentTimeMillis() + Random.nextLong(2000, 4000)
     private var doubleBlinkPending = false
-    private var blinkPhase = 0 // 0=open, 1=closing, 2=opening
+    private var blinkPhase = 0
 
     // ── Eye saccade system ────────────────────────────────────────────────
     private var eyeTargetX = 0f
@@ -88,9 +88,17 @@ class AvatarBehaviorEngine {
     private var eyeCurrentY = 0f
     private var nextSaccadeMs = System.currentTimeMillis() + 500L
 
-    // ── Nod system ────────────────────────────────────────────────────────
+    // ── Nod system (now driven by real emphasis) ──────────────────────────
     private var nodTimer = 0f
     private var nodIntensity = 0f
+
+    // ── Prosodic tracking ─────────────────────────────────────────────────
+    private var smoothedSmile = 0f
+    private var smoothedEmphasis = 0f
+    private var smoothedPitch = 0f
+    private var smoothedPitchDelta = 0f
+    private var smoothedQuestion = 0f  // smooth blend for question expression
+    private var questionHoldTimer = 0f
 
     // ── Smoothed bone outputs ─────────────────────────────────────────────
     private var sHead = BoneAngles()
@@ -143,7 +151,23 @@ class AvatarBehaviorEngine {
         val speaking = audio.isSpeaking
         val emotion = audio.emotion
 
-        // ── Amplitude velocity (for emphasis detection) ───────────────────
+        // ── Smooth prosodic features ──────────────────────────────────────
+        smoothedSmile = lerp(smoothedSmile, audio.smileScore, 0.08f)
+        smoothedEmphasis = lerp(smoothedEmphasis, audio.emphasis, 0.15f)
+        smoothedPitch = lerp(smoothedPitch, audio.pitch, 0.12f)
+        smoothedPitchDelta = lerp(smoothedPitchDelta, audio.pitchDelta, 0.10f)
+
+        // Question expression: blend in quickly, hold, blend out slowly
+        if (audio.isQuestion) {
+            smoothedQuestion = lerp(smoothedQuestion, 1f, 0.15f)
+            questionHoldTimer = 0.8f  // hold for 0.8s after question detected
+        } else if (questionHoldTimer > 0f) {
+            questionHoldTimer -= dt
+        } else {
+            smoothedQuestion = lerp(smoothedQuestion, 0f, 0.04f)
+        }
+
+        // ── Amplitude velocity ────────────────────────────────────────────
         ampVelocity = (amp - lastAmp) / dt.coerceAtLeast(0.001f)
 
         // ── State machine ─────────────────────────────────────────────────
@@ -154,7 +178,6 @@ class AvatarBehaviorEngine {
             stateBlend = 0f
             stateChangeTime = time
         }
-        // Blend between states over 0.4s
         stateBlend = (stateBlend + dt / 0.4f).coerceAtMost(1f)
 
         if (speaking) {
@@ -165,22 +188,24 @@ class AvatarBehaviorEngine {
         }
 
         // ── Breathing ─────────────────────────────────────────────────────
-        val breathRate = if (speaking) 0.32f else 0.22f // faster when speaking
+        val breathRate = if (speaking) 0.32f else 0.22f
         val breath = sin(time * 2f * PI.toFloat() * breathRate)
         val breathDepth = if (speaking) 0.7f else 1f
 
-        // ── Nod system (triggered by amplitude spikes) ────────────────────
-        val spike = (amp - lastAmp).coerceAtLeast(0f)
-        if (spike > 0.15f && speaking) {
-            nodTimer = 0f
-            nodIntensity = (spike * 12f).coerceAtMost(5f)
+        // ── Nod system (driven by real emphasis data) ─────────────────────
+        // Real emphasis spikes trigger nods — no more fake random nods
+        if (smoothedEmphasis > 0.4f && speaking) {
+            if (nodTimer > 0.5f) {  // cooldown between nods
+                nodTimer = 0f
+                nodIntensity = (smoothedEmphasis * 8f).coerceAtMost(5f)
+            }
         }
         nodTimer += dt
         val nodValue = if (nodTimer < 0.35f) {
             sin(nodTimer * PI.toFloat() / 0.35f) * nodIntensity
         } else 0f
 
-        // ── Gesture system ────────────────────────────────────────────────
+        // ── Gesture system (triggered by emphasis, not random) ────────────
         updateGestures(dt, speaking, amp)
 
         // ── Eye saccades ──────────────────────────────────────────────────
@@ -207,28 +232,42 @@ class AvatarBehaviorEngine {
         )
 
         // ── State-specific targets ───────────────────────────────────────
-
-        val prevTargets = computeStateTargets(prevState, amp, breath, breathDepth, nodValue, speaking)
-        val currTargets = computeStateTargets(state, amp, breath, breathDepth, nodValue, speaking)
-
-        // Blend between previous and current state
+        val prevTargets = computeStateTargets(prevState, audio, breath, breathDepth, nodValue)
+        val currTargets = computeStateTargets(state, audio, breath, breathDepth, nodValue)
         val targets = blendTargets(prevTargets, currTargets, stateBlend)
 
-        // Add noise to head/neck/body
+        // ── Add noise (scaled by state) ──────────────────────────────────
         val noiseScale = when (state) {
-            AvatarState.THINKING -> 0.6f  // less noise when thinking (focused)
-            AvatarState.SPEAKING_ACTIVE -> 1.2f // more noise when animated
+            AvatarState.THINKING -> 0.6f
+            AvatarState.SPEAKING_ACTIVE -> 1.2f
             else -> 1f
         }
 
-        val finalHead = targets.head.plus(headNoise.scale(noiseScale))
+        // ── Pitch-driven head movement (real prosody!) ────────────────────
+        val pitchHead = BoneAngles(
+            pitch = smoothedPitchDelta * -4f,  // rising pitch → slight head raise
+            yaw = 0f,
+            roll = smoothedPitchDelta * 2f,    // slight tilt on pitch changes
+        )
+
+        // ── Question expression: head tilt up + slight forward lean ───────
+        val questionHead = BoneAngles(
+            pitch = smoothedQuestion * -3f,    // chin up
+            roll = smoothedQuestion * 4f,      // slight tilt
+        )
+
+        val finalHead = targets.head
+            .plus(headNoise.scale(noiseScale))
+            .plus(pitchHead)
+            .plus(questionHead)
+
         val finalNeck = targets.neck.plus(neckNoise.scale(noiseScale))
         val finalSpine = targets.spine.plus(bodyNoise.scale(noiseScale * 0.5f))
 
-        // ── Compute arm targets with gesture blending ─────────────────────
+        // ── Arm targets with gesture blending ─────────────────────────────
         val armTargets = computeArmTargets(targets, amp, breath)
 
-        // ── EMA smoothing ─────────────────────────────────────────────────
+        // ── EMA bone smoothing ────────────────────────────────────────────
         val hSpeed = if (speaking) 0.12f else 0.07f
         val bSpeed = 0.06f
         val aSpeed = if (gesturePhase > 0) 0.07f else 0.09f
@@ -247,8 +286,8 @@ class AvatarBehaviorEngine {
         sRForeArm = sRForeArm.lerp(armTargets.rForeArm, aSpeed)
         sRHand = sRHand.lerp(armTargets.rHand, aSpeed)
 
-        // ── Morph targets ─────────────────────────────────────────────────
-        val morphs = computeMorphs(targets, amp, speaking)
+        // ── Morph targets (spectral-driven) ───────────────────────────────
+        val morphs = computeMorphs(targets, audio)
 
         lastAmp = amp
 
@@ -296,7 +335,6 @@ class AvatarBehaviorEngine {
         val spine2: BoneAngles,
         val lShoulder: BoneAngles,
         val rShoulder: BoneAngles,
-        // Morph base values
         val jawOpen: Float,
         val mouthOpen: Float,
         val smile: Float,
@@ -306,99 +344,114 @@ class AvatarBehaviorEngine {
         val pucker: Float,
     )
 
+    /**
+     * State targets now use real prosodic data (audio) instead of just amplitude.
+     */
     private fun computeStateTargets(
         targetState: AvatarState,
-        amp: Float,
+        audio: AvatarAudioData,
         breath: Float,
         breathDepth: Float,
         nodValue: Float,
-        speaking: Boolean,
-    ): StateTargets = when (targetState) {
+    ): StateTargets {
+        val amp = audio.amplitude
+        val emphasis = smoothedEmphasis
+        val pitch = smoothedPitch
 
-        AvatarState.IDLE -> StateTargets(
-            head = BoneAngles(
-                pitch = sin(time * 0.28f) * 1.0f,
-                yaw = sin(time * 0.19f) * 1.5f,
-                roll = sin(time * 0.13f) * 0.6f,
-            ),
-            neck = BoneAngles(pitch = sin(time * 0.24f) * 0.5f),
-            spine = BoneAngles(pitch = breath * breathDepth * 1.0f),
-            spine1 = BoneAngles(pitch = breath * breathDepth * 0.6f),
-            spine2 = BoneAngles(),
-            lShoulder = BoneAngles(pitch = breath * 0.3f),
-            rShoulder = BoneAngles(pitch = breath * 0.3f),
-            jawOpen = 0f, mouthOpen = 0f, smile = 0.05f,
-            browInner = 0f, browDown = 0f, eyeLookUp = 0f, pucker = 0f,
-        )
+        return when (targetState) {
 
-        AvatarState.SPEAKING_SOFT -> StateTargets(
-            head = BoneAngles(
-                pitch = sin(time * 0.9f) * 2f - nodValue,
-                yaw = sin(time * 0.6f) * 3.5f + sin(time * 0.23f) * 1.2f,
-                roll = sin(time * 0.4f) * 1f,
-            ),
-            neck = BoneAngles(pitch = 1.5f + sin(time * 0.7f) * 0.6f),
-            spine = BoneAngles(pitch = breath * breathDepth * 0.8f + 1.5f),
-            spine1 = BoneAngles(pitch = 2f + breath * 0.4f),
-            spine2 = BoneAngles(pitch = 0.8f),
-            lShoulder = BoneAngles(pitch = breath * 0.25f),
-            rShoulder = BoneAngles(pitch = breath * 0.25f),
-            jawOpen = amp * 0.5f,
-            mouthOpen = amp * 0.35f,
-            smile = 0.1f,
-            browInner = amp * 0.15f,
-            browDown = 0f, eyeLookUp = 0f, pucker = 0f,
-        )
-
-        AvatarState.SPEAKING_ACTIVE -> StateTargets(
-            head = BoneAngles(
-                pitch = sin(time * 1.3f) * 3.5f - nodValue * 1.5f,
-                yaw = sin(time * 0.8f) * 6f + sin(time * 0.3f) * 2f,
-                roll = sin(time * 0.5f) * 1.5f,
-            ),
-            neck = BoneAngles(pitch = 2f + sin(time * 1.0f) * 1f),
-            spine = BoneAngles(pitch = breath * breathDepth * 0.6f + 2f + amp * 1.2f),
-            spine1 = BoneAngles(pitch = 3f + amp * 1.5f),
-            spine2 = BoneAngles(pitch = 1.2f + amp * 0.8f),
-            lShoulder = BoneAngles(pitch = amp * 1.5f + breath * 0.2f),
-            rShoulder = BoneAngles(pitch = amp * 1.5f + breath * 0.2f),
-            jawOpen = amp * 0.65f,
-            mouthOpen = amp * 0.45f,
-            smile = 0.06f,
-            browInner = amp * 0.25f + noiseHead.sample(time * 2f) * 0.08f,
-            browDown = 0f, eyeLookUp = 0f, pucker = 0f,
-        )
-
-        AvatarState.THINKING -> StateTargets(
-            head = BoneAngles(
-                pitch = -2.5f + sin(time * 0.2f) * 0.6f,
-                yaw = sin(time * 0.15f) * 1.5f,
-                roll = 7f + sin(time * 0.18f) * 0.8f,
-            ),
-            neck = BoneAngles(pitch = -0.8f, roll = 2.5f),
-            spine = BoneAngles(pitch = breath * breathDepth * 0.8f - 1f),
-            spine1 = BoneAngles(pitch = -1.5f),
-            spine2 = BoneAngles(pitch = -0.8f),
-            lShoulder = BoneAngles(),
-            rShoulder = BoneAngles(pitch = -1.5f),
-            jawOpen = 0f, mouthOpen = 0f, smile = 0f,
-            browInner = 0.55f, browDown = 0.18f,
-            eyeLookUp = 0.35f, pucker = 0.08f,
-        )
-
-        AvatarState.HAPPY -> {
-            val bob = sin(time * 3.5f) * 1.8f
-            StateTargets(
-                head = BoneAngles(pitch = bob, yaw = sin(time * 0.8f) * 2.5f),
-                neck = BoneAngles(pitch = 2f + bob * 0.4f),
-                spine = BoneAngles(pitch = breath * breathDepth * 1f + 2f),
-                spine1 = BoneAngles(pitch = 1.8f),
+            AvatarState.IDLE -> StateTargets(
+                head = BoneAngles(
+                    pitch = sin(time * 0.28f) * 1.0f,
+                    yaw = sin(time * 0.19f) * 1.5f,
+                    roll = sin(time * 0.13f) * 0.6f,
+                ),
+                neck = BoneAngles(pitch = sin(time * 0.24f) * 0.5f),
+                spine = BoneAngles(pitch = breath * breathDepth * 1.0f),
+                spine1 = BoneAngles(pitch = breath * breathDepth * 0.6f),
                 spine2 = BoneAngles(),
-                lShoulder = BoneAngles(pitch = 1.5f + bob * 0.4f),
-                rShoulder = BoneAngles(pitch = 1.5f + bob * 0.4f),
-                jawOpen = 0f, mouthOpen = 0.1f, smile = 0.8f,
+                lShoulder = BoneAngles(pitch = breath * 0.3f),
+                rShoulder = BoneAngles(pitch = breath * 0.3f),
+                jawOpen = 0f, mouthOpen = 0f, smile = 0.05f,
                 browInner = 0f, browDown = 0f, eyeLookUp = 0f, pucker = 0f,
             )
+
+            AvatarState.SPEAKING_SOFT -> StateTargets(
+                head = BoneAngles(
+                    // Pitch-driven head movement: higher pitch → slight head raise
+                    pitch = sin(time * 0.9f) * 2f - nodValue + pitch * 2f,
+                    yaw = sin(time * 0.6f) * 3.5f + sin(time * 0.23f) * 1.2f,
+                    roll = sin(time * 0.4f) * 1f,
+                ),
+                neck = BoneAngles(pitch = 1.5f + sin(time * 0.7f) * 0.6f),
+                spine = BoneAngles(pitch = breath * breathDepth * 0.8f + 1.5f),
+                spine1 = BoneAngles(pitch = 2f + breath * 0.4f),
+                spine2 = BoneAngles(pitch = 0.8f),
+                lShoulder = BoneAngles(pitch = breath * 0.25f),
+                rShoulder = BoneAngles(pitch = breath * 0.25f),
+                // Use spectral vowelOpenness for jaw, not just amplitude
+                jawOpen = audio.vowelOpenness * 0.5f,
+                mouthOpen = audio.vowelOpenness * 0.35f,
+                // Real smile from spectral analysis!
+                smile = smoothedSmile * 0.7f + 0.05f,
+                browInner = emphasis * 0.2f,
+                browDown = 0f, eyeLookUp = 0f, pucker = 0f,
+            )
+
+            AvatarState.SPEAKING_ACTIVE -> StateTargets(
+                head = BoneAngles(
+                    pitch = sin(time * 1.3f) * 3.5f - nodValue * 1.5f + pitch * 3f,
+                    yaw = sin(time * 0.8f) * 6f + sin(time * 0.3f) * 2f,
+                    roll = sin(time * 0.5f) * 1.5f + emphasis * 2f,
+                ),
+                neck = BoneAngles(pitch = 2f + sin(time * 1.0f) * 1f),
+                spine = BoneAngles(pitch = breath * breathDepth * 0.6f + 2f + amp * 1.2f),
+                spine1 = BoneAngles(pitch = 3f + amp * 1.5f),
+                spine2 = BoneAngles(pitch = 1.2f + amp * 0.8f),
+                // Shoulders lift with emphasis
+                lShoulder = BoneAngles(pitch = emphasis * 2f + breath * 0.2f),
+                rShoulder = BoneAngles(pitch = emphasis * 2f + breath * 0.2f),
+                jawOpen = audio.vowelOpenness * 0.65f,
+                mouthOpen = audio.vowelOpenness * 0.45f,
+                smile = smoothedSmile * 0.6f + 0.03f,
+                // Brow raises with emphasis and pitch
+                browInner = emphasis * 0.3f + pitch * 0.15f,
+                browDown = 0f, eyeLookUp = 0f, pucker = 0f,
+            )
+
+            AvatarState.THINKING -> StateTargets(
+                head = BoneAngles(
+                    pitch = -2.5f + sin(time * 0.2f) * 0.6f,
+                    yaw = sin(time * 0.15f) * 1.5f,
+                    roll = 7f + sin(time * 0.18f) * 0.8f,
+                ),
+                neck = BoneAngles(pitch = -0.8f, roll = 2.5f),
+                spine = BoneAngles(pitch = breath * breathDepth * 0.8f - 1f),
+                spine1 = BoneAngles(pitch = -1.5f),
+                spine2 = BoneAngles(pitch = -0.8f),
+                lShoulder = BoneAngles(),
+                rShoulder = BoneAngles(pitch = -1.5f),
+                jawOpen = 0f, mouthOpen = 0f, smile = 0f,
+                browInner = 0.55f, browDown = 0.18f,
+                eyeLookUp = 0.35f, pucker = 0.08f,
+            )
+
+            AvatarState.HAPPY -> {
+                val bob = sin(time * 3.5f) * 1.8f
+                StateTargets(
+                    head = BoneAngles(pitch = bob, yaw = sin(time * 0.8f) * 2.5f),
+                    neck = BoneAngles(pitch = 2f + bob * 0.4f),
+                    spine = BoneAngles(pitch = breath * breathDepth * 1f + 2f),
+                    spine1 = BoneAngles(pitch = 1.8f),
+                    spine2 = BoneAngles(),
+                    lShoulder = BoneAngles(pitch = 1.5f + bob * 0.4f),
+                    rShoulder = BoneAngles(pitch = 1.5f + bob * 0.4f),
+                    jawOpen = 0f, mouthOpen = 0.1f,
+                    // Strong smile for happy state, boosted by smileScore
+                    smile = 0.8f + smoothedSmile * 0.2f,
+                    browInner = 0f, browDown = 0f, eyeLookUp = 0f, pucker = 0f,
+                )
+            }
         }
     }
 
@@ -420,22 +473,20 @@ class AvatarBehaviorEngine {
             pucker = lerp(a.pucker, b.pucker, t),
         )
 
-    // ── Gesture system ────────────────────────────────────────────────────
+    // ── Gesture system (emphasis-driven, not random-timed) ────────────────
 
     private fun updateGestures(dt: Float, speaking: Boolean, amp: Float) {
         gestureTimer -= dt
 
         when {
-            state == AvatarState.SPEAKING_ACTIVE && gestureTimer <= 0f -> {
-                val interval = Random.nextFloat() * 5f + 4f // 4-9 seconds
-                gestureTimer = interval
+            // Trigger gestures on emphasis peaks during active speech
+            state == AvatarState.SPEAKING_ACTIVE && gestureTimer <= 0f && smoothedEmphasis > 0.35f -> {
+                gestureTimer = Random.nextFloat() * 3f + 3f  // 3-6 sec cooldown
                 gesturePhase = when (Random.nextInt(4)) {
-                    0 -> 1  // left hand
-                    1 -> 2  // right hand
-                    2 -> 3  // both hands
-                    else -> 1
+                    0 -> 1; 1 -> 2; 2 -> 3; else -> 1
                 }
-                gestureIntensity = Random.nextFloat() * 0.4f + 0.5f // 0.5-0.9
+                // Gesture intensity proportional to emphasis
+                gestureIntensity = (smoothedEmphasis * 1.2f).coerceIn(0.4f, 0.9f)
                 gestureBlend = 0f
             }
             state != AvatarState.SPEAKING_ACTIVE && state != AvatarState.SPEAKING_SOFT -> {
@@ -452,16 +503,13 @@ class AvatarBehaviorEngine {
 
     private fun updateEyeSaccades(dt: Float, now: Long, speaking: Boolean) {
         if (now >= nextSaccadeMs) {
-            // Small random eye movement
             eyeTargetX = noiseEyeL.sample(time * 2f) * 0.15f
             eyeTargetY = noiseEyeR.sample(time * 2f + 50f) * 0.1f
-            // Shorter intervals during conversation
             nextSaccadeMs = now + Random.nextLong(
                 if (speaking) 300 else 600,
                 if (speaking) 800 else 2000,
             )
         }
-        // Fast saccade movement (eyes are quick)
         eyeCurrentX = lerp(eyeCurrentX, eyeTargetX, 0.25f)
         eyeCurrentY = lerp(eyeCurrentY, eyeTargetY, 0.25f)
     }
@@ -470,24 +518,23 @@ class AvatarBehaviorEngine {
 
     private fun updateBlinks(dt: Float, now: Long, speaking: Boolean) {
         if (now >= nextBlinkMs && blinkPhase == 0) {
-            blinkPhase = 1  // start closing
-            // 20% chance of double blink
+            blinkPhase = 1
             doubleBlinkPending = Random.nextFloat() < 0.2f
         }
 
         when (blinkPhase) {
-            1 -> { // Closing
+            1 -> {
                 blinkL = (blinkL + dt * 12f).coerceAtMost(1f)
                 blinkR = (blinkR + dt * 12f).coerceAtMost(1f)
                 if (blinkL >= 1f) blinkPhase = 2
             }
-            2 -> { // Opening
+            2 -> {
                 blinkL = (blinkL - dt * 8f).coerceAtLeast(0f)
                 blinkR = (blinkR - dt * 8f).coerceAtLeast(0f)
                 if (blinkL <= 0f) {
                     if (doubleBlinkPending) {
                         doubleBlinkPending = false
-                        blinkPhase = 1 // another blink
+                        blinkPhase = 1
                     } else {
                         blinkPhase = 0
                         nextBlinkMs = now + Random.nextLong(
@@ -518,7 +565,6 @@ class AvatarBehaviorEngine {
     ): ArmTargets {
         val rest = BoneAngles()
 
-        // Base poses
         val claspL = BoneAngles(pitch = 42f, yaw = -18f, roll = 8f)
         val claspLF = BoneAngles(pitch = 48f, yaw = 0f, roll = 5f)
         val claspLH = BoneAngles(pitch = 0f, yaw = -12f, roll = 0f)
@@ -526,7 +572,6 @@ class AvatarBehaviorEngine {
         val claspRF = BoneAngles(pitch = 48f, yaw = 0f, roll = -5f)
         val claspRH = BoneAngles(pitch = 0f, yaw = 12f, roll = 0f)
 
-        // Gesture poses with noise-driven variation
         val gNoise = noiseGest.sample(time * 0.5f) * 5f
         val gestLA = BoneAngles(pitch = -25f + gNoise, yaw = -25f, roll = -10f)
         val gestLF = BoneAngles(pitch = 35f + gNoise * 0.5f, yaw = 0f, roll = 0f)
@@ -535,7 +580,6 @@ class AvatarBehaviorEngine {
         val gestRF = BoneAngles(pitch = 35f - gNoise * 0.5f, yaw = 0f, roll = 0f)
         val gestRH = BoneAngles(pitch = -15f, yaw = 5f - gNoise * 0.3f, roll = 0f)
 
-        // Thinking pose
         val thinkRA = BoneAngles(pitch = 35f, yaw = 18f, roll = -8f)
         val thinkRF = BoneAngles(pitch = 85f, yaw = 0f, roll = 0f)
         val thinkRH = BoneAngles(pitch = -25f, yaw = 0f, roll = 0f)
@@ -556,7 +600,6 @@ class AvatarBehaviorEngine {
                 rHand = rest,
             )
             else -> {
-                // Clasp blend
                 val claspAmount = when (state) {
                     AvatarState.IDLE -> 1f - gestureBlend
                     AvatarState.SPEAKING_SOFT -> (1f - gestureBlend) * 0.9f
@@ -600,79 +643,127 @@ class AvatarBehaviorEngine {
         }
     }
 
-    // ── Morph target computation ──────────────────────────────────────────
+    // ── Morph target computation (spectral-driven) ────────────────────────
 
+    /**
+     * v3: Morphs driven by real spectral features:
+     *  - Jaw/mouth: vowelOpenness from band energy (not just amplitude)
+     *  - Smile: smileScore from spectral centroid shift
+     *  - Brows: emphasis + pitch from real prosody
+     *  - Visemes: band energy selects lip shapes (sibilants vs vowels)
+     *  - Question: brow raise from rising pitch detection
+     */
     private fun computeMorphs(
         targets: StateTargets,
-        amp: Float,
-        speaking: Boolean,
+        audio: AvatarAudioData,
     ): Map<String, Float> {
+        val speaking = audio.isSpeaking
+        val amp = audio.amplitude
         val mAlpha = if (speaking) 0.30f else 0.12f
 
-        // Viseme system: procedural lip shapes driven by amplitude and noise
-        // Cycles through different mouth shapes for variety
-        val visemeT = time * 8f  // ~8Hz cycle for syllable rate
-        val visemePhase2 = time * 3.5f  // slower secondary modulation
+        // ── Viseme system: REAL band energy drives lip shapes ─────────────
+        // Low band (80-300Hz) → open vowels (aa, O)
+        // Mid band (300-2kHz) → mid vowels (E, U)
+        // High band (2k-8kHz) → sibilants/fricatives (SS, FF, TH)
 
-        // Different viseme weights create varied mouth shapes
+        val bLow = audio.bandEnergy.low
+        val bMid = audio.bandEnergy.mid
+        val bHigh = audio.bandEnergy.high
+
         val visAA = if (speaking) {
-            val base = (sin(visemeT) * 0.5f + 0.5f) * amp
-            val mod = (sin(visemePhase2) * 0.3f + 0.7f)
-            base * mod * 0.6f
+            // Open vowels driven by low-frequency energy + amplitude
+            (bLow * 0.5f + audio.vowelOpenness * 0.3f + amp * 0.2f).coerceIn(0f, 0.7f)
         } else 0f
 
         val visO = if (speaking) {
-            val base = (cos(visemeT * 0.7f) * 0.5f + 0.5f) * amp
-            val mod = (cos(visemePhase2 * 0.6f) * 0.3f + 0.5f)
-            base * mod * 0.4f
+            // Rounded vowels: mid-band dominant, low-band present
+            val midDominance = if (bLow > 0.01f) (bMid / (bLow + 0.01f)).coerceIn(0f, 2f) / 2f else 0f
+            (midDominance * amp * 0.5f).coerceIn(0f, 0.5f)
         } else 0f
 
         val visE = if (speaking) {
-            val base = (sin(visemeT * 1.3f + 1.5f) * 0.5f + 0.5f) * amp
-            base * 0.25f
+            // Front vowels: mid-band with moderate opening
+            (bMid * 0.4f * amp).coerceIn(0f, 0.35f)
+        } else 0f
+
+        val visSS = if (speaking) {
+            // Sibilants (s, z, sh): high-frequency energy + high ZCR
+            (bHigh * 0.6f + audio.zeroCrossingRate * 0.3f).coerceIn(0f, 0.4f) * amp
+        } else 0f
+
+        val visFF = if (speaking) {
+            // Fricatives (f, v, th): moderate high-frequency + lower ZCR than sibilants
+            val fricative = bHigh * 0.4f * (1f - audio.zeroCrossingRate * 0.5f)
+            (fricative * amp).coerceIn(0f, 0.3f)
         } else 0f
 
         val visSil = if (!speaking) 0.3f else {
-            // Small amount of sil viseme during speech pauses
             (1f - amp).coerceIn(0f, 0.3f) * 0.2f
         }
 
-        // Brow noise (subtle expressiveness during speech)
-        val browNoise = if (speaking) noiseBrow.sample(time * 1.5f) * 0.1f else 0f
+        // ── Brow: real emphasis + pitch + question ────────────────────────
+        val browEmphasis = if (speaking) smoothedEmphasis * 0.25f else 0f
+        val browPitch = if (speaking) smoothedPitch * 0.12f else 0f
+        val browQuestion = smoothedQuestion * 0.4f  // strong raise for questions
 
-        // Jaw noise for natural variation
-        val jawNoise = if (speaking) noiseJaw.sample(time * 6f) * amp * 0.1f else 0f
+        // ── Jaw: spectral vowelOpenness (much better than amplitude alone) ─
+        val jawNoise = if (speaking) noiseJaw.sample(time * 6f) * amp * 0.05f else 0f
+
+        // ── Smile: REAL smile from spectral centroid analysis! ────────────
+        // smoothedSmile comes from SpectralFeatureExtractor → AvatarAudioAnalyzer
+        // This is the key quality improvement — no more fake smiles
+        val realSmile = smoothedSmile
 
         return buildMap {
-            // Jaw & mouth
+            // Jaw & mouth — driven by spectral vowelOpenness
             put("jawOpen", smoothMorph("jawOpen", targets.jawOpen + jawNoise, mAlpha))
             put("mouthOpen", smoothMorph("mouthOpen", targets.mouthOpen, mAlpha))
-            put("mouthSmile", smoothMorph("mouthSmile", targets.smile, 0.06f))
+
+            // Smile — REAL spectral smile detection!
+            put("mouthSmile", smoothMorph("mouthSmile",
+                targets.smile.coerceAtLeast(realSmile * 0.8f), 0.08f))
             put("mouthPucker", smoothMorph("mouthPucker", targets.pucker, 0.06f))
 
-            // Brows
-            put("browInnerUp", smoothMorph("browInnerUp", targets.browInner + browNoise, 0.07f))
+            // Brows — driven by real emphasis, pitch, and question intonation
+            put("browInnerUp", smoothMorph("browInnerUp",
+                targets.browInner + browEmphasis + browPitch + browQuestion, 0.09f))
             put("browDownLeft", smoothMorph("browDownLeft", targets.browDown, 0.07f))
             put("browDownRight", smoothMorph("browDownRight", targets.browDown, 0.07f))
 
             // Eyes
-            put("eyeLookUpLeft", smoothMorph("eyeLookUpLeft", targets.eyeLookUp + eyeCurrentY, 0.1f))
-            put("eyeLookUpRight", smoothMorph("eyeLookUpRight", targets.eyeLookUp + eyeCurrentY, 0.1f))
+            put("eyeLookUpLeft", smoothMorph("eyeLookUpLeft",
+                targets.eyeLookUp + eyeCurrentY + smoothedQuestion * 0.15f, 0.1f))
+            put("eyeLookUpRight", smoothMorph("eyeLookUpRight",
+                targets.eyeLookUp + eyeCurrentY + smoothedQuestion * 0.15f, 0.1f))
 
-            // Visemes
+            // Visemes — driven by REAL band energy!
             put("viseme_aa", smoothMorph("viseme_aa", visAA, 0.28f))
             put("viseme_O", smoothMorph("viseme_O", visO, 0.25f))
             put("viseme_E", smoothMorph("viseme_E", visE, 0.22f))
+            put("viseme_SS", smoothMorph("viseme_SS", visSS, 0.30f))
+            put("viseme_FF", smoothMorph("viseme_FF", visFF, 0.25f))
             put("viseme_sil", smoothMorph("viseme_sil", visSil, 0.10f))
 
             // Blinks
             put("eyeBlinkLeft", smoothMorph("eyeBlinkLeft", blinkL, 0.6f))
             put("eyeBlinkRight", smoothMorph("eyeBlinkRight", blinkR, 0.6f))
 
-            // Squint follows smile
+            // Squint follows smile (real smile → real squint)
             val smileVal = smoothMorphs["mouthSmile"] ?: 0f
-            put("eyeSquintLeft", smoothMorph("eyeSquintLeft", smileVal * 0.4f, 0.06f))
-            put("eyeSquintRight", smoothMorph("eyeSquintRight", smileVal * 0.4f, 0.06f))
+            put("eyeSquintLeft", smoothMorph("eyeSquintLeft", smileVal * 0.5f, 0.07f))
+            put("eyeSquintRight", smoothMorph("eyeSquintRight", smileVal * 0.5f, 0.07f))
+
+            // Cheek puff on emphasis (subtle)
+            if (speaking && smoothedEmphasis > 0.5f) {
+                put("cheekPuff", smoothMorph("cheekPuff", smoothedEmphasis * 0.15f, 0.05f))
+            } else {
+                put("cheekPuff", smoothMorph("cheekPuff", 0f, 0.03f))
+            }
+
+            // Nose wrinkle on strong smile
+            val strongSmile = (smileVal - 0.5f).coerceAtLeast(0f) * 2f
+            put("noseSneerLeft", smoothMorph("noseSneerLeft", strongSmile * 0.2f, 0.05f))
+            put("noseSneerRight", smoothMorph("noseSneerRight", strongSmile * 0.2f, 0.05f))
         }
     }
 
@@ -695,6 +786,12 @@ class AvatarBehaviorEngine {
         nodIntensity = 0f
         lastAmp = 0f
         ampVelocity = 0f
+        smoothedSmile = 0f
+        smoothedEmphasis = 0f
+        smoothedPitch = 0f
+        smoothedPitchDelta = 0f
+        smoothedQuestion = 0f
+        questionHoldTimer = 0f
         smoothMorphs.clear()
 
         val zero = BoneAngles()
