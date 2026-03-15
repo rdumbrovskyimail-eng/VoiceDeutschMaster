@@ -235,10 +235,6 @@ class CrashLogger private constructor(
     fun copyLatestCrashToDownloads(context: Context) {
         val latestCrash = getLatestCrashLog() ?: return
 
-        // Копируем только если файл новее 24 часов (не старые логи)
-        val oneDayAgo = System.currentTimeMillis() - (24 * 60 * 60 * 1000)
-        if (latestCrash.lastModified() < oneDayAgo) return
-
         try {
             val values = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, latestCrash.name)
