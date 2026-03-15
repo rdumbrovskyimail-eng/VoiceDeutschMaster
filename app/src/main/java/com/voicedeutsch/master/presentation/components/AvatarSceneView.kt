@@ -36,6 +36,7 @@ fun AvatarSceneView(
     val modelLoader = rememberModelLoader(engine)
     var modelNode   by remember { mutableStateOf<ModelNode?>(null) }
     var animState   by remember { mutableStateOf(AnimState()) }
+    val context     = androidx.compose.ui.platform.LocalContext.current
 
     val modelPath = when (gender) {
         AvatarGender.FEMALE -> "avatar_female.glb"
@@ -60,6 +61,19 @@ fun AvatarSceneView(
                     animator.applyAnimation(idleIdx, 0f)
                     animator.updateBoneMatrices()
                 }
+            }
+        }.onSuccess { node ->
+            runCatching {
+                val asset = node.modelInstance.asset
+                val sb = StringBuilder()
+                sb.appendLine("=== BONES / ENTITIES ===")
+                asset.entities.forEach { entity ->
+                    val name = asset.getName(entity)
+                    if (name != null) sb.appendLine(name)
+                }
+                context.openFileOutput("avatar_debug.txt", android.content.Context.MODE_PRIVATE)
+                    .use { it.write(sb.toString().toByteArray()) }
+                android.util.Log.d("BONES", sb.toString())
             }
         }
     }
