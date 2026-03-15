@@ -45,7 +45,9 @@ class AvatarViewModel(
         .stateIn(viewModelScope, SharingStarted.Eagerly, AvatarGender.FEMALE)
 
     @Volatile
-    private var usingRealAudio = false
+    private var realAudioConfirmed = false
+
+    private var realFrameCount = 0
 
     @Volatile
     private var captureStarted = false
@@ -80,16 +82,28 @@ class AvatarViewModel(
         }
 
         if (started) {
-            usingRealAudio = true
-            Log.d(TAG, "✅ Upgraded to real audio capture")
+            Log.d(TAG, "Visualizer started — monitoring for real audio...")
 
-            // Cancel synthetic, switch to real
             audioCapture.frames
                 .conflate()
-                .onEach { frame -> audioAnalyzer.onAudioFrame(frame) }
+                .onEach { frame ->
+                    val rms = computeRms(frame.waveform)
+                    if (rms > 0.02f) {
+                        realFrameCount++
+                        if (!realAudioConfirmed && realFrameCount >= 5) {
+                            realAudioConfirmed = true
+                            Log.d(TAG, "✅ Real audio confirmed!")
+                        }
+                    } else if (!realAudioConfirmed) {
+                        realFrameCount = 0
+                    }
+                    if (realAudioConfirmed) {
+                        audioAnalyzer.onAudioFrame(frame)
+                    }
+                }
                 .catch { e ->
-                    Log.e(TAG, "Audio frame error: ${e.message}")
-                    // Don't restart synthetic — it's already running as base
+                    Log.e(TAG, "Visualizer frame error: ${e.message}")
+                    realAudioConfirmed = false
                 }
                 .launchIn(viewModelScope)
         } else {
@@ -106,7 +120,7 @@ class AvatarViewModel(
             .conflate()
             .onEach { amp ->
                 // Only use synthetic if real audio is not active
-                if (!usingRealAudio) {
+                if (!realAudioConfirmed) {
                     audioAnalyzer.onAmplitude(amp)
                 }
             }
@@ -116,7 +130,13 @@ class AvatarViewModel(
 
     fun triggerHappy() = audioAnalyzer.triggerHappy()
 
-    fun isUsingRealAudio(): Boolean = usingRealAudio
+    fun isUsingRealAudio(): Boolean = realAudioConfirmed
+
+    private fun computeRms(waveform: FloatArray): Float {
+        var sum = 0f
+        for (s in waveform) sum += s * s
+        return kotlin.math.sqrt(sum / waveform.size.coerceAtLeast(1))
+    }
 
     override fun onCleared() {
         super.onCleared()
