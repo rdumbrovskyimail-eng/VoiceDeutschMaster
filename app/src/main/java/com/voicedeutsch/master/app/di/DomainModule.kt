@@ -35,7 +35,7 @@ import com.voicedeutsch.master.domain.usecase.session.GetSessionHistoryUseCase
 import com.voicedeutsch.master.domain.usecase.session.SaveSessionUseCase
 import com.voicedeutsch.master.domain.usecase.speech.AnalyzePronunciationUseCase
 import com.voicedeutsch.master.domain.usecase.speech.GetPronunciationTargetsUseCase
-import com.voicedeutsch.master.voicecore.engine.AvatarAudioAnalyzer
+
 import org.koin.dsl.module
 
 /**
@@ -123,9 +123,6 @@ val domainModule = module {
     factory { GetChapterContentUseCase(get()) }
     // SearchBookContentUseCase(bookRepository, knowledgeRepository)
     factory { SearchBookContentUseCase(get(), get()) }
-
-    // ─── VoiceCore ────────────────────────────────────────────────────────────
-    single { AvatarAudioAnalyzer() }
 
     // ─── Achievement ──────────────────────────────────────────────────────────
     // CheckAchievementsUseCase(achievementRepository, userRepository, knowledgeRepository, progressRepository)
