@@ -63,10 +63,18 @@ class MainActivity : ComponentActivity() {
                 Log.w(TAG, "🕐 Time: ${dateFormat.format(latestCrash.lastModified())}")
                 Log.w(TAG, "━".repeat(80))
 
-                Log.i(TAG, "📋 First 50 lines of crash log:")
-                latestCrash.readLines().take(50).forEach { line ->
-                    Log.i(TAG, line)
-                }
+            Log.i(TAG, "📋 First 50 lines of crash log:")
+            latestCrash.readLines().take(50).forEach { line ->
+                Log.i(TAG, line)
+            }
+
+            // ← ДОБАВИТЬ эти три строки
+            android.widget.Toast.makeText(
+                this,
+                "⚠️ Краш сохранён в Downloads/LogVoiceCrash/${latestCrash.name}",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error checking for crashes", e)
