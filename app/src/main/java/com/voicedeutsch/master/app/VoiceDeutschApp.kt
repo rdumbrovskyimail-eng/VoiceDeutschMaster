@@ -43,6 +43,19 @@ class VoiceDeutschApp : Application() {
             modules(appModules)
         }
 
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                val log = buildString {
+                    appendLine("=== CRASH ${java.util.Date()} ===")
+                    appendLine("Thread: ${thread.name}")
+                    appendLine(throwable.stackTraceToString())
+                }
+                val file = java.io.File(getExternalFilesDir(null), "crash_log.txt")
+                file.appendText(log)
+            } catch (_: Exception) {}
+            android.os.Process.killProcess(android.os.Process.myPid())
+        }
+
         initFirebase()
         WorkManagerInitializer.initialize(this)
         CrashLogger.getInstance()?.copyLatestCrashToDownloads(this)
