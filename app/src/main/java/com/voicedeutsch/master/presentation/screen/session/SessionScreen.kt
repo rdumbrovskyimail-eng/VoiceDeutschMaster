@@ -92,6 +92,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import com.voicedeutsch.master.presentation.theme.Background
 import com.voicedeutsch.master.presentation.theme.Secondary
+import com.voicedeutsch.master.util.AnrWatchdog
 import com.voicedeutsch.master.voicecore.session.VoiceEngineState
 import org.koin.androidx.compose.koinViewModel
 
@@ -129,6 +130,7 @@ fun SessionScreen(
 
     val hasRecordAudioPermission = rememberPermissionState(Manifest.permission.RECORD_AUDIO).status.isGranted
 
+    val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 
     var showExitDialog by remember { mutableStateOf(false) }
@@ -175,6 +177,8 @@ fun SessionScreen(
                 viewModel.onEvent(SessionEvent.PermissionDenied)
                 return@LaunchedEffect
             }
+            // ⏱ Запускаем ANR Watchdog — через 7 сек сдампит все потоки и крашнет
+            AnrWatchdog.startWatching(context, timeoutMs = 7_000L, crashAfterDump = true)
             viewModel.onEvent(SessionEvent.StartSession)
         }
     }
@@ -389,16 +393,14 @@ fun SessionScreen(
             }
 
             // ── Avatar debug button ──────────────────────────────────────────
-            val debugContext = LocalContext.current
-
             val saveLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.CreateDocument("text/plain")
             ) { uri ->
                 if (uri == null) return@rememberLauncherForActivityResult
                 runCatching {
-                    val text = debugContext.openFileInput("avatar_debug.txt")
+                    val text = context.openFileInput("avatar_debug.txt")
                         .bufferedReader().readText()
-                    debugContext.contentResolver.openOutputStream(uri)?.use {
+                    context.contentResolver.openOutputStream(uri)?.use {
                         it.write(text.toByteArray())
                     }
                 }
