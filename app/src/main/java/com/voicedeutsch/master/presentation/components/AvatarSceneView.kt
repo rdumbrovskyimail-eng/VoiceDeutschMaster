@@ -53,13 +53,15 @@ fun AvatarSceneView(
                 scaleToUnits  = 1.8f,
             ).apply {
                 position = Position(x = 0f, y = -0.95f, z = 0f)
-                val animator = modelInstance.animator
+                val animator = node.modelInstance.animator
                 if (animator.animationCount > 0) {
                     val idleIdx = (0 until animator.animationCount).firstOrNull { i ->
                         animator.getAnimationName(i).lowercase().contains("idle")
                     } ?: 0
-                    animator.applyAnimation(idleIdx, 0f)
-                    animator.updateBoneMatrices()
+                    runCatching {
+                        animator.applyAnimation(idleIdx, 0f)
+                        animator.updateBoneMatrices()
+                    }
                 }
             }
         }.onSuccess { node ->
