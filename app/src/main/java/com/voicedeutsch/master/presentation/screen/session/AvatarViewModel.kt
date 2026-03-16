@@ -69,7 +69,7 @@ class AvatarViewModel(
 
             // Always try global mix (sessionId=0) first — it captures all audio output
             val started = try {
-                withContext(Dispatchers.IO) { audioCapture.start(audioSessionId = 0) }
+                withContext(Dispatchers.IO) { audioCapture.start(0) }
             } catch (e: Exception) {
                 Log.e(TAG, "Visualizer(0) failed: ${e.message}", e)
                 false
