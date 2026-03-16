@@ -85,6 +85,7 @@ val presentationModule = module {
             avatarRepository = get(),
             audioAnalyzer    = get(),
             audioCapture     = get(),
+            context          = get(),
         )
     }
 }
