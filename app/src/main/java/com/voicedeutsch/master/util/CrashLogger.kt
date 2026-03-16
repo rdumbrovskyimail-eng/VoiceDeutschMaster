@@ -73,23 +73,52 @@ class CrashLogger private constructor(
         try {
             val timestamp = timestamp()
 
-            val fullReport = buildCrashReport(throwable, thread, timestamp())
-            val lines = fullReport.lines()
-            val tail = lines.drop(lines.size / 2).joinToString("\n")
-            copyToClipboard(tail)
+            // ШАГ 1 — СРАЗУ В БУФЕР, синхронно, без Handler, без ProcessBuilder
+            // Только память → clipboard. Это единственное что гарантированно
+            // успеет до того как defaultHandler убьёт процесс.
+            val clipboardText = buildString {
+                appendLine("=".repeat(60))
+                appendLine("🔥 CRASH — VoiceDeutschMaster")
+                appendLine("=".repeat(60))
+                appendLine("Timestamp : $timestamp")
+                appendLine("Thread    : ${thread.name}")
+                appendLine("Device    : ${Build.MANUFACTURER} ${Build.MODEL} API ${Build.VERSION.SDK_INT}")
+                try {
+                    appendLine("App ver   : ${context.packageManager.getPackageInfo(context.packageName, 0).versionName}")
+                } catch (_: Exception) {}
+                appendLine()
+                appendLine("=".repeat(60))
+                appendLine("EXCEPTION")
+                appendLine("=".repeat(60))
+                appendLine(throwable.stackTraceToString())
+                var cause = throwable.cause
+                var depth = 0
+                while (cause != null && depth < 5) {
+                    appendLine("--- CAUSED BY ---")
+                    appendLine(cause.stackTraceToString())
+                    cause = cause.cause; depth++
+                }
+                // Session log tail
+                AppLogger.getInstance()?.getBufferSnapshot()?.lines()?.let { lines ->
+                    appendLine()
+                    appendLine("=".repeat(60))
+                    appendLine("SESSION LOG (последние 80 строк)")
+                    appendLine("=".repeat(60))
+                    lines.takeLast(80).forEach { appendLine(it) }
+                }
+            }
 
-            // 1️⃣ Сохраняем crash report
-            saveCrashLog(throwable, thread, timestamp)
+            // Пишем в буфер СИНХРОННО — без Handler.post, без latch
+            runCatching { setClipboard(clipboardText) }
 
-            // 2️⃣ Сбрасываем весь сеансовый лог AppLogger (если он запущен)
-            dumpSessionLog(timestamp)
+            // ШАГ 2 — полный отчёт + logcat в файл (уже не критично по времени)
+            runCatching { saveCrashLog(throwable, thread, timestamp) }
+            runCatching { dumpSessionLog(timestamp) }
 
-        } catch (e: Exception) {
-            android.util.Log.e(TAG, "❌ Failed to save crash log", e)
-        } finally {
-            // 3️⃣ Передаём Android — показывает «приложение остановлено»
-            defaultHandler?.uncaughtException(thread, throwable)
-        }
+        } catch (_: Exception) {}
+
+        // ШАГ 3 — отдаём системе (убивает процесс)
+        defaultHandler?.uncaughtException(thread, throwable)
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -278,19 +307,6 @@ class CrashLogger private constructor(
         clipboard.setPrimaryClip(
             android.content.ClipData.newPlainText("crash_log", text)
         )
-    }
-
-    private fun copyToClipboard(text: String) {
-        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
-            setClipboard(text)
-        } else {
-            val latch = java.util.concurrent.CountDownLatch(1)
-            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                runCatching { setClipboard(text) }
-                latch.countDown()
-            }
-            latch.await(2, java.util.concurrent.TimeUnit.SECONDS)
-        }
     }
 
     private fun captureLogcat(): String = buildString {
