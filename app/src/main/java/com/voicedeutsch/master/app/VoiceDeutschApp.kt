@@ -27,6 +27,8 @@ class VoiceDeutschApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        initAppLogger()
+
         try {
             CrashLogger.init(this).apply {
                 cleanOldLogs(keepCount = 20)
@@ -35,25 +37,10 @@ class VoiceDeutschApp : Application() {
             Log.e(TAG, "❌ CrashLogger init failed", e)
         }
 
-        initAppLogger()
-
         startKoin {
             androidLogger(if (BuildConfig.DEBUG) Level.DEBUG else Level.NONE)
             androidContext(this@VoiceDeutschApp)
             modules(appModules)
-        }
-
-        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            try {
-                val log = buildString {
-                    appendLine("=== CRASH ${java.util.Date()} ===")
-                    appendLine("Thread: ${thread.name}")
-                    appendLine(throwable.stackTraceToString())
-                }
-                val file = java.io.File(getExternalFilesDir(null), "crash_log.txt")
-                file.appendText(log)
-            } catch (_: Exception) {}
-            android.os.Process.killProcess(android.os.Process.myPid())
         }
 
         initFirebase()
