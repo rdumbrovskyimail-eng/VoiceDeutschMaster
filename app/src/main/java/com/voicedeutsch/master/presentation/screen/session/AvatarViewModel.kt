@@ -33,6 +33,7 @@ class AvatarViewModel(
     private val avatarRepository: AvatarRepository,
     private val audioAnalyzer: AvatarAudioAnalyzer,
     private val audioCapture: AudioOutputCapture,
+    private val context: android.content.Context,
 ) : ViewModel() {
 
     companion object {
@@ -74,7 +75,7 @@ class AvatarViewModel(
     private suspend fun tryStartVisualizer() {
         val started = try {
             withContext(Dispatchers.IO) {
-                audioCapture.start(audioSessionId = 0)
+                audioCapture.startWithDiscovery(context)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Visualizer failed: ${e.message}", e)
