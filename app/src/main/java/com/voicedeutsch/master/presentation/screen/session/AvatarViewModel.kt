@@ -59,6 +59,14 @@ class AvatarViewModel(
             val sessions = audioCapture.discoverAudioSessions(context)
             Log.d(TAG, "Discovered audio sessions: $sessions")
 
+            // Log active playback configurations for diagnostics
+            val am = context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+            am.activePlaybackConfigurations.forEach { config ->
+                Log.d("AUDIO_SCAN", "usage=${config.audioAttributes.usage} " +
+                    "contentType=${config.audioAttributes.contentType} " +
+                    "sessionId=${config.audioSessionId}")
+            }
+
             // Always try global mix (sessionId=0) first — it captures all audio output
             val started = try {
                 withContext(Dispatchers.IO) { audioCapture.start(audioSessionId = 0) }
