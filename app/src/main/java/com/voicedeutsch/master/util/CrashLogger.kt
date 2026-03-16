@@ -71,53 +71,16 @@ class CrashLogger private constructor(
 
     override fun uncaughtException(thread: Thread, throwable: Throwable) {
         try {
-            val timestamp = timestamp()
-
-            // ШАГ 1 — СРАЗУ В БУФЕР, синхронно, без Handler, без ProcessBuilder
-            // Только память → clipboard. Это единственное что гарантированно
-            // успеет до того как defaultHandler убьёт процесс.
-            val clipboardText = buildString {
-                appendLine("=".repeat(60))
-                appendLine("🔥 CRASH — VoiceDeutschMaster")
-                appendLine("=".repeat(60))
-                appendLine("Timestamp : $timestamp")
-                appendLine("Thread    : ${thread.name}")
-                appendLine("Device    : ${Build.MANUFACTURER} ${Build.MODEL} API ${Build.VERSION.SDK_INT}")
-                try {
-                    appendLine("App ver   : ${context.packageManager.getPackageInfo(context.packageName, 0).versionName}")
-                } catch (_: Exception) {}
-                appendLine()
-                appendLine("=".repeat(60))
-                appendLine("EXCEPTION")
-                appendLine("=".repeat(60))
-                appendLine(throwable.stackTraceToString())
-                var cause = throwable.cause
-                var depth = 0
-                while (cause != null && depth < 5) {
-                    appendLine("--- CAUSED BY ---")
-                    appendLine(cause.stackTraceToString())
-                    cause = cause.cause; depth++
-                }
-                // Session log tail
-                AppLogger.getInstance()?.getBufferSnapshot()?.lines()?.let { lines ->
-                    appendLine()
-                    appendLine("=".repeat(60))
-                    appendLine("SESSION LOG (последние 80 строк)")
-                    appendLine("=".repeat(60))
-                    lines.takeLast(80).forEach { appendLine(it) }
-                }
+            val file = File(logDirectory, "${CRASH_PREFIX}${timestamp()}.txt")
+            file.printWriter().use { pw ->
+                pw.println("CRASH ${java.util.Date()}")
+                pw.println("Thread: ${thread.name}")
+                pw.println("Device: ${Build.MANUFACTURER} ${Build.MODEL} API ${Build.VERSION.SDK_INT}")
+                pw.println()
+                throwable.printStackTrace(pw)
             }
+        } catch (_: Throwable) {}
 
-            // Пишем в буфер СИНХРОННО — без Handler.post, без latch
-            runCatching { setClipboard(clipboardText) }
-
-            // ШАГ 2 — полный отчёт + logcat в файл (уже не критично по времени)
-            runCatching { saveCrashLog(throwable, thread, timestamp) }
-            runCatching { dumpSessionLog(timestamp) }
-
-        } catch (_: Exception) {}
-
-        // ШАГ 3 — отдаём системе (убивает процесс)
         defaultHandler?.uncaughtException(thread, throwable)
     }
 
