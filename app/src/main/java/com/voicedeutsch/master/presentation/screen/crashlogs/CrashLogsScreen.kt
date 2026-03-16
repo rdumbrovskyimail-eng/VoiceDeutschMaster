@@ -1,4 +1,3 @@
-```kotlin
 package com.voicedeutsch.master.presentation.screen.crashlogs
 
 import androidx.compose.foundation.clickable
@@ -215,6 +214,3 @@ private fun FileViewerDialog(file: File, onDismiss: () -> Unit) {
         }
     }
 }
-```
-
-Открывается сразу в `context.filesDir` — это корень твоего приложения. Все папки, все файлы, заходишь в любую подпапку, читаешь любой файл, копируешь.
