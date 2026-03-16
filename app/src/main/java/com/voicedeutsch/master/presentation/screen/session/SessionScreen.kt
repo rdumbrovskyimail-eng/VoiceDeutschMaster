@@ -181,7 +181,6 @@ fun SessionScreen(
             // Delay to let Firebase SDK create its AudioTrack first
             AnrWatchdog.startWatching(context, timeoutMs = 7_000L, crashAfterDump = true)
             viewModel.onEvent(SessionEvent.StartSession)
-            avatarViewModel.startCapture()
         }
     }
 
