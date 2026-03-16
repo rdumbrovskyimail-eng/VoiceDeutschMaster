@@ -331,6 +331,13 @@ class CrashLogger private constructor(
         }
     }
 
+    fun hasPendingCrashLog(): Boolean = getLatestCrashLog() != null
+
+    fun getLatestCrashLogContent(): String? {
+        val file = getLatestCrashLog() ?: return null
+        return runCatching { file.readText() }.getOrNull()
+    }
+
     private fun timestamp(): String =
         SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault()).format(Date())
 }
