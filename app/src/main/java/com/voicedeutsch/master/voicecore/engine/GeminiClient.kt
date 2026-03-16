@@ -1,17 +1,11 @@
 package com.voicedeutsch.master.voicecore.engine
 
-import android.media.AudioAttributes
-import android.media.AudioFormat
-import android.media.AudioRecord
-import android.media.AudioTrack
-import android.media.MediaRecorder
 import android.util.Log
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.FunctionCallPart
 import com.google.firebase.ai.type.FunctionDeclaration
 import com.google.firebase.ai.type.FunctionResponsePart
-import com.google.firebase.ai.type.InlineData
 import com.google.firebase.ai.type.LiveSession
 import com.google.firebase.ai.type.PublicPreviewAPI
 import com.google.firebase.ai.type.ResponseModality
@@ -26,20 +20,8 @@ import com.google.firebase.ai.type.liveGenerationConfig
 import com.voicedeutsch.master.voicecore.context.ContextBuilder
 import com.voicedeutsch.master.voicecore.functions.GeminiFunctionDeclaration
 import com.voicedeutsch.master.voicecore.functions.GeminiProperty
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import kotlin.math.pow
-import kotlin.math.sqrt
 /**
  * GeminiClient — обёртка над Firebase AI Logic Live API SDK.
  *
@@ -50,7 +32,6 @@ import kotlin.math.sqrt
 @OptIn(PublicPreviewAPI::class)
 class GeminiClient(
     config: GeminiConfig,
-    private val scope: CoroutineScope,
 ) {
     var config: GeminiConfig = config
         internal set
@@ -73,13 +54,6 @@ class GeminiClient(
         val responseTokenCount: Int = 0,
         val totalTokenCount: Int = 0,
     )
-
-    private val _amplitudeFlow = MutableSharedFlow<Float>(replay = 0, extraBufferCapacity = 16, onBufferOverflow = BufferOverflow.DROP_OLDEST)
-    val amplitudeFlow: Flow<Float> = _amplitudeFlow.asSharedFlow()
-
-    private var audioTrack: AudioTrack? = null
-    private var receiveJob: Job? = null
-    private var sendJob: Job? = null
 
     // ── Public API ────────────────────────────────────────────────────────────
 
@@ -136,27 +110,6 @@ class GeminiClient(
                 liveSession = session
             }
 
-            audioTrack = AudioTrack.Builder()
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .build()
-                )
-                .setAudioFormat(
-                    AudioFormat.Builder()
-                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                        .setSampleRate(24000)
-                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                        .build()
-                )
-                .setTransferMode(AudioTrack.MODE_STREAM)
-                .setBufferSizeInBytes(
-                    AudioTrack.getMinBufferSize(24000, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT) * 2
-                )
-                .build()
-                .also { it.play() }
-
             Log.d(TAG, "LiveSession established")
         } catch (e: Exception) {
             Log.e(TAG, "connect() failed: ${e.message}", e)
@@ -166,76 +119,34 @@ class GeminiClient(
 
     /**
      * Запускает голосовой разговор.
-     * Вручную управляет микрофоном, отправкой/приёмом PCM-аудио и воспроизведением через AudioTrack.
-     * Function calls обрабатываются через [onFunctionCall] callback.
+     * SDK сам управляет микрофоном, отправкой/приёмом аудио и воспроизведением.
+     * Function calls обрабатываются синхронно через [onFunctionCall] callback.
      */
-    fun startConversation(
+    suspend fun startConversation(
         onFunctionCall: (FunctionCallPart) -> FunctionResponsePart,
     ) {
-        val session = liveSession
+        val session = sessionMutex.withLock { liveSession }
             ?: throw GeminiConnectionException("startConversation: no active session")
 
-        receiveJob = scope.launch {
-            session.receive().collect { response ->
-                response.audio?.let { pcmBytes ->
-                    val rms = computeRms(pcmBytes)
-                    _amplitudeFlow.tryEmit(rms)
-                    audioTrack?.write(pcmBytes, 0, pcmBytes.size)
-                }
-                response.functionCalls?.forEach { call ->
-                    val result = onFunctionCall(call)
-                    session.sendFunctionResponse(listOf(result))
-                }
-            }
-        }
-
-        sendJob = scope.launch {
-            val bufferSize = AudioRecord.getMinBufferSize(
-                16000,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT
-            )
-            val recorder = AudioRecord(
-                MediaRecorder.AudioSource.MIC,
-                16000,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
-                bufferSize * 2
-            )
-            recorder.startRecording()
-            val buffer = ByteArray(bufferSize)
-            try {
-                while (isActive) {
-                    val read = recorder.read(buffer, 0, buffer.size)
-                    if (read > 0) {
-                        session.send(InlineData(buffer.copyOf(read), "audio/pcm"))
-                    }
-                }
-            } finally {
-                recorder.stop()
-                recorder.release()
-            }
-        }
-
+        session.startAudioConversation(onFunctionCall)
         Log.d(TAG, "Audio conversation started")
     }
 
     /**
      * Останавливает голосовой разговор.
-     * Отменяет корутины приёма и отправки, останавливает AudioTrack.
+     * Микрофон и воспроизведение останавливаются SDK-ом.
      */
-    fun stopConversation() {
-        receiveJob?.cancel()
-        receiveJob = null
-        sendJob?.cancel()
-        sendJob = null
-        runCatching {
-            audioTrack?.pause()
-            audioTrack?.flush()
-        }.onFailure { e ->
-            Log.w(TAG, "stopConversation audioTrack error: ${e.message}")
+    suspend fun stopConversation() {
+        val session = sessionMutex.withLock { liveSession } ?: run {
+            Log.w(TAG, "stopConversation: no active session")
+            return
         }
-        Log.d(TAG, "Audio conversation stopped")
+        runCatching {
+            session.stopAudioConversation()
+            Log.d(TAG, "Audio conversation stopped")
+        }.onFailure { e ->
+            Log.w(TAG, "stopConversation error: ${e.message}")
+        }
     }
 
     /**
@@ -243,20 +154,9 @@ class GeminiClient(
      */
     suspend fun disconnect() {
         try {
-            receiveJob?.cancel()
-            receiveJob = null
-            sendJob?.cancel()
-            sendJob = null
             sessionMutex.withLock {
                 liveSession?.close()
                 liveSession = null
-            }
-            runCatching {
-                audioTrack?.stop()
-                audioTrack?.release()
-                audioTrack = null
-            }.onFailure { e ->
-                Log.w(TAG, "disconnect() audioTrack release warning: ${e.message}")
             }
             Log.d(TAG, "LiveSession closed")
         } catch (e: Exception) {
@@ -277,16 +177,6 @@ class GeminiClient(
         }.onFailure { e ->
             Log.e(TAG, "sendText error: ${e.message}", e)
         }
-    }
-
-    // ── PCM RMS ───────────────────────────────────────────────────────────────
-
-    private fun computeRms(pcm: ByteArray): Float {
-        val shorts = ShortArray(pcm.size / 2)
-        ByteBuffer.wrap(pcm).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(shorts)
-        if (shorts.isEmpty()) return 0f
-        val sum = shorts.sumOf { (it / 32768.0).pow(2) }
-        return sqrt(sum / shorts.size).toFloat().coerceIn(0f, 1f)
     }
 
     // ── Release ───────────────────────────────────────────────────────────────
