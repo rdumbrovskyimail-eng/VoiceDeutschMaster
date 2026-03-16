@@ -211,4 +211,88 @@ class AudioOutputCapture {
     fun isCapturing(): Boolean = isActive
 
     fun release() = stop()
+
+    /**
+     * Scans all active audio playback sessions and logs their IDs.
+     * Call this WHILE Gemini is speaking to find the correct sessionId.
+     * Requires API 26+ (Android O).
+     */
+    fun discoverAudioSessions(context: android.content.Context): List<Int> {
+        val audioManager = context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+        val configs = audioManager.activePlaybackConfigurations
+        val sessionIds = mutableListOf<Int>()
+
+        Log.d(TAG, "=== AUDIO SESSION SCAN ===")
+        Log.d(TAG, "Active playback configs: ${configs.size}")
+
+        for (config in configs) {
+            val sessionId = config.audioAttributes.flags
+            val usage = config.audioAttributes.usage
+            val contentType = config.audioAttributes.contentType
+
+            // Try to get the actual session ID via reflection or PlayerProxy
+            val playerSessionId = try {
+                val player = config.playerProxy
+                val method = player?.javaClass?.getMethod("getAudioSessionId")
+                method?.invoke(player) as? Int ?: -1
+            } catch (e: Exception) {
+                -1
+            }
+
+            // Also try via AudioAttributes
+            val attrSessionId = try {
+                val field = android.media.AudioAttributes::class.java.getDeclaredField("mSessionId")
+                field.isAccessible = true
+                field.getInt(config.audioAttributes)
+            } catch (e: Exception) {
+                -1
+            }
+
+            Log.d(TAG, "Config: usage=$usage contentType=$contentType flags=$sessionId playerSession=$playerSessionId attrSession=$attrSessionId")
+
+            if (playerSessionId > 0) sessionIds.add(playerSessionId)
+            if (attrSessionId > 0 && attrSessionId != playerSessionId) sessionIds.add(attrSessionId)
+        }
+
+        // Also try AudioManager.generateAudioSessionId approach
+        val currentSession = try {
+            val method = audioManager.javaClass.getMethod("getActivePlaybackConfigurations")
+            val result = method.invoke(audioManager) as List<*>
+            result.mapNotNull { config ->
+                try {
+                    val c = config as android.media.AudioPlaybackConfiguration
+                    val attrs = c.audioAttributes
+                    Log.d(TAG, "Attrs: ${attrs.usage} / ${attrs.contentType} / ${attrs.flags}")
+                    null
+                } catch (e: Exception) { null }
+            }
+            -1
+        } catch (e: Exception) { -1 }
+
+        Log.d(TAG, "Discovered session IDs: $sessionIds")
+        Log.d(TAG, "=== END SCAN ===")
+
+        return sessionIds
+    }
+
+    /**
+     * Tries to start Visualizer on each discovered session ID.
+     * Returns the first one that successfully captures audio with RMS > threshold.
+     */
+    fun startWithDiscovery(context: android.content.Context): Boolean {
+        val sessionIds = discoverAudioSessions(context)
+
+        // Try each discovered session ID
+        for (id in sessionIds) {
+            Log.d(TAG, "Trying sessionId=$id...")
+            if (start(audioSessionId = id)) {
+                Log.d(TAG, "✅ Visualizer attached to sessionId=$id")
+                return true
+            }
+        }
+
+        // Fallback to global mix
+        Log.d(TAG, "No specific session worked, trying global mix (0)...")
+        return start(audioSessionId = 0)
+    }
 }
