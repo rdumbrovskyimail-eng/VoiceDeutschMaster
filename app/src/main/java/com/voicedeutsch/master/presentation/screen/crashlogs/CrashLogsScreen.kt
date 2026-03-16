@@ -1,3 +1,4 @@
+```kotlin
 package com.voicedeutsch.master.presentation.screen.crashlogs
 
 import androidx.compose.foundation.clickable
@@ -9,6 +10,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,52 +23,59 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.voicedeutsch.master.util.CrashLogger
-import com.voicedeutsch.master.util.LogFile
-import com.voicedeutsch.master.util.LogType
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CrashLogsScreen(onBack: () -> Unit) {
-    val crashLogger = CrashLogger.getInstance()
-    var logs by remember { mutableStateOf(crashLogger?.getAllLogs() ?: emptyList()) }
-    var selectedLog by remember { mutableStateOf<LogFile?>(null) }
+    val context = LocalContext.current
+    var currentDir by remember { mutableStateOf(context.filesDir) }
+    var selectedFile by remember { mutableStateOf<File?>(null) }
+    var dirStack by remember { mutableStateOf(listOf<File>()) }
 
-    // Диалог просмотра лога
-    selectedLog?.let { log ->
-        LogViewerDialog(
-            log = log,
-            onDismiss = { selectedLog = null },
-        )
+    val files = remember(currentDir) {
+        currentDir.listFiles()
+            ?.sortedWith(compareBy({ !it.isDirectory }, { it.name }))
+            ?: emptyList()
+    }
+
+    selectedFile?.let { file ->
+        FileViewerDialog(file = file, onDismiss = { selectedFile = null })
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Краш логи") },
+                title = {
+                    Text(
+                        text = currentDir.absolutePath,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = {
+                        if (dirStack.isEmpty()) {
+                            onBack()
+                        } else {
+                            currentDir = dirStack.last()
+                            dirStack = dirStack.dropLast(1)
+                        }
+                    }) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Назад")
                     }
                 },
-                actions = {
-                    IconButton(onClick = {
-                        crashLogger?.cleanOldLogs(keepCount = 0)
-                        logs = emptyList()
-                    }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "Удалить все")
-                    }
-                },
             )
-        },
+        }
     ) { padding ->
-        if (logs.isEmpty()) {
+        if (files.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "🎉 Крашей не найдено",
+                    text = "📂 Папка пустая",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
                 )
@@ -74,13 +84,57 @@ fun CrashLogsScreen(onBack: () -> Unit) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                items(logs) { log ->
-                    LogCard(
-                        log = log,
-                        onClick = { selectedLog = log },
-                    )
+                items(files) { file ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            if (file.isDirectory) {
+                                dirStack = dirStack + currentDir
+                                currentDir = file
+                            } else {
+                                selectedFile = file
+                            }
+                        },
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surface
+                        ),
+                        elevation = CardDefaults.cardElevation(1.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = if (file.isDirectory) Icons.Filled.Folder else Icons.Filled.Description,
+                                contentDescription = null,
+                                tint = if (file.isDirectory)
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(24.dp),
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = file.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                if (!file.isDirectory) {
+                                    Text(
+                                        text = "${file.length() / 1024} KB",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            if (file.isDirectory) {
+                                Text("▶", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -88,62 +142,11 @@ fun CrashLogsScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun LogCard(log: LogFile, onClick: () -> Unit) {
-    val typeColor = when (log.type) {
-        LogType.CRASH   -> MaterialTheme.colorScheme.error
-        LogType.SESSION -> MaterialTheme.colorScheme.primary
-        LogType.LOGCAT  -> MaterialTheme.colorScheme.tertiary
-        LogType.ANR     -> MaterialTheme.colorScheme.secondary
-    }
-    val typeLabel = when (log.type) {
-        LogType.CRASH   -> "CRASH"
-        LogType.SESSION -> "SESSION"
-        LogType.LOGCAT  -> "LOGCAT"
-        LogType.ANR     -> "ANR"
-    }
-
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(2.dp),
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Surface(
-                color = typeColor.copy(alpha = 0.15f),
-                shape = MaterialTheme.shapes.small,
-            ) {
-                Text(
-                    text = typeLabel,
-                    color = typeColor,
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = log.formattedDate,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = "${log.sizeKB} KB",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun LogViewerDialog(log: LogFile, onDismiss: () -> Unit) {
+private fun FileViewerDialog(file: File, onDismiss: () -> Unit) {
     val context = LocalContext.current
-    val content = remember { runCatching { log.file.readText() }.getOrDefault("Не удалось прочитать файл") }
+    val content = remember {
+        runCatching { file.readText() }.getOrDefault("Не удалось прочитать файл")
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -160,13 +163,13 @@ private fun LogViewerDialog(log: LogFile, onDismiss: () -> Unit) {
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text(
-                    text = log.name,
+                    text = file.name,
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.error,
+                    color = MaterialTheme.colorScheme.primary,
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = log.formattedDate,
+                    text = file.absolutePath,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -178,7 +181,9 @@ private fun LogViewerDialog(log: LogFile, onDismiss: () -> Unit) {
                 ) {
                     Text(
                         text = content,
-                        modifier = Modifier.verticalScroll(rememberScrollState()).padding(12.dp),
+                        modifier = Modifier
+                            .verticalScroll(rememberScrollState())
+                            .padding(12.dp),
                         fontFamily = FontFamily.Monospace,
                         fontSize = 11.sp,
                         lineHeight = 16.sp,
@@ -196,7 +201,7 @@ private fun LogViewerDialog(log: LogFile, onDismiss: () -> Unit) {
                                 android.content.Context.CLIPBOARD_SERVICE
                             ) as android.content.ClipboardManager
                             clipboard.setPrimaryClip(
-                                android.content.ClipData.newPlainText("crash_log", content)
+                                android.content.ClipData.newPlainText("file", content)
                             )
                         },
                         modifier = Modifier.weight(1f),
@@ -210,3 +215,6 @@ private fun LogViewerDialog(log: LogFile, onDismiss: () -> Unit) {
         }
     }
 }
+```
+
+Открывается сразу в `context.filesDir` — это корень твоего приложения. Все папки, все файлы, заходишь в любую подпапку, читаешь любой файл, копируешь.
