@@ -60,4 +60,7 @@ sealed interface NavRoute {
     /** Knowledge Base — user's custom word/phrase collection. */
     @Serializable
     data object KnowledgeBase : NavRoute
+
+    @Serializable
+    data object CrashLogs : NavRoute
 }
