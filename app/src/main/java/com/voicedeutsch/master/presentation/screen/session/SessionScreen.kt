@@ -184,6 +184,15 @@ fun SessionScreen(
         }
     }
 
+    // ── Start Visualizer capture when session is active ──────────────
+    LaunchedEffect(uiState.isSessionActive) {
+        if (uiState.isSessionActive && hasRecordAudioPermission) {
+            // Delay 2s — Firebase SDK needs time to create its AudioTrack
+            kotlinx.coroutines.delay(2000L)
+            avatarViewModel.startCapture()
+        }
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = Background,
