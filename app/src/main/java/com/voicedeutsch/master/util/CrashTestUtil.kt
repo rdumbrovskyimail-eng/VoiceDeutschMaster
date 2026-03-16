@@ -1,5 +1,7 @@
 package com.voicedeutsch.master.util
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import androidx.core.content.FileProvider
@@ -64,6 +66,19 @@ object CrashTestUtil {
                 e,
             )
         }
+    }
+
+    fun copyLatestCrashLogToClipboard(context: Context) {
+        val crashLogger = CrashLogger.getInstance() ?: return
+        val latestLog = crashLogger.getLatestCrashLog() ?: return
+        val text = latestLog.readLines()
+        val tail = text.drop(text.size / 2).joinToString("\n")
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
+                as ClipboardManager
+        clipboard.setPrimaryClip(
+            ClipData.newPlainText("crash_log", tail)
+        )
+        android.util.Log.i("CrashTestUtil", "✅ Copied to clipboard (${tail.length} chars)")
     }
 
     /**
