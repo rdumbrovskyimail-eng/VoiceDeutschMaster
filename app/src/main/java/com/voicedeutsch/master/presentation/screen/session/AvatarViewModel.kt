@@ -45,99 +45,37 @@ class AvatarViewModel(
     val gender: StateFlow<AvatarGender> = avatarRepository.observeGenderChanges()
         .stateIn(viewModelScope, SharingStarted.Eagerly, AvatarGender.FEMALE)
 
-    @Volatile
-    private var realAudioConfirmed = false
-
-    private var realFrameCount = 0
-
-    @Volatile
-    private var captureStarted = false
-
     init {
-        // Start with synthetic fallback immediately — safe, no permissions needed
-        startSyntheticFallback()
-    }
-
-    /**
-     * Call this AFTER RECORD_AUDIO permission is granted and session is starting.
-     * Attempts to upgrade from synthetic to real Visualizer audio.
-     * Safe to call multiple times — only runs once.
-     */
-    fun startCapture() {
-        if (captureStarted) return
-        captureStarted = true
-
-        viewModelScope.launch {
-            tryStartVisualizer()
-        }
-    }
-
-    private suspend fun tryStartVisualizer() {
-        val started = try {
-            withContext(Dispatchers.IO) {
-                audioCapture.startWithDiscovery(context)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Visualizer failed: ${e.message}", e)
-            false
-        }
-
-        if (started) {
-            Log.d(TAG, "Visualizer started — monitoring for real audio...")
-
-            audioCapture.frames
-                .conflate()
-                .onEach { frame ->
-                    val rms = computeRms(frame.waveform)
-                    if (rms > 0.02f) {
-                        realFrameCount++
-                        if (!realAudioConfirmed && realFrameCount >= 5) {
-                            realAudioConfirmed = true
-                            Log.d(TAG, "✅ Real audio confirmed!")
-                        }
-                    } else if (!realAudioConfirmed) {
-                        realFrameCount = 0
-                    }
-                    if (realAudioConfirmed) {
-                        audioAnalyzer.onAudioFrame(frame)
-                    }
-                }
-                .catch { e ->
-                    Log.e(TAG, "Visualizer frame error: ${e.message}")
-                    realAudioConfirmed = false
-                }
-                .launchIn(viewModelScope)
-        } else {
-            Log.w(TAG, "⚠ Visualizer unavailable — staying on synthetic")
-            // Synthetic already running from init, nothing to do
-        }
-    }
-
-    /**
-     * Synthetic amplitude from VoiceCoreEngine — always works, no permissions.
-     */
-    private fun startSyntheticFallback() {
         voiceCoreEngine.amplitudeFlow
             .conflate()
-            .onEach { amp ->
-                // Only use synthetic if real audio is not active
-                if (!realAudioConfirmed) {
-                    audioAnalyzer.onAmplitude(amp)
-                }
-            }
-            .catch { e -> Log.w(TAG, "Synthetic amplitude error: ${e.message}") }
+            .onEach { amp -> audioAnalyzer.onAmplitude(amp) }
+            .catch { e -> Log.w(TAG, "synthetic error: ${e.message}") }
             .launchIn(viewModelScope)
     }
 
-    fun triggerHappy() = audioAnalyzer.triggerHappy()
+    fun startCapture() {
+        viewModelScope.launch {
+            val started = try {
+                withContext(Dispatchers.IO) { audioCapture.startWithDiscovery(context) }
+            } catch (e: Exception) {
+                Log.e(TAG, "Visualizer failed: ${e.message}", e)
+                false
+            }
 
-    fun isUsingRealAudio(): Boolean = realAudioConfirmed
-
-    private fun computeRms(waveform: FloatArray): Float {
-        var sum = 0f
-        for (s in waveform) sum += s * s
-        return kotlin.math.sqrt(sum / waveform.size.coerceAtLeast(1))
+            if (started) {
+                Log.d(TAG, "✅ Visualizer active — spectral enrichment on")
+                audioCapture.frames
+                    .conflate()
+                    .onEach { frame -> audioAnalyzer.onAudioFrame(frame) }
+                    .catch { e -> Log.e(TAG, "Visualizer error: ${e.message}") }
+                    .launchIn(viewModelScope)
+            } else {
+                Log.w(TAG, "Visualizer unavailable — synthetic only")
+            }
+        }
     }
+
+    fun triggerHappy() = audioAnalyzer.triggerHappy()
 
     override fun onCleared() {
         super.onCleared()
