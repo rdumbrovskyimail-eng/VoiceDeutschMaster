@@ -179,10 +179,9 @@ fun SessionScreen(
             }
             // ⏱ Запускаем ANR Watchdog — через 7 сек сдампит все потоки и крашнет
             // Delay to let Firebase SDK create its AudioTrack first
-            kotlinx.coroutines.delay(3000L)
-            avatarViewModel.startCapture()
             AnrWatchdog.startWatching(context, timeoutMs = 7_000L, crashAfterDump = true)
             viewModel.onEvent(SessionEvent.StartSession)
+            avatarViewModel.startCapture()
         }
     }
 
