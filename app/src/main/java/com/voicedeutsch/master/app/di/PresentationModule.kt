@@ -10,6 +10,7 @@ import com.voicedeutsch.master.presentation.screen.settings.BookManagerViewModel
 import com.voicedeutsch.master.presentation.screen.settings.SettingsViewModel
 import com.voicedeutsch.master.presentation.screen.history.SessionHistoryViewModel
 import com.voicedeutsch.master.presentation.screen.statistics.StatisticsViewModel
+import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.dsl.module
 
@@ -85,7 +86,7 @@ val presentationModule = module {
             avatarRepository = get(),
             audioAnalyzer    = get(),
             audioCapture     = get(),
-            context          = get(),
+            context          = androidContext(),
         )
     }
 }
