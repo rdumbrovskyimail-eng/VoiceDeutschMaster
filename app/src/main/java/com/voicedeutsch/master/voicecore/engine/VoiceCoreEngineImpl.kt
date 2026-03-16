@@ -178,11 +178,11 @@ class VoiceCoreEngineImpl(
                     }
                 }
                 else -> flow {
-                    // Idle: very gentle breathing
-                    var phase = 0f
+                    // Idle breathing — very low amplitude
+                    var t = 0f
                     while (currentCoroutineContext().isActive) {
-                        phase += 0.03f
-                        emit((sin(phase) * 0.03f + 0.03f).coerceIn(0f, 1f))
+                        t += 0.016f
+                        emit((kotlin.math.sin(t * 0.8f) * 0.02f + 0.02f).toFloat())
                         delay(50L)
                     }
                 }
