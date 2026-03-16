@@ -26,7 +26,9 @@ import com.voicedeutsch.master.voicecore.strategy.VocabularyStrategy
 import com.voicedeutsch.master.voicecore.audio.AudioOutputCapture
 import com.voicedeutsch.master.voicecore.engine.AvatarAudioAnalyzer
 import com.voicedeutsch.master.data.repository.AvatarRepository
+import com.voicedeutsch.master.presentation.avatar.AvatarViewModel
 import org.koin.android.ext.koin.androidContext
+import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.dsl.module
 
 val voiceCoreModule = module {
@@ -36,6 +38,15 @@ val voiceCoreModule = module {
     single { AudioOutputCapture() }
     single { AvatarAudioAnalyzer() }
     single { AvatarRepository(get()) }
+
+    viewModel {
+        AvatarViewModel(
+            avatarRepository   = get(),
+            audioOutputCapture = get(),
+            avatarAudioAnalyzer = get(),
+            context            = androidContext(),
+        )
+    }
 
     single { UserContextProvider(get()) }
     single { BookContextProvider(get(), get()) }
