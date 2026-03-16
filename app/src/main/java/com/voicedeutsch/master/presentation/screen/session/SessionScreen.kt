@@ -87,7 +87,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 import com.voicedeutsch.master.presentation.theme.Background
 import com.voicedeutsch.master.presentation.theme.Secondary
 import com.voicedeutsch.master.util.AnrWatchdog
@@ -128,6 +130,7 @@ fun SessionScreen(
 
     val hasRecordAudioPermission = rememberPermissionState(Manifest.permission.RECORD_AUDIO).status.isGranted
 
+    val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 
     var showExitDialog by remember { mutableStateOf(false) }
@@ -178,6 +181,15 @@ fun SessionScreen(
             // Delay to let Firebase SDK create its AudioTrack first
             AnrWatchdog.startWatching(context, timeoutMs = 20_000L, crashAfterDump = false)
             viewModel.onEvent(SessionEvent.StartSession)
+        }
+    }
+
+    // ── Start Visualizer capture when session is active ──────────────
+    LaunchedEffect(uiState.isSessionActive) {
+        if (uiState.isSessionActive && hasRecordAudioPermission) {
+            // Delay 2s — Firebase SDK needs time to create its AudioTrack
+            kotlinx.coroutines.delay(2000L)
+            avatarViewModel.startCapture()
         }
     }
 
@@ -391,6 +403,24 @@ fun SessionScreen(
                         .fillMaxWidth()
                         .padding(vertical = 8.dp),
                 )
+            }
+
+            // ── Avatar debug button ──────────────────────────────────────────
+            val saveLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.CreateDocument("text/plain")
+            ) { uri ->
+                if (uri == null) return@rememberLauncherForActivityResult
+                runCatching {
+                    val text = context.openFileInput("avatar_debug.txt")
+                        .bufferedReader().readText()
+                    context.contentResolver.openOutputStream(uri)?.use {
+                        it.write(text.toByteArray())
+                    }
+                }
+            }
+
+            Button(onClick = { saveLauncher.launch("avatar_debug.txt") }) {
+                Text("Сохранить кости аватара")
             }
 
             // ── Text input (accessibility fallback) ──────────────────────────
