@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material3.Icon
@@ -45,6 +46,7 @@ import com.voicedeutsch.master.presentation.screen.session.SessionScreen
 import com.voicedeutsch.master.presentation.screen.settings.BookManagerScreen
 import com.voicedeutsch.master.presentation.screen.settings.RuntimeTestScreen
 import com.voicedeutsch.master.presentation.screen.settings.SettingsScreen
+import com.voicedeutsch.master.presentation.screen.crashlogs.CrashLogsScreen
 import com.voicedeutsch.master.presentation.screen.history.SessionHistoryScreen
 import com.voicedeutsch.master.presentation.screen.statistics.StatisticsScreen
 import kotlinx.coroutines.flow.firstOrNull
@@ -62,6 +64,7 @@ private val bottomNavItems = listOf(
     BottomNavItem(NavRoute.KnowledgeMap,  Icons.Outlined.Map,         "Знания"),
     BottomNavItem(NavRoute.Book,          Icons.Outlined.AutoStories, "Книга"),
     BottomNavItem(NavRoute.Statistics,    Icons.Outlined.BarChart,    "Статистика"),
+    BottomNavItem(NavRoute.CrashLogs,     Icons.Outlined.BugReport,   "Логи"),
 )
 
 // Экраны С BottomNav
@@ -70,6 +73,7 @@ private val screensWithBottomNav = setOf(
     NavRoute.KnowledgeMap::class,
     NavRoute.Book::class,
     NavRoute.Statistics::class,
+    NavRoute.CrashLogs::class,
 )
 
 @Composable
@@ -247,6 +251,12 @@ fun AppNavigation() {
                 SessionHistoryScreen(
                     onBack = { navController.popBackStack() },
                     onStartSession = { navController.navigate(NavRoute.Session) },
+                )
+            }
+
+            composable<NavRoute.CrashLogs> {
+                CrashLogsScreen(
+                    onBack = { navController.popBackStack() },
                 )
             }
         }
