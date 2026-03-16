@@ -177,6 +177,12 @@ class VoiceCoreEngineImpl(
                         delay(33L) // ~30fps
                     }
                 }
+                AudioState.IDLE -> flow {
+                    while (currentCoroutineContext().isActive) {
+                        emit(0.01f)
+                        delay(100L)
+                    }
+                }
                 else -> flow {
                     // Idle breathing — very low amplitude
                     var t = 0f
