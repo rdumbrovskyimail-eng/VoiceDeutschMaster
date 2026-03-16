@@ -179,7 +179,7 @@ fun SessionScreen(
             }
             // ⏱ Запускаем ANR Watchdog — через 7 сек сдампит все потоки и крашнет
             // Delay to let Firebase SDK create its AudioTrack first
-            AnrWatchdog.startWatching(context, timeoutMs = 15_000L, crashAfterDump = false)
+            AnrWatchdog.startWatching(context, timeoutMs = 20_000L, crashAfterDump = false)
             viewModel.onEvent(SessionEvent.StartSession)
         }
     }
@@ -342,13 +342,16 @@ fun SessionScreen(
                     .height(200.dp),
                 contentAlignment = Alignment.CenterStart,
             ) {
-                AvatarSceneView(
-                    gender    = avatarGender,
-                    audioData = avatarAudioData,
-                    modifier  = Modifier
-                        .size(200.dp)
-                        .padding(start = 4.dp),
-                )
+                // Only load heavy 3D scene AFTER session is fully connected
+                if (uiState.isSessionActive) {
+                    AvatarSceneView(
+                        gender    = avatarGender,
+                        audioData = avatarAudioData,
+                        modifier  = Modifier
+                            .size(200.dp)
+                            .padding(start = 4.dp),
+                    )
+                }
             }
 
             Spacer(Modifier.height(8.dp))
