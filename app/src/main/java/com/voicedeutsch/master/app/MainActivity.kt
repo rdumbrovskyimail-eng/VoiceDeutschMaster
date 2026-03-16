@@ -14,7 +14,7 @@ import androidx.compose.ui.Modifier
 import com.voicedeutsch.master.data.local.datastore.UserPreferencesDataStore
 import com.voicedeutsch.master.presentation.navigation.AppNavigation
 import com.voicedeutsch.master.presentation.theme.VoiceDeutschMasterTheme
-import com.voicedeutsch.master.presentation.components.CrashLogDialog
+
 import com.voicedeutsch.master.util.CrashLogger
 import org.koin.android.ext.android.inject
 import java.text.SimpleDateFormat
@@ -31,24 +31,6 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            var showCrashDialog by remember { mutableStateOf(false) }
-            var crashLogContent by remember { mutableStateOf("") }
-
-            LaunchedEffect(Unit) {
-                val crashLogger = CrashLogger.getInstance()
-                if (crashLogger?.hasPendingCrashLog() == true) {
-                    crashLogContent = crashLogger.getLatestCrashLogContent() ?: ""
-                    showCrashDialog = true
-                }
-            }
-
-            if (showCrashDialog) {
-                CrashLogDialog(
-                    logContent = crashLogContent,
-                    onDismiss  = { showCrashDialog = false },
-                )
-            }
-
             val themePref by dataStore.getThemeFlow().collectAsState(initial = "system")
             val isDarkTheme = when (themePref) {
                 "dark"  -> true
