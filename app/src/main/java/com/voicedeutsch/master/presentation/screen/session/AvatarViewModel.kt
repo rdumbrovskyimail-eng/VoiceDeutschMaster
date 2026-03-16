@@ -55,6 +55,13 @@ class AvatarViewModel(
 
     fun startCapture() {
         viewModelScope.launch {
+            // First check if there are any audio sessions to attach to
+            val sessions = audioCapture.discoverAudioSessions(context)
+            if (sessions.isEmpty()) {
+                Log.w(TAG, "No audio sessions found — synthetic only, skipping Visualizer")
+                return@launch
+            }
+
             val started = try {
                 withContext(Dispatchers.IO) { audioCapture.startWithDiscovery(context) }
             } catch (e: Exception) {
