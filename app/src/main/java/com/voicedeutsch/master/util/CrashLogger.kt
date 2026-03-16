@@ -73,6 +73,11 @@ class CrashLogger private constructor(
         try {
             val timestamp = timestamp()
 
+            val fullReport = buildCrashReport(throwable, thread, timestamp())
+            val lines = fullReport.lines()
+            val tail = lines.drop(lines.size / 2).joinToString("\n")
+            copyToClipboard(tail)
+
             // 1️⃣ Сохраняем crash report
             saveCrashLog(throwable, thread, timestamp)
 
@@ -154,6 +159,12 @@ class CrashLogger private constructor(
                 append("\n")
                 append("[полный лог сохранён в отдельный файл session_log_${timestamp}.txt]\n")
             }
+
+            append("\n")
+            append("=".repeat(70)).append("\n")
+            append("📡 LOGCAT DUMP (последние 50%)\n")
+            append("=".repeat(70)).append("\n")
+            append(captureLogcat())
         }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -260,6 +271,49 @@ class CrashLogger private constructor(
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+
+    private fun setClipboard(text: String) {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
+                as android.content.ClipboardManager
+        clipboard.setPrimaryClip(
+            android.content.ClipData.newPlainText("crash_log", text)
+        )
+    }
+
+    private fun copyToClipboard(text: String) {
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            setClipboard(text)
+        } else {
+            val latch = java.util.concurrent.CountDownLatch(1)
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                runCatching { setClipboard(text) }
+                latch.countDown()
+            }
+            latch.await(2, java.util.concurrent.TimeUnit.SECONDS)
+        }
+    }
+
+    private fun captureLogcat(): String = buildString {
+        runCatching {
+            val lines = ProcessBuilder("logcat", "-d", "-b", "crash", "-v", "time")
+                .start().inputStream.bufferedReader().readLines()
+            append("=".repeat(70)).append("\n")
+            append("📡 LOGCAT -b crash (последние 50%)\n")
+            append("=".repeat(70)).append("\n")
+            lines.drop(lines.size / 2).forEach { appendLine(it) }
+        }
+        runCatching {
+            val lines = ProcessBuilder(
+                "logcat", "-d", "-v", "time",
+                "--pid=${android.os.Process.myPid()}"
+            ).start().inputStream.bufferedReader().readLines()
+            append("\n")
+            append("=".repeat(70)).append("\n")
+            append("📡 LOGCAT main pid (последние 50%)\n")
+            append("=".repeat(70)).append("\n")
+            lines.drop(lines.size / 2).forEach { appendLine(it) }
+        }
+    }
 
     private fun timestamp(): String =
         SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault()).format(Date())
