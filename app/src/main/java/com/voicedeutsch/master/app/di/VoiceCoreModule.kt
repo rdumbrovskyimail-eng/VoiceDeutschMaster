@@ -23,7 +23,6 @@ import com.voicedeutsch.master.voicecore.strategy.PronunciationStrategy
 import com.voicedeutsch.master.voicecore.strategy.RepetitionStrategy
 import com.voicedeutsch.master.voicecore.strategy.StrategySelector
 import com.voicedeutsch.master.voicecore.strategy.VocabularyStrategy
-import com.voicedeutsch.master.voicecore.audio.AudioOutputCapture
 import com.voicedeutsch.master.voicecore.engine.AvatarAudioAnalyzer
 import com.voicedeutsch.master.data.repository.AvatarRepository
 import org.koin.android.ext.koin.androidContext
@@ -33,7 +32,6 @@ val voiceCoreModule = module {
 
     single { AudioPipeline(androidContext()) }
 
-    single { AudioOutputCapture() }
     single { AvatarAudioAnalyzer() }
     single { AvatarRepository(get()) }
 
