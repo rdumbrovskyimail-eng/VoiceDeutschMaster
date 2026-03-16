@@ -75,6 +75,7 @@ class AvatarAudioAnalyzer {
     private var lastSpeakingMs = 0L
     private var smileAboveThresholdMs = 0L
     private var isSmileTriggered = false
+    private var lastAudioFrameMs = 0L
 
     /**
      * Process one audio frame from the Visualizer.
@@ -82,6 +83,7 @@ class AvatarAudioAnalyzer {
      */
     fun onAudioFrame(frame: AudioOutputCapture.AudioFrame) {
         val now = System.currentTimeMillis()
+        lastAudioFrameMs = now
 
         // ── Extract prosodic features ─────────────────────────────────────
         val features = featureExtractor.extract(frame)
@@ -180,6 +182,8 @@ class AvatarAudioAnalyzer {
      */
     fun onAmplitude(amplitude: Float) {
         val now = System.currentTimeMillis()
+        // Skip synthetic data if spectral frame arrived recently
+        if (now - lastAudioFrameMs < 100L) return
         val raw = amplitude.coerceIn(0f, 1f)
 
         val alpha = if (raw > smoothedAmplitude) ATTACK_ALPHA else RELEASE_ALPHA
@@ -240,6 +244,7 @@ class AvatarAudioAnalyzer {
         lastSpeakingMs = 0L
         smileAboveThresholdMs = 0L
         isSmileTriggered = false
+        lastAudioFrameMs = 0L
 
         featureExtractor.reset()
         _audioData.value = AvatarAudioData()
