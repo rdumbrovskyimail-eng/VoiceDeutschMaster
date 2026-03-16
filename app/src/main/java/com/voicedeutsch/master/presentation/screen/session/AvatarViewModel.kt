@@ -64,7 +64,7 @@ class AvatarViewModel(
             am.activePlaybackConfigurations.forEach { config ->
                 Log.d("AUDIO_SCAN", "usage=${config.audioAttributes.usage} " +
                     "contentType=${config.audioAttributes.contentType} " +
-                    "sessionId=${config.audioSessionId}")
+                    "sessionId=n/a")
             }
 
             // Always try global mix (sessionId=0) first — it captures all audio output
