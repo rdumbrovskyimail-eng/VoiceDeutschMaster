@@ -55,29 +55,27 @@ class AvatarViewModel(
 
     fun startCapture() {
         viewModelScope.launch {
-            // First check if there are any audio sessions to attach to
+            // Log discovered sessions for diagnostics
             val sessions = audioCapture.discoverAudioSessions(context)
-            if (sessions.isEmpty()) {
-                Log.w(TAG, "No audio sessions found — synthetic only, skipping Visualizer")
-                return@launch
-            }
+            Log.d(TAG, "Discovered audio sessions: $sessions")
 
+            // Always try global mix (sessionId=0) first — it captures all audio output
             val started = try {
-                withContext(Dispatchers.IO) { audioCapture.startWithDiscovery(context) }
+                withContext(Dispatchers.IO) { audioCapture.start(audioSessionId = 0) }
             } catch (e: Exception) {
-                Log.e(TAG, "Visualizer failed: ${e.message}", e)
+                Log.e(TAG, "Visualizer(0) failed: ${e.message}", e)
                 false
             }
 
             if (started) {
-                Log.d(TAG, "✅ Visualizer active — spectral enrichment on")
+                Log.d(TAG, "✅ Visualizer active on global mix")
                 audioCapture.frames
                     .conflate()
                     .onEach { frame -> audioAnalyzer.onAudioFrame(frame) }
-                    .catch { e -> Log.e(TAG, "Visualizer error: ${e.message}") }
+                    .catch { e -> Log.e(TAG, "Visualizer frame error: ${e.message}") }
                     .launchIn(viewModelScope)
             } else {
-                Log.w(TAG, "Visualizer unavailable — synthetic only")
+                Log.w(TAG, "⚠ Visualizer unavailable — synthetic fallback only")
             }
         }
     }
