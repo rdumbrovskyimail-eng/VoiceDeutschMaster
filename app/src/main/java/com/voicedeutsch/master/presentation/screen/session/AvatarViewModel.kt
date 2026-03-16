@@ -4,12 +4,10 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.voicedeutsch.master.data.repository.AvatarRepository
-import com.voicedeutsch.master.voicecore.audio.AudioOutputCapture
 import com.voicedeutsch.master.voicecore.engine.AvatarAudioAnalyzer
 import com.voicedeutsch.master.voicecore.engine.AvatarAudioData
 import com.voicedeutsch.master.voicecore.engine.AvatarGender
 import com.voicedeutsch.master.voicecore.engine.VoiceCoreEngine
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
@@ -18,27 +16,19 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * Manages avatar animation state.
  *
- * IMPORTANT: Visualizer is NOT started in init{}.
- * It requires RECORD_AUDIO permission to be already granted.
- * Call [startCapture] after permission is confirmed and session starts.
- * Until then, synthetic fallback runs automatically.
+ * Subscribes to real amplitude from VoiceCoreEngine (fed via GeminiClient PCM data).
  */
 class AvatarViewModel(
     private val voiceCoreEngine: VoiceCoreEngine,
     private val avatarRepository: AvatarRepository,
     private val audioAnalyzer: AvatarAudioAnalyzer,
-    private val audioCapture: AudioOutputCapture,
-    private val context: android.content.Context,
 ) : ViewModel() {
 
-    companion object {
-        private const val TAG = "AvatarVM"
-    }
+    companion object { private const val TAG = "AvatarVM" }
 
     val audioData: StateFlow<AvatarAudioData> = audioAnalyzer.audioData
 
@@ -46,45 +36,18 @@ class AvatarViewModel(
         .stateIn(viewModelScope, SharingStarted.Eagerly, AvatarGender.FEMALE)
 
     init {
+        // Подписываемся на реальную амплитуду из PCM (через GeminiClient → VoiceCoreEngine)
         voiceCoreEngine.amplitudeFlow
             .conflate()
             .onEach { amp -> audioAnalyzer.onAmplitude(amp) }
-            .catch { e -> Log.w(TAG, "synthetic error: ${e.message}") }
+            .catch { e -> Log.w(TAG, "amplitudeFlow error: ${e.message}") }
             .launchIn(viewModelScope)
-    }
-
-    fun startCapture() {
-        viewModelScope.launch {
-            // Log discovered sessions for diagnostics
-            val sessions = audioCapture.discoverAudioSessions(context)
-            Log.d(TAG, "Discovered audio sessions: $sessions")
-
-            // Always try global mix (sessionId=0) first — it captures all audio output
-            val started = try {
-                withContext(Dispatchers.IO) { audioCapture.start(audioSessionId = 0) }
-            } catch (e: Exception) {
-                Log.e(TAG, "Visualizer(0) failed: ${e.message}", e)
-                false
-            }
-
-            if (started) {
-                Log.d(TAG, "✅ Visualizer active on global mix")
-                audioCapture.frames
-                    .conflate()
-                    .onEach { frame -> audioAnalyzer.onAudioFrame(frame) }
-                    .catch { e -> Log.e(TAG, "Visualizer frame error: ${e.message}") }
-                    .launchIn(viewModelScope)
-            } else {
-                Log.w(TAG, "⚠ Visualizer unavailable — synthetic fallback only")
-            }
-        }
     }
 
     fun triggerHappy() = audioAnalyzer.triggerHappy()
 
     override fun onCleared() {
         super.onCleared()
-        runCatching { audioCapture.stop() }
         audioAnalyzer.reset()
     }
 }
