@@ -85,9 +85,9 @@ fun AvatarSceneView(
             val dt = ((now - lastMs) / 1000f).coerceIn(0.008f, 0.1f)
             lastMs = now
 
-            if (boneCtrl.isReady() || morphCtrl.isReady()) {
-                if (isDisposed.value) break
+            if ((boneCtrl.isReady() || morphCtrl.isReady()) && !isDisposed.value) {
                 runCatching {
+                    if (isDisposed.value) return@runCatching  // double-check after potential suspend
                     val audio = currentAudio.value
                     val frame = behavior.update(audio, dt)
                     applyFrame(frame, boneCtrl, morphCtrl)
@@ -96,8 +96,14 @@ fun AvatarSceneView(
                     // BoneController и MorphTargetHelper меняют Filament entities
                     // через TransformManager/RenderableManager напрямую,
                     // но SceneView об этом не знает и не перерисовывает.
-                    // Присвоение position себе же триггерит node.onChanged → requestRender.
-                    node.position = node.position
+                    // Принудительно инвалидируем позицию с микро-сдвигом (identity assignment
+                    // может быть оптимизирована SceneView). Epsilon = 1e-7 — невидимо глазу.
+                    val pos = node.position
+                    node.position = Position(
+                        x = pos.x + if ((animFrameCount % 2) == 0) 1e-7f else -1e-7f,
+                        y = pos.y,
+                        z = pos.z,
+                    )
 
                     animFrameCount++
 
