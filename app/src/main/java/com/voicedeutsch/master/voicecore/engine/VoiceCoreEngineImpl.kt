@@ -419,11 +419,11 @@ class VoiceCoreEngineImpl(
     override fun startListening() {
         if (!_sessionState.value.isSessionActive || _sessionState.value.isListening) return
 
-        transitionAudio(AudioState.RECORDING)
-
         engineScope.launch {
             runCatching {
                 geminiClient.startConversation(::handleFunctionCall)
+                // Только после успешного старта переводим в RECORDING
+                transitionAudio(AudioState.RECORDING)
             }.onFailure { e ->
                 Log.e(TAG, "startConversation failed", e)
                 transitionAudio(AudioState.IDLE)
