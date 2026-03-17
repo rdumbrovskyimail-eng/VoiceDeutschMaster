@@ -57,64 +57,18 @@ class AvatarViewModel(
 
     fun startCapture() {
         viewModelScope.launch {
+            kotlinx.coroutines.delay(5000L)
+
+            val sessions = audioCapture.discoverAudioSessions(context)
+            Log.d(TAG, "Discovered audio sessions: $sessions")
+
             val am = context.getSystemService(android.content.Context.AUDIO_SERVICE)
                 as android.media.AudioManager
-
-            // ── Ждём появления AudioTrack от Firebase SDK (до 30 сек) ────
-            Log.d(TAG, "⏳ Waiting for Firebase AudioTrack to appear...")
-
-            val playbackDetected = withTimeoutOrNull(30_000L) {
-                suspendCancellableCoroutine<Boolean> { cont ->
-                    val callback = object : android.media.AudioManager.AudioPlaybackCallback() {
-                        override fun onPlaybackConfigChanged(
-                            configs: MutableList<android.media.AudioPlaybackConfiguration>?
-                        ) {
-                            if (!configs.isNullOrEmpty() && cont.isActive) {
-                                Log.d(TAG, "🔔 AudioPlaybackCallback: ${configs.size} active configs")
-                                configs.forEach { cfg ->
-                                    Log.d(TAG, "  → usage=${cfg.audioAttributes.usage}, " +
-                                        "contentType=${cfg.audioAttributes.contentType}")
-                                }
-                                am.unregisterAudioPlaybackCallback(this)
-                                cont.resume(true) { }
-                            }
-                        }
-                    }
-                    am.registerAudioPlaybackCallback(
-                        callback,
-                        android.os.Handler(android.os.Looper.getMainLooper())
-                    )
-                    cont.invokeOnCancellation {
-                        am.unregisterAudioPlaybackCallback(callback)
-                    }
-
-                    // Проверяем сразу — может уже играет
-                    val current = am.activePlaybackConfigurations
-                    if (current.isNotEmpty()) {
-                        Log.d(TAG, "🔔 AudioTrack already active: ${current.size} configs")
-                        am.unregisterAudioPlaybackCallback(callback)
-                        if (cont.isActive) cont.resume(true) { }
-                    }
-                }
-            }
-
-            if (playbackDetected == true) {
-                Log.d(TAG, "✅ Audio playback detected — starting Visualizer in 300ms")
-                kotlinx.coroutines.delay(300L) // буфер заполнится
-            } else {
-                Log.w(TAG, "⚠ No audio playback after 30s — starting Visualizer anyway")
-            }
-
-            // ── Сканируем для диагностики ────────────────────────────────
-            val sessions = audioCapture.discoverAudioSessions(context)
-            Log.d(TAG, "Discovered audio sessions after wait: $sessions")
-
             am.activePlaybackConfigurations.forEachIndexed { i, cfg ->
                 Log.d(TAG, "PlaybackConfig[$i]: usage=${cfg.audioAttributes.usage}, " +
                     "contentType=${cfg.audioAttributes.contentType}")
             }
 
-            // ── Стартуем Visualizer на global mix ────────────────────────
             val started = try {
                 withContext(Dispatchers.IO) { audioCapture.start(0) }
             } catch (e: Exception) {
@@ -130,7 +84,7 @@ class AvatarViewModel(
                     .catch { e -> Log.e(TAG, "Visualizer frame error: ${e.message}") }
                     .launchIn(viewModelScope)
             } else {
-                Log.w(TAG, "⚠ Visualizer start failed — synthetic fallback only")
+                Log.w(TAG, "⚠ Visualizer unavailable — synthetic fallback only")
             }
         }
     }
