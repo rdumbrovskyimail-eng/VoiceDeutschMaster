@@ -1,8 +1,9 @@
 package com.voicedeutsch.master.app
 
-import android.app.ActivityManager
 import android.app.Application
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
@@ -20,6 +21,7 @@ import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
 import org.koin.core.logger.Level
+import java.io.File
 
 class VoiceDeutschApp : Application() {
 
@@ -30,28 +32,18 @@ class VoiceDeutschApp : Application() {
     override fun onCreate() {
         super.onCreate()
 
-        // ── 1. Определяем, это главный процесс или :logcollector ─────────
-        // Koin, Firebase, AppLogger и т.д. инициализируем ТОЛЬКО в главном процессе.
-        // Сервис LogCollectorService живёт в :logcollector и ему это всё не нужно.
+        // ── 1. Определяем процесс ───────────────────────────────────────
+        // :logcollector процесс НЕ должен инициализировать Koin/Firebase/AppLogger.
+        // Используем /proc/self/cmdline — самый надёжный способ (ActivityManager ненадёжен).
         if (!isMainProcess()) {
-            Log.d(TAG, "⏭️ Skipping init — running in :logcollector process")
+            Log.d(TAG, "⏭️ Skipping init — running in secondary process: ${getProcessName()}")
             return
         }
 
-        // ── 2. Запускаем LogCollectorService в отдельном процессе ─────────
-        //    Это ПЕРВОЕ что делаем — чтобы если дальше что-то крашнет,
-        //    коллектор уже был запущен и ловил logcat.
-        try {
-            LogCollectorService.start(this)
-            Log.d(TAG, "✅ LogCollectorService started")
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ LogCollectorService start failed", e)
-        }
-
-        // ── 3. AppLogger (in-process буфер, дополняет LogCollector) ──────
+        // ── 2. AppLogger (in-process буфер) ─────────────────────────────
         initAppLogger()
 
-        // ── 4. CrashLogger (перехватчик uncaught exceptions) ─────────────
+        // ── 3. CrashLogger (перехватчик uncaught exceptions) ────────────
         try {
             CrashLogger.init(this).apply {
                 cleanOldLogs(keepCount = 20)
@@ -60,35 +52,52 @@ class VoiceDeutschApp : Application() {
             Log.e(TAG, "❌ CrashLogger init failed", e)
         }
 
-        // ── 5. Koin DI ──────────────────────────────────────────────────
+        // ── 4. Koin DI ─────────────────────────────────────────────────
         startKoin {
             androidLogger(if (BuildConfig.DEBUG) Level.DEBUG else Level.NONE)
             androidContext(this@VoiceDeutschApp)
             modules(appModules)
         }
 
-        // ── 6. Firebase ─────────────────────────────────────────────────
+        // ── 5. Firebase ────────────────────────────────────────────────
         initFirebase()
 
-        // ── 7. WorkManager ──────────────────────────────────────────────
+        // ── 6. WorkManager ─────────────────────────────────────────────
         WorkManagerInitializer.initialize(this)
+
+        // ── 7. LogCollectorService — запускаем ПОСЛЕДНИМ с задержкой ────
+        //    Задержка 3 сек чтобы не мешать стартовой инициализации
+        //    и не конфликтовать с другими foreground services.
+        Handler(Looper.getMainLooper()).postDelayed({
+            try {
+                LogCollectorService.start(this)
+                Log.d(TAG, "✅ LogCollectorService started")
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ LogCollectorService start failed", e)
+            }
+        }, 3_000L)
     }
 
     /**
-     * Проверяет, запущены ли мы в главном процессе.
-     * Возвращает false для :logcollector и других вторичных процессов.
+     * Надёжная проверка процесса через /proc/self/cmdline.
+     * НЕ зависит от ActivityManager (который может вернуть null на Samsung/Xiaomi).
      */
     private fun isMainProcess(): Boolean {
-        val pid = android.os.Process.myPid()
-        val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        val processes = am.runningAppProcesses ?: return true
-        for (info in processes) {
-            if (info.pid == pid) {
-                return info.processName == packageName
-            }
+        val processName = getProcessName()
+        return processName == packageName
+    }
+
+    /**
+     * Читает имя текущего процесса из /proc/self/cmdline.
+     * Это самый надёжный способ — работает на всех Android 5+.
+     */
+    private fun getProcessName(): String {
+        return try {
+            File("/proc/self/cmdline").readText().trim('\u0000', ' ', '\n')
+        } catch (_: Exception) {
+            // Fallback — считаем главным процессом (безопаснее чем пропустить init)
+            packageName
         }
-        // Если не нашли — считаем главным (безопаснее)
-        return true
     }
 
     private fun initAppLogger() {
