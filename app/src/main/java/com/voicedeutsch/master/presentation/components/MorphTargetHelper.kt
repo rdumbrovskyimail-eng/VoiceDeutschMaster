@@ -159,23 +159,30 @@ class MorphTargetHelper(private val engine: Engine) {
         if (morphableEntities.isEmpty()) return
 
         val rm = engine.renderableManager
-
-        // Track which entities were modified
         val modified = BooleanArray(morphableEntities.size)
 
-        // Reset all weights first
-        morphableEntities.forEachIndexed { idx, me ->
-            me.weights.fill(0f)
-            modified[idx] = false
+        // НЕ сбрасываем ВСЕ веса — только те entities, которые будут модифицированы.
+        // Это предотвращает перезапись дефолтных весов модели.
+
+        // Сначала определяем, какие entities затронуты
+        val touchedEntities = mutableSetOf<Int>()
+        for ((name, _) in weights) {
+            val entityIdx = nameToEntityIndex[name] ?: continue
+            touchedEntities.add(entityIdx)
         }
 
-        // Apply requested weights
+        // Сбрасываем ТОЛЬКО затронутые entities
+        for (idx in touchedEntities) {
+            morphableEntities[idx].weights.fill(0f)
+            modified[idx] = true
+        }
+
+        // Применяем запрошенные веса
         for ((name, weight) in weights) {
             val entityIdx = nameToEntityIndex[name] ?: continue
             val me = morphableEntities[entityIdx]
             val morphIdx = me.nameToIndex[name] ?: continue
             me.weights[morphIdx] = weight.coerceIn(0f, 1f)
-            modified[entityIdx] = true
         }
 
         // Flush to Filament
