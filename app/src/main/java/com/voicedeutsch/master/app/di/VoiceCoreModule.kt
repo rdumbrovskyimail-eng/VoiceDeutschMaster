@@ -88,17 +88,19 @@ val voiceCoreModule = module {
     }
 
     single<VoiceCoreEngine> {
-        VoiceCoreEngineImpl(
-            contextBuilder        = get(),
-            functionRouter        = get(),
-            audioPipeline         = get(),
-            strategySelector      = get(),
-            geminiClient          = get(),
-            buildKnowledgeSummary = get(),
-            startLearningSession  = get(),
-            endLearningSession    = get(),
-            networkMonitor        = get(),
-            flushKnowledgeSync    = get(), 
-        )
+        kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+            VoiceCoreEngineImpl(
+                contextBuilder        = get(),
+                functionRouter        = get(),
+                audioPipeline         = get(),
+                strategySelector      = get(),
+                geminiClient          = get(),
+                buildKnowledgeSummary = get(),
+                startLearningSession  = get(),
+                endLearningSession    = get(),
+                networkMonitor        = get(),
+                flushKnowledgeSync    = get(),
+            )
+        }
     }
 }
