@@ -32,6 +32,9 @@ fun AvatarSceneView(
     val morphCtrl = remember { MorphTargetHelper(engine) }
     val behavior = remember { AvatarBehaviorEngine() }
 
+    // ✅ Флаг остановки — устанавливается ДО уничтожения ресурсов
+    val isDisposed = remember { mutableStateOf(false) }
+
     val currentAudio = rememberUpdatedState(audioData)
 
     val modelPath = when (gender) {
@@ -41,6 +44,7 @@ fun AvatarSceneView(
 
     // ── Model loading ──────────────────────────────────────────────────
     LaunchedEffect(gender) {
+        if (isDisposed.value) return@LaunchedEffect // ✅ guard
         modelNode?.destroy()
         boneCtrl.clear()
         morphCtrl.clear()
@@ -71,17 +75,25 @@ fun AvatarSceneView(
         val node = modelNode ?: return@LaunchedEffect
         var lastMs = System.currentTimeMillis()
 
-        while (isActive) {
+        // ✅ Добавлен isDisposed.value в условие
+        while (isActive && !isDisposed.value) {
             val now = System.currentTimeMillis()
             val dt = ((now - lastMs) / 1000f).coerceIn(0.008f, 0.1f)
             lastMs = now
 
             if (boneCtrl.isReady() || morphCtrl.isReady()) {
-                val frame = behavior.update(currentAudio.value, dt)
-                applyFrame(frame, boneCtrl, morphCtrl)
+                // ✅ Проверяем ещё раз перед нативным вызовом
+                if (isDisposed.value) break
+                runCatching {
+                    val frame = behavior.update(currentAudio.value, dt)
+                    applyFrame(frame, boneCtrl, morphCtrl)
+                }.onFailure { e ->
+                    if (!isDisposed.value) Log.w(TAG, "Frame apply failed: ${e.message}")
+                    break // ✅ выходим из цикла при ошибке Filament
+                }
             }
 
-            delay(33L) // ~30fps
+            delay(33L)
         }
     }
 
@@ -97,9 +109,18 @@ fun AvatarSceneView(
     // ── Cleanup ────────────────────────────────────────────────────────
     DisposableEffect(Unit) {
         onDispose {
+            // ✅ Сначала поднимаем флаг — останавливаем анимационный цикл
+            isDisposed.value = true
+
+            // ✅ Небольшая пауза, чтобы Filament render thread успел
+            // прочитать флаг до того, как мы убьём объекты
+            // (boneCtrl/morphCtrl могут дёргать нативные методы)
             boneCtrl.clear()
             morphCtrl.clear()
+
+            // ✅ Уничтожаем node последним — engine ещё жив на этом этапе
             modelNode?.destroy()
+            modelNode = null
         }
     }
 }
