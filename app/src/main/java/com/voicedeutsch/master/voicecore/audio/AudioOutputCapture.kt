@@ -123,6 +123,12 @@ class AudioOutputCapture {
                             for (i in waveform.indices) {
                                 waveformFloat[i] = (waveform[i].toInt() and 0xFF) / 128f - 1f
                             }
+
+                            // ── ДИАГНОСТИКА: пишем пики waveform ──
+                            val peak = waveformFloat.max()
+                            if (peak > 0.05f) {
+                                Log.d(TAG, "🎤 Waveform peak=${"%.3f".format(peak)}")
+                            }
                         }
 
                         override fun onFftDataCapture(
@@ -155,6 +161,11 @@ class AudioOutputCapture {
                                 val magnitude = kotlin.math.sqrt(real * real + imag * imag)
                                 fftFloat[i] = magnitude
                                 if (magnitude > maxMag) maxMag = magnitude
+                            }
+
+                            // ── ДИАГНОСТИКА: реальное аудио или тишина? ──
+                            if (maxMag > 5f) {
+                                Log.d(TAG, "🔊 REAL audio: maxMag=${"%.1f".format(maxMag)}")
                             }
 
                             // Normalize FFT to 0..1
