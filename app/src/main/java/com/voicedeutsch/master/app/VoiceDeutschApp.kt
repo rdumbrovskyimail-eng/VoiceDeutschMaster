@@ -60,6 +60,17 @@ class VoiceDeutschApp : Application() {
         // ── 5. Firebase ─────────────────────────────────────────────────
         initFirebase()
 
+        // ✅ FIX ANR: Прогреваем тяжёлые Firebase singletons в фоне.
+        // При первом вызове FirebaseFirestore и FirebaseAuth делают сетевой I/O
+        // (AppCheck token exchange, gRPC channel init). Если это происходит
+        // на main thread при создании SessionViewModel через Koin — ANR 5+ сек.
+        // Прогрев здесь гарантирует, что к моменту нажатия "Начать занятие"
+        // singletons уже инициализированы.
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            runCatching { com.google.firebase.firestore.FirebaseFirestore.getInstance() }
+            runCatching { com.google.firebase.auth.FirebaseAuth.getInstance() }
+        }
+
         // ── 6. WorkManager ──────────────────────────────────────────────
         WorkManagerInitializer.initialize(this)
     }
