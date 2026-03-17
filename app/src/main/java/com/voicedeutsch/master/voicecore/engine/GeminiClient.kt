@@ -142,10 +142,12 @@ class GeminiClient(
             return
         }
         runCatching {
-            session.stopAudioConversation()
+            kotlinx.coroutines.withTimeout(5000L) {
+                session.stopAudioConversation()
+            }
             Log.d(TAG, "Audio conversation stopped")
         }.onFailure { e ->
-            Log.w(TAG, "stopConversation error: ${e.message}")
+            Log.w(TAG, "stopConversation error/timeout: ${e.message}")
         }
     }
 
@@ -154,13 +156,19 @@ class GeminiClient(
      */
     suspend fun disconnect() {
         try {
-            sessionMutex.withLock {
-                liveSession?.close()
-                liveSession = null
+            kotlinx.coroutines.withTimeout(3000L) {
+                sessionMutex.withLock {
+                    liveSession?.close()
+                    liveSession = null
+                }
             }
             Log.d(TAG, "LiveSession closed")
         } catch (e: Exception) {
-            Log.w(TAG, "disconnect() warning: ${e.message}")
+            Log.w(TAG, "disconnect() warning/timeout: ${e.message}")
+            // Force nullify even on timeout
+            sessionMutex.withLock {
+                liveSession = null
+            }
         }
     }
 
