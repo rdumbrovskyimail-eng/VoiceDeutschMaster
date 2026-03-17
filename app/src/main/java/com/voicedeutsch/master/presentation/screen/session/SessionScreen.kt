@@ -343,14 +343,16 @@ fun SessionScreen(
                 contentAlignment = Alignment.CenterStart,
             ) {
                 // Only load heavy 3D scene AFTER session is fully connected
-                if (uiState.isSessionActive) {
-                    AvatarSceneView(
-                        gender    = avatarGender,
-                        audioData = avatarAudioData,
-                        modifier  = Modifier
-                            .size(200.dp)
-                            .padding(start = 4.dp),
-                    )
+                key(uiState.isSessionActive) {
+                    if (uiState.isSessionActive) {
+                        AvatarSceneView(
+                            gender    = avatarGender,
+                            audioData = avatarAudioData,
+                            modifier  = Modifier
+                                .size(200.dp)
+                                .padding(start = 4.dp),
+                        )
+                    }
                 }
             }
 
