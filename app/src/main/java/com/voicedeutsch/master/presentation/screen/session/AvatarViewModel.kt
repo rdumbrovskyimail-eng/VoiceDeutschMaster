@@ -57,17 +57,28 @@ class AvatarViewModel(
 
     fun startCapture() {
         viewModelScope.launch {
-            kotlinx.coroutines.delay(5000L)
+            // Ждём появления аудио от Firebase SDK (до 15 сек)
+            // вместо hardcoded 5000ms delay
+            val maxWaitMs = 15_000L
+            val startMs = System.currentTimeMillis()
 
-            val sessions = audioCapture.discoverAudioSessions(context)
-            Log.d(TAG, "Discovered audio sessions: $sessions")
-
-            val am = context.getSystemService(android.content.Context.AUDIO_SERVICE)
-                as android.media.AudioManager
-            am.activePlaybackConfigurations.forEachIndexed { i, cfg ->
-                Log.d(TAG, "PlaybackConfig[$i]: usage=${cfg.audioAttributes.usage}, " +
-                    "contentType=${cfg.audioAttributes.contentType}")
+            while (System.currentTimeMillis() - startMs < maxWaitMs) {
+                val am = context.getSystemService(android.content.Context.AUDIO_SERVICE)
+                    as android.media.AudioManager
+                val configs = am.activePlaybackConfigurations
+                if (configs.isNotEmpty()) {
+                    Log.d(TAG, "AudioTrack detected after ${System.currentTimeMillis() - startMs}ms")
+                    configs.forEachIndexed { i, cfg ->
+                        Log.d(TAG, "PlaybackConfig[$i]: usage=${cfg.audioAttributes.usage}, " +
+                            "contentType=${cfg.audioAttributes.contentType}")
+                    }
+                    break
+                }
+                kotlinx.coroutines.delay(500L)
             }
+
+            // Дополнительная задержка чтобы AudioTrack начал реально воспроизводить
+            kotlinx.coroutines.delay(1000L)
 
             val started = try {
                 withContext(Dispatchers.IO) { audioCapture.start(0) }
