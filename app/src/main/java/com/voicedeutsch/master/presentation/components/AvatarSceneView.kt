@@ -136,22 +136,12 @@ fun AvatarSceneView(
     DisposableEffect(Unit) {
         onDispose {
             Log.d(TAG, "⏹ DisposableEffect onDispose — начинаю cleanup")
-
-            // 1) Поднимаем флаг — останавливаем анимационный цикл
             isDisposed.value = true
-
-            // 2) Очищаем контроллеры (убираем ссылки на Filament entities)
             boneCtrl.clear()
             morphCtrl.clear()
-
-            // 3) Уничтожаем node — engine ещё жив на этом этапе
-            runCatching {
-                modelNode?.destroy()
-            }.onFailure { e ->
-                Log.w(TAG, "modelNode.destroy() failed: ${e.message}")
-            }
+            runCatching { modelNode?.destroy() }
+                .onFailure { e -> Log.w(TAG, "modelNode.destroy() failed: ${e.message}") }
             modelNode = null
-
             Log.d(TAG, "⏹ Cleanup завершён")
         }
     }
