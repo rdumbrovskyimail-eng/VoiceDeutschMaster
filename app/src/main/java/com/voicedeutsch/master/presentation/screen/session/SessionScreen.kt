@@ -349,8 +349,8 @@ fun SessionScreen(
                 // время отработать до уничтожения.
                 androidx.compose.animation.AnimatedVisibility(
                     visible = uiState.isSessionActive,
-                    enter = fadeIn(),
-                    exit = fadeOut(),
+                    enter = fadeIn(animationSpec = androidx.compose.animation.core.tween(300)),
+                    exit = fadeOut(animationSpec = androidx.compose.animation.core.tween(400)),
                 ) {
                     AvatarSceneView(
                         gender    = avatarGender,
