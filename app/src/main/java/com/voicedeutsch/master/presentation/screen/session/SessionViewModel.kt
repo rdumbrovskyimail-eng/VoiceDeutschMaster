@@ -155,24 +155,19 @@ class SessionViewModel(
     }
 
     private fun endSession() {
-        // Останавливаем обновление амплитуды — сессия заканчивается
         amplitudeJob?.cancel()
         amplitudeJob = null
         currentAmplitude.floatValue = 0f
 
         viewModelScope.launch {
-            // ✅ FIX SIGSEGV: ПОРЯДОК КРИТИЧЕН!
-            // 1) Сначала isSessionActive = false →
-            //    AnimatedVisibility скрывает AvatarSceneView →
-            //    DisposableEffect очищает кости/морфы →
-            //    Filament Engine уничтожается через rememberEngine()
+            // 1) Скрываем аватар
             _uiState.update { it.copy(isSessionActive = false) }
 
-            // 2) Даём Filament render thread 500ms завершить текущий кадр
-            //    и отработать cleanup DisposableEffect + Engine.destroy()
-            kotlinx.coroutines.delay(500L)
+            // 2) Ждём завершения Filament cleanup:
+            //    fadeOut(300ms) + DisposableEffect dispatch(~100ms) + Engine.destroy(~200ms) + GPU flush(~200ms)
+            kotlinx.coroutines.delay(900L)
 
-            // 3) Теперь безопасно останавливаем Gemini-сессию
+            // 3) Останавливаем Gemini
             _uiState.update { it.copy(isLoading = true) }
 
             val result = runCatching {
@@ -226,14 +221,14 @@ class SessionViewModel(
         super.onCleared()
         amplitudeJob?.cancel()
 
-        // ✅ FIX 1: fire-and-forget вместо runBlocking (был ANR)
-        // ✅ FIX 3: stopService убран отсюда (был ForegroundServiceDidNotStartInTimeException)
         if (uiState.value.isSessionActive) {
             CoroutineScope(Dispatchers.IO + NonCancellable).launch {
                 runCatching {
-                    voiceCoreEngine.endSession()
+                    kotlinx.coroutines.withTimeout(5000L) {
+                        voiceCoreEngine.endSession()
+                    }
                 }.onFailure { e ->
-                    android.util.Log.e("SessionViewModel", "cleanup endSession failed", e)
+                    android.util.Log.e("SessionViewModel", "cleanup endSession failed/timed out", e)
                 }
             }
         }
