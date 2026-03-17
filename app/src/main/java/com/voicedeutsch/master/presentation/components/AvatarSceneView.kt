@@ -74,22 +74,37 @@ fun AvatarSceneView(
     LaunchedEffect(modelNode) {
         val node = modelNode ?: return@LaunchedEffect
         var lastMs = System.currentTimeMillis()
+        var animFrameCount = 0
+        var lastAnimLogMs = System.currentTimeMillis()
 
-        // ✅ Добавлен isDisposed.value в условие
         while (isActive && !isDisposed.value) {
             val now = System.currentTimeMillis()
             val dt = ((now - lastMs) / 1000f).coerceIn(0.008f, 0.1f)
             lastMs = now
 
             if (boneCtrl.isReady() || morphCtrl.isReady()) {
-                // ✅ Проверяем ещё раз перед нативным вызовом
                 if (isDisposed.value) break
                 runCatching {
-                    val frame = behavior.update(currentAudio.value, dt)
+                    val audio = currentAudio.value
+                    val frame = behavior.update(audio, dt)
                     applyFrame(frame, boneCtrl, morphCtrl)
+                    animFrameCount++
+
+                    // ── ДИАГНОСТИКА: каждые 3 секунды ──
+                    if (now - lastAnimLogMs > 3000L) {
+                        val headP = frame.head.pitch
+                        val jawOpen = frame.morphs["jawOpen"] ?: 0f
+                        val smile = frame.morphs["mouthSmile"] ?: 0f
+                        Log.d(TAG, "🦴 Anim: frames=$animFrameCount, " +
+                            "headPitch=${"%.1f".format(headP)}, " +
+                            "jaw=${"%.3f".format(jawOpen)}, smile=${"%.3f".format(smile)}, " +
+                            "audioAmp=${"%.3f".format(audio.amplitude)}, " +
+                            "speaking=${audio.isSpeaking}, emotion=${audio.emotion}")
+                        lastAnimLogMs = now
+                    }
                 }.onFailure { e ->
                     if (!isDisposed.value) Log.w(TAG, "Frame apply failed: ${e.message}")
-                    break // ✅ выходим из цикла при ошибке Filament
+                    break
                 }
             }
 
@@ -104,23 +119,32 @@ fun AvatarSceneView(
         modelLoader = modelLoader,
         childNodes = listOfNotNull(modelNode),
         isOpaque = false,
+        // ✅ FIX: Включаем постоянный рендер — иначе Filament не обновляет
+        //    трансформы костей/морфов без явного запроса нового кадра
+        onFrame = { /* no-op, но наличие callback включает continuous render */ },
     )
 
     // ── Cleanup ────────────────────────────────────────────────────────
     DisposableEffect(Unit) {
         onDispose {
-            // ✅ Сначала поднимаем флаг — останавливаем анимационный цикл
+            Log.d(TAG, "⏹ DisposableEffect onDispose — начинаю cleanup")
+
+            // 1) Поднимаем флаг — останавливаем анимационный цикл
             isDisposed.value = true
 
-            // ✅ Небольшая пауза, чтобы Filament render thread успел
-            // прочитать флаг до того, как мы убьём объекты
-            // (boneCtrl/morphCtrl могут дёргать нативные методы)
+            // 2) Очищаем контроллеры (убираем ссылки на Filament entities)
             boneCtrl.clear()
             morphCtrl.clear()
 
-            // ✅ Уничтожаем node последним — engine ещё жив на этом этапе
-            modelNode?.destroy()
+            // 3) Уничтожаем node — engine ещё жив на этом этапе
+            runCatching {
+                modelNode?.destroy()
+            }.onFailure { e ->
+                Log.w(TAG, "modelNode.destroy() failed: ${e.message}")
+            }
             modelNode = null
+
+            Log.d(TAG, "⏹ Cleanup завершён")
         }
     }
 }
