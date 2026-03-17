@@ -9,7 +9,6 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <!-- Опциональные -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -51,21 +50,6 @@
             android:name=".voicecore.service.VoiceSessionService"
             android:foregroundServiceType="microphone"
             android:exported="false" />
-
-        <!--
-            📡 LogCollectorService — ОТДЕЛЬНЫЙ ПРОЦЕСС для сбора логов.
-            android:process=":logcollector" — создаёт отдельный OS-процесс.
-            Когда основной процесс крашится — этот продолжает жить.
-        -->
-        <service
-            android:name=".util.LogCollectorService"
-            android:process=":logcollector"
-            android:foregroundServiceType="specialUse"
-            android:exported="false">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Diagnostic log collection for crash analysis" />
-        </service>
 
         <!-- CrashLogger: FileProvider для шаринга логов -->
         <provider
