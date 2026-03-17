@@ -28,6 +28,13 @@ class AudioPipeline(private val context: Context) {
         extraBufferCapacity = 64
     )
     val incomingAudioFlow: kotlinx.coroutines.flow.SharedFlow<ByteArray> = _audioSharedFlow
+    /**
+     * ⚠️ В текущей архитектуре этот flow ПУСТОЙ.
+     * startRecording() нигде не вызывается — Firebase SDK управляет микрофоном.
+     * amplitudeFlow в VoiceCoreEngineImpl использует синтетический генератор.
+     *
+     * Оставлен для будущих сценариев (параллельный мониторинг амплитуды).
+     */
     fun audioChunks(): Flow<ByteArray> = _audioSharedFlow
 
     private var scopeJob = SupervisorJob()
