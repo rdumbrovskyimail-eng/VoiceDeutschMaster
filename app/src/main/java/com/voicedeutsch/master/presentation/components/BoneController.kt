@@ -30,15 +30,17 @@ class BoneController(private val engine: Engine) {
             "Bip01_",              // 3ds Max
             "CC_Base_",            // Character Creator
             "Genesis8_",           // DAZ3D
+            "Wolf3D_",             // ReadyPlayerMe
+            "RPM_",                // ReadyPlayerMe variant
         )
 
         /** Bone name aliases: canonical name → possible actual names. */
         private val ALIASES = mapOf(
-            "Head" to listOf("Head", "head", "HEAD"),
-            "Neck" to listOf("Neck", "neck", "NECK"),
-            "Spine" to listOf("Spine", "spine", "SPINE"),
-            "Spine1" to listOf("Spine1", "spine1", "Spine01", "spine_01", "SPINE1"),
-            "Spine2" to listOf("Spine2", "spine2", "Spine02", "spine_02", "SPINE2"),
+            "Head" to listOf("Head", "head", "HEAD", "headBone", "Head_M"),
+            "Neck" to listOf("Neck", "neck", "NECK", "neckBone", "Neck_M"),
+            "Spine" to listOf("Spine", "spine", "SPINE", "spineBone"),
+            "Spine1" to listOf("Spine1", "spine1", "Spine01", "spine_01", "SPINE1", "Spine1_M"),
+            "Spine2" to listOf("Spine2", "spine2", "Spine02", "spine_02", "SPINE2", "Spine2_M"),
             "Hips" to listOf("Hips", "hips", "Hip", "Pelvis", "pelvis"),
             "LeftShoulder" to listOf("LeftShoulder", "leftShoulder", "Left_Shoulder", "L_Shoulder", "Shoulder_L"),
             "RightShoulder" to listOf("RightShoulder", "rightShoulder", "Right_Shoulder", "R_Shoulder", "Shoulder_R"),
@@ -62,6 +64,8 @@ class BoneController(private val engine: Engine) {
     private val bones = mutableMapOf<String, BoneState>()
     // All entity names in the model (for debugging)
     private val allEntityNames = mutableListOf<String>()
+    // Cache of already-logged rotate() misses (to avoid 30fps log spam)
+    private val loggedMisses = mutableSetOf<String>()
 
     /**
      * Scans all entities, discovers bones by matching naming conventions.
@@ -98,14 +102,14 @@ class BoneController(private val engine: Engine) {
             bones[canonical] = BoneState(entity, mat.copyOf())
         }
 
-        // Also register any direct matches not in ALIASES
-        entityByName.forEach { (name, entity) ->
-            if (name !in bones && tm.hasComponent(entity)) {
-                val inst = tm.getInstance(entity)
-                val mat = FloatArray(16)
-                tm.getTransform(inst, mat)
-                bones[name] = BoneState(entity, mat.copyOf())
-            }
+        // Log unmatched entities for debugging (but do NOT register them as bones)
+        val unmatchedWithTransform = entityByName.filter { (name, entity) ->
+            name !in bones && tm.hasComponent(entity)
+        }
+        if (unmatchedWithTransform.isNotEmpty()) {
+            Log.d(TAG, "Unmatched entities with TransformComponent (${unmatchedWithTransform.size}): " +
+                "${unmatchedWithTransform.keys.sorted()}")
+            Log.d(TAG, "💡 If bones are missing, add these names to ALIASES map")
         }
 
         Log.d(TAG, "Discovered bones (${bones.size}): ${bones.keys.sorted()}")
@@ -141,7 +145,14 @@ class BoneController(private val engine: Engine) {
      * @param rollDeg   Rotation around Z (tilt sideways)
      */
     fun rotate(name: String, pitchDeg: Float, yawDeg: Float, rollDeg: Float) {
-        val state = bones[name] ?: return
+        val state = bones[name]
+        if (state == null) {
+            if (loggedMisses.add(name)) {
+                Log.w(TAG, "⚠ rotate('$name') — bone not found! " +
+                    "Available: ${bones.keys.sorted()}")
+            }
+            return
+        }
         val tm = engine.transformManager
         if (!tm.hasComponent(state.entity)) return
         val inst = tm.getInstance(state.entity)
@@ -229,6 +240,7 @@ class BoneController(private val engine: Engine) {
     fun clear() {
         bones.clear()
         allEntityNames.clear()
+        loggedMisses.clear()
     }
 
     fun isReady() = bones.isNotEmpty()
