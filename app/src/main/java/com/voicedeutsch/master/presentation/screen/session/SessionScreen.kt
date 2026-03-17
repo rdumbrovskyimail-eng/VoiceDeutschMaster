@@ -347,7 +347,7 @@ fun SessionScreen(
                 // при key() смена ключа уничтожает ВСЁ дерево одновременно,
                 // включая Engine Filament. AnimatedVisibility даёт DisposableEffect
                 // время отработать до уничтожения.
-                AnimatedVisibility(
+                androidx.compose.animation.AnimatedVisibility(
                     visible = uiState.isSessionActive,
                     enter = fadeIn(),
                     exit = fadeOut(),
