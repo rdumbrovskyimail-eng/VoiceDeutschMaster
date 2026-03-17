@@ -88,9 +88,17 @@ fun AvatarSceneView(
                     val audio = currentAudio.value
                     val frame = behavior.update(audio, dt)
                     applyFrame(frame, boneCtrl, morphCtrl)
+
+                    // ✅ КРИТИЧНО: Принудительно инвалидируем SceneView.
+                    // BoneController и MorphTargetHelper меняют Filament entities
+                    // через TransformManager/RenderableManager напрямую,
+                    // но SceneView об этом не знает и не перерисовывает.
+                    // Присвоение position себе же триггерит node.onChanged → requestRender.
+                    node.position = node.position
+
                     animFrameCount++
 
-                    // ── ДИАГНОСТИКА: каждые 3 секунды ──
+                    // Диагностика каждые 3 секунды
                     if (now - lastAnimLogMs > 3000L) {
                         val headP = frame.head.pitch
                         val jawOpen = frame.morphs["jawOpen"] ?: 0f
