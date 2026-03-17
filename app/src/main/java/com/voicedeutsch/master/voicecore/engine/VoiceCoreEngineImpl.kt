@@ -201,6 +201,7 @@ class VoiceCoreEngineImpl(
     private val reconnectAttempts = AtomicInteger(0)
     @Volatile private var sessionStartMs: Long = 0L
     private val reconnectMutex = Mutex()
+    @Volatile private var durationJob: kotlinx.coroutines.Job? = null
 
     // ── State helpers ─────────────────────────────────────────────────────────
 
@@ -273,7 +274,7 @@ class VoiceCoreEngineImpl(
             activeSessionId = sessionData.session.id
             activeUserId    = userId
             sessionStartMs  = System.currentTimeMillis()
-            engineScope.launch {
+            durationJob = engineScope.launch {
                 while (isActive) {
                     delay(1000L)
                     updateState { copy(sessionDurationMs = System.currentTimeMillis() - sessionStartMs) }
@@ -332,13 +333,16 @@ class VoiceCoreEngineImpl(
     override suspend fun endSession(): SessionResult? {
         val sessionId = activeSessionId ?: return null
 
-        lifecycleMutex.withLock {
-            val current = _sessionState.value.engineState
-            if (!current.isActiveSession()) return@withLock
-            transitionEngine(VoiceEngineState.SESSION_ENDING)
-        }
-
         return lifecycleMutex.withLock {
+            val current = _sessionState.value.engineState
+            if (!current.isActiveSession()) return@withLock null
+
+            transitionEngine(VoiceEngineState.SESSION_ENDING)
+
+            // Отменяем таймерный Job (FIX 4)
+            durationJob?.cancel()
+            durationJob = null
+
             transitionEngine(VoiceEngineState.SAVING)
 
             val sessionResult: SessionResult? = withContext(Dispatchers.IO) {
@@ -357,11 +361,11 @@ class VoiceCoreEngineImpl(
                     val result = endLearningSession(sessionId)
 
                     val syncOk = runCatching { flushKnowledgeSync() }.getOrElse { e ->
-                        Log.w(TAG, "flushKnowledgeSync failed (data safe in Room): ${e.message}")
+                        Log.w(TAG, "flushKnowledgeSync failed: ${e.message}")
                         false
                     }
                     if (syncOk) Log.d(TAG, "Knowledge sync flushed")
-                    else        Log.w(TAG, "Knowledge sync deferred — will retry next session")
+                    else        Log.w(TAG, "Knowledge sync deferred")
 
                     result
                 }.onFailure { error ->
@@ -496,7 +500,7 @@ class VoiceCoreEngineImpl(
             )
         } else {
             try {
-                val result = runBlocking(Dispatchers.IO) {
+                val result = kotlinx.coroutines.runBlocking(engineScope.coroutineContext + Dispatchers.IO.limitedParallelism(1)) {
                     withTimeout(FUNCTION_CALL_TIMEOUT_MS) {
                         val argsJson = JsonObject(functionCall.args?.mapValues { (_, v) -> v } ?: emptyMap()).toString()
                         functionRouter.route(
