@@ -782,7 +782,7 @@ class AvatarBehaviorEngine {
         blinkPhase = 0
         eyeCurrentX = 0f
         eyeCurrentY = 0f
-        nodTimer = 10f
+        nodTimer = 0f  // Позволяет кивкам начаться сразу при emphasis > 0.4
         nodIntensity = 0f
         lastAmp = 0f
         ampVelocity = 0f
