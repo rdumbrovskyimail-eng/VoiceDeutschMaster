@@ -87,13 +87,31 @@ class AvatarAudioAnalyzer {
 
     fun onAudioFrame(frame: AudioOutputCapture.AudioFrame) {
         val now = System.currentTimeMillis()
-        lastAudioFrameMs = now
         frameCount++
 
-        // ── ДИАГНОСТИКА: логируем каждые 2 секунды ──
+        // ✅ FIX: Вычисляем RMS фрейма ДО обновления lastAudioFrameMs.
+        // Если фрейм тихий (Gemini ещё не говорит), НЕ блокируем синтетику —
+        // onAmplitude() продолжит оживлять аватар синтетическими данными.
+        var rmsSum = 0f
+        for (sample in frame.waveform) { rmsSum += sample * sample }
+        val frameRms = kotlin.math.sqrt(rmsSum / frame.waveform.size.coerceAtLeast(1))
+
+        if (frameRms < 0.03f) {
+            // Тихий фрейм — НЕ обновляем lastAudioFrameMs, синтетика работает
+            if (now - lastFrameLogMs > 2000L) {
+                android.util.Log.d("AvatarAudioAnalyzer",
+                    "📊 Spectral frames: $frameCount total (SILENT rms=${"%.4f".format(frameRms)}), synthetic NOT blocked")
+                lastFrameLogMs = now
+            }
+            return
+        }
+
+        // Реальное аудио — блокируем синтетику, используем спектральные данные
+        lastAudioFrameMs = now
+
         if (now - lastFrameLogMs > 2000L) {
-            Log.d("AvatarAudioAnalyzer", "📊 Spectral frames: $frameCount total, " +
-                "amp=${"%.3f".format(smoothedAmplitude)}, speaking=$wasSpeaking")
+            android.util.Log.d("AvatarAudioAnalyzer",
+                "📊 Spectral frames: $frameCount total, amp=${"%.3f".format(smoothedAmplitude)}, speaking=$wasSpeaking")
             lastFrameLogMs = now
         }
 
