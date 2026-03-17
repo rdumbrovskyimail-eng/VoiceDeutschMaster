@@ -1,5 +1,6 @@
 package com.voicedeutsch.master.app
 
+import android.app.ActivityManager
 import android.app.Application
 import android.content.Context
 import android.util.Log
@@ -14,6 +15,7 @@ import com.voicedeutsch.master.app.di.appModules
 import com.voicedeutsch.master.app.worker.WorkManagerInitializer
 import com.voicedeutsch.master.util.AppLogger
 import com.voicedeutsch.master.util.CrashLogger
+import com.voicedeutsch.master.util.LogCollectorService
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
@@ -27,8 +29,29 @@ class VoiceDeutschApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+
+        // ── 1. Определяем, это главный процесс или :logcollector ─────────
+        // Koin, Firebase, AppLogger и т.д. инициализируем ТОЛЬКО в главном процессе.
+        // Сервис LogCollectorService живёт в :logcollector и ему это всё не нужно.
+        if (!isMainProcess()) {
+            Log.d(TAG, "⏭️ Skipping init — running in :logcollector process")
+            return
+        }
+
+        // ── 2. Запускаем LogCollectorService в отдельном процессе ─────────
+        //    Это ПЕРВОЕ что делаем — чтобы если дальше что-то крашнет,
+        //    коллектор уже был запущен и ловил logcat.
+        try {
+            LogCollectorService.start(this)
+            Log.d(TAG, "✅ LogCollectorService started")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ LogCollectorService start failed", e)
+        }
+
+        // ── 3. AppLogger (in-process буфер, дополняет LogCollector) ──────
         initAppLogger()
 
+        // ── 4. CrashLogger (перехватчик uncaught exceptions) ─────────────
         try {
             CrashLogger.init(this).apply {
                 cleanOldLogs(keepCount = 20)
@@ -37,15 +60,35 @@ class VoiceDeutschApp : Application() {
             Log.e(TAG, "❌ CrashLogger init failed", e)
         }
 
+        // ── 5. Koin DI ──────────────────────────────────────────────────
         startKoin {
             androidLogger(if (BuildConfig.DEBUG) Level.DEBUG else Level.NONE)
             androidContext(this@VoiceDeutschApp)
             modules(appModules)
         }
 
+        // ── 6. Firebase ─────────────────────────────────────────────────
         initFirebase()
+
+        // ── 7. WorkManager ──────────────────────────────────────────────
         WorkManagerInitializer.initialize(this)
-        CrashLogger.getInstance()?.copyLatestCrashToDownloads(this)
+    }
+
+    /**
+     * Проверяет, запущены ли мы в главном процессе.
+     * Возвращает false для :logcollector и других вторичных процессов.
+     */
+    private fun isMainProcess(): Boolean {
+        val pid = android.os.Process.myPid()
+        val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val processes = am.runningAppProcesses ?: return true
+        for (info in processes) {
+            if (info.pid == pid) {
+                return info.processName == packageName
+            }
+        }
+        // Если не нашли — считаем главным (безопаснее)
+        return true
     }
 
     private fun initAppLogger() {
@@ -59,14 +102,13 @@ class VoiceDeutschApp : Application() {
 
     private fun initFirebase() {
         try {
-            // Проверяем, инициализировал ли уже провайдер Firebase
             if (FirebaseApp.getApps(this).isEmpty()) {
                 FirebaseApp.initializeApp(this)
                 Log.d(TAG, "✅ FirebaseApp initialized manually")
             } else {
                 Log.d(TAG, "✅ FirebaseApp auto-initialized by provider")
             }
-            
+
             initAppCheck()
             initCrashlytics()
             initAnalytics()
