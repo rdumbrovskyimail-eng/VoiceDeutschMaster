@@ -1,5 +1,6 @@
 package com.voicedeutsch.master.voicecore.engine
 
+import android.util.Log
 import com.voicedeutsch.master.voicecore.audio.AudioOutputCapture
 import com.voicedeutsch.master.voicecore.audio.SpectralFeatureExtractor
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -81,9 +82,20 @@ class AvatarAudioAnalyzer {
      * Process one audio frame from the Visualizer.
      * Call this from the AudioOutputCapture frame flow (~20Hz).
      */
+    private var frameCount = 0
+    private var lastFrameLogMs = 0L
+
     fun onAudioFrame(frame: AudioOutputCapture.AudioFrame) {
         val now = System.currentTimeMillis()
         lastAudioFrameMs = now
+        frameCount++
+
+        // ── ДИАГНОСТИКА: логируем каждые 2 секунды ──
+        if (now - lastFrameLogMs > 2000L) {
+            Log.d("AvatarAudioAnalyzer", "📊 Spectral frames: $frameCount total, " +
+                "amp=${"%.3f".format(smoothedAmplitude)}, speaking=$wasSpeaking")
+            lastFrameLogMs = now
+        }
 
         // ── Extract prosodic features ─────────────────────────────────────
         val features = featureExtractor.extract(frame)
@@ -180,10 +192,22 @@ class AvatarAudioAnalyzer {
      * Used as fallback when Visualizer is not available.
      * Provides basic functionality without spectral features.
      */
+    private var syntheticCount = 0
+    private var lastSyntheticLogMs = 0L
+
     fun onAmplitude(amplitude: Float) {
         val now = System.currentTimeMillis()
         // Skip synthetic data if spectral frame arrived recently
         if (now - lastAudioFrameMs < 100L) return
+        syntheticCount++
+
+        // ── ДИАГНОСТИКА: логируем синтетический фоллбек ──
+        if (now - lastSyntheticLogMs > 3000L) {
+            Log.d("AvatarAudioAnalyzer", "🎭 Synthetic fallback: count=$syntheticCount, " +
+                "amp=${"%.3f".format(amplitude)}, smoothed=${"%.3f".format(smoothedAmplitude)}, " +
+                "speaking=$wasSpeaking, emotion=${_audioData.value.emotion}")
+            lastSyntheticLogMs = now
+        }
         val raw = amplitude.coerceIn(0f, 1f)
 
         val alpha = if (raw > smoothedAmplitude) ATTACK_ALPHA else RELEASE_ALPHA
