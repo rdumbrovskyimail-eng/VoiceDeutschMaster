@@ -188,8 +188,8 @@ fun SessionScreen(
     // ── Start Visualizer capture when session is active ──────────────
     LaunchedEffect(uiState.isSessionActive) {
         if (uiState.isSessionActive && hasRecordAudioPermission) {
-            // Delay 2s — Firebase SDK needs time to create its AudioTrack
-            kotlinx.coroutines.delay(2000L)
+            // ✅ FIX: startCapture() сам ждёт появления AudioTrack
+            // через AudioPlaybackCallback (до 30 секунд)
             avatarViewModel.startCapture()
         }
     }
@@ -343,17 +343,22 @@ fun SessionScreen(
                     .height(200.dp),
                 contentAlignment = Alignment.CenterStart,
             ) {
-                // Only load heavy 3D scene AFTER session is fully connected
-                key(uiState.isSessionActive) {
-                    if (uiState.isSessionActive) {
-                        AvatarSceneView(
-                            gender    = avatarGender,
-                            audioData = avatarAudioData,
-                            modifier  = Modifier
-                                .size(200.dp)
-                                .padding(start = 4.dp),
-                        )
-                    }
+                // ✅ FIX: AnimatedVisibility вместо key() —
+                // при key() смена ключа уничтожает ВСЁ дерево одновременно,
+                // включая Engine Filament. AnimatedVisibility даёт DisposableEffect
+                // время отработать до уничтожения.
+                AnimatedVisibility(
+                    visible = uiState.isSessionActive,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                ) {
+                    AvatarSceneView(
+                        gender    = avatarGender,
+                        audioData = avatarAudioData,
+                        modifier  = Modifier
+                            .size(200.dp)
+                            .padding(start = 4.dp),
+                    )
                 }
             }
 
