@@ -105,9 +105,12 @@ class AudioOutputCapture {
                 setDataCaptureListener(
                     object : Visualizer.OnDataCaptureListener {
 
-                        // Reusable buffers to avoid GC pressure at 20Hz
                         private val waveformFloat = FloatArray(size)
                         private val fftFloat = FloatArray(size / 2)
+
+                        // Atomic flags для синхронизации waveform/fft
+                        @Volatile private var waveformReady = false
+                        @Volatile private var lastWaveformTimestamp = 0L
 
                         override fun onWaveFormDataCapture(
                             visualizer: Visualizer?,
@@ -115,16 +118,14 @@ class AudioOutputCapture {
                             samplingRate: Int,
                         ) {
                             if (waveform == null || !isActive) return
-
-                            // samplingRate is in milliHertz
                             outputSampleRate = samplingRate / 1000
 
-                            // Convert unsigned 8-bit (0..255) to float (-1..1)
                             for (i in waveform.indices) {
                                 waveformFloat[i] = (waveform[i].toInt() and 0xFF) / 128f - 1f
                             }
+                            lastWaveformTimestamp = System.currentTimeMillis()
+                            waveformReady = true
 
-                            // ── ДИАГНОСТИКА: пишем пики waveform ──
                             val peak = waveformFloat.max()
                             if (peak > 0.05f) {
                                 Log.d(TAG, "🎤 Waveform peak=${"%.3f".format(peak)}")
@@ -137,23 +138,13 @@ class AudioOutputCapture {
                             samplingRate: Int,
                         ) {
                             if (fftData == null || !isActive) return
-
                             outputSampleRate = samplingRate / 1000
 
-                            // FFT data format from Visualizer:
-                            // fftData[0] = DC component (real)
-                            // fftData[1] = Nyquist component (real)
-                            // fftData[2i], fftData[2i+1] = real, imaginary for bin i
-                            //
-                            // We compute magnitude = sqrt(real² + imag²)
-
-                            // DC component
                             val dc = (fftData[0].toInt() and 0xFF).toFloat()
                             fftFloat[0] = dc / 256f
 
-                            // Frequency bins 1..N/2-1
                             val halfSize = fftData.size / 2
-                            var maxMag = 1f // prevent division by zero
+                            var maxMag = 1f
 
                             for (i in 1 until halfSize) {
                                 val real = fftData[2 * i].toFloat()
@@ -163,29 +154,34 @@ class AudioOutputCapture {
                                 if (magnitude > maxMag) maxMag = magnitude
                             }
 
-                            // ── ДИАГНОСТИКА: реальное аудио или тишина? ──
                             if (maxMag > 5f) {
                                 Log.d(TAG, "🔊 REAL audio: maxMag=${"%.1f".format(maxMag)}")
                             }
 
-                            // Normalize FFT to 0..1
                             for (i in fftFloat.indices) {
                                 fftFloat[i] = (fftFloat[i] / maxMag).coerceIn(0f, 1f)
                             }
 
-                            // Emit complete frame (waveform was filled in onWaveFormDataCapture)
+                            // Эмитируем frame ТОЛЬКО если waveform уже был обновлён недавно (<100ms)
+                            val now = System.currentTimeMillis()
+                            if (!waveformReady || (now - lastWaveformTimestamp) > 100L) {
+                                // Waveform устарел — не эмитируем, чтобы не передавать нули
+                                return
+                            }
+                            waveformReady = false  // consumed
+
                             val frame = AudioFrame(
                                 waveform = waveformFloat.copyOf(),
                                 fft = fftFloat.copyOf(),
-                                timestampMs = System.currentTimeMillis(),
+                                timestampMs = now,
                                 sampleRate = outputSampleRate,
                             )
                             _frames.tryEmit(frame)
                         }
                     },
-                    maxRate,  // capture rate in milliHz
-                    true,     // waveform enabled
-                    true,     // fft enabled
+                    maxRate,
+                    true,
+                    true,
                 )
 
                 enabled = true
