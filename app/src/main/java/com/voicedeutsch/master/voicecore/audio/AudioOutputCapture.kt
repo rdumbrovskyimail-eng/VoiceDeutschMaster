@@ -224,7 +224,8 @@ class AudioOutputCapture {
      * Call this WHILE Gemini is speaking to find the correct sessionId.
      */
     fun discoverAudioSessions(context: android.content.Context): List<Int> {
-        val audioManager = context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+        val audioManager = context.getSystemService(android.content.Context.AUDIO_SERVICE)
+            as android.media.AudioManager
         val configs = audioManager.activePlaybackConfigurations
         val sessionIds = mutableListOf<Int>()
 
@@ -233,31 +234,18 @@ class AudioOutputCapture {
 
         for ((index, config) in configs.withIndex()) {
             val attrs = config.audioAttributes
-            val usage = attrs.usage
-            val contentType = attrs.contentType
+            Log.d(TAG, "Config[$index]: usage=${attrs.usage}, contentType=${attrs.contentType}")
 
-            // Get session ID from AudioPlaybackConfiguration
-            val sessionId = try {
-                val method = config.javaClass.getMethod("getClientUid")
-                method.invoke(config) as? Int ?: -1
-            } catch (_: Exception) { -1 }
-
-            // Try alternative: get session from the configuration directly
-            val altSessionId = try {
-                val method = config.javaClass.getMethod("getSessionId")
-                method.invoke(config) as? Int ?: -1
-            } catch (_: Exception) { -1 }
-
-            Log.d(TAG, "Config[$index]: usage=$usage contentType=$contentType sessionId=$sessionId altSessionId=$altSessionId")
-
-            if (altSessionId > 0) sessionIds.add(altSessionId)
-            if (sessionId > 0 && sessionId != altSessionId) sessionIds.add(sessionId)
+            // Используем публичный API вместо reflection
+            // AudioPlaybackConfiguration не выставляет sessionId публично на всех версиях,
+            // но PlayerProxy.getAudioSessionId() доступен через getPlayerProxy() начиная с API 28
+            // Для нашего случая global mix (sessionId=0) — самый надёжный подход.
         }
 
-        Log.d(TAG, "Discovered session IDs: $sessionIds")
+        Log.d(TAG, "Using global mix (sessionId=0) — most reliable for Firebase SDK audio")
         Log.d(TAG, "=== END SCAN ===")
 
-        return sessionIds
+        return sessionIds  // пустой список → start(0) будет вызван в startWithDiscovery
     }
 
     /**
