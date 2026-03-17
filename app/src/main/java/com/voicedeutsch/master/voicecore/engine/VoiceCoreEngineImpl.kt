@@ -178,17 +178,20 @@ class VoiceCoreEngineImpl(
                     }
                 }
                 AudioState.IDLE -> flow {
-                    while (currentCoroutineContext().isActive) {
-                        emit(0.01f)
-                        delay(100L)
-                    }
-                }
-                else -> flow {
-                    // Idle breathing — very low amplitude
+                    // Idle breathing — enough to keep avatar alive with micro-movements
+                    // but below SPEAKING_ONSET_THRESHOLD (0.08f)
                     var t = 0f
                     while (currentCoroutineContext().isActive) {
                         t += 0.016f
-                        emit((kotlin.math.sin(t * 0.8f) * 0.02f + 0.02f).toFloat())
+                        emit((sin(t * 0.8f) * 0.025f + 0.035f).toFloat().coerceIn(0.01f, 0.06f))
+                        delay(50L)
+                    }
+                }
+                else -> flow {
+                    var t = 0f
+                    while (currentCoroutineContext().isActive) {
+                        t += 0.016f
+                        emit((sin(t * 0.8f) * 0.025f + 0.035f).toFloat().coerceIn(0.01f, 0.06f))
                         delay(50L)
                     }
                 }
@@ -201,7 +204,7 @@ class VoiceCoreEngineImpl(
     private val reconnectAttempts = AtomicInteger(0)
     @Volatile private var sessionStartMs: Long = 0L
     private val reconnectMutex = Mutex()
-    @Volatile private var durationJob: kotlinx.coroutines.Job? = null
+    private var durationJob: kotlinx.coroutines.Job? = null
 
     // ── State helpers ─────────────────────────────────────────────────────────
 
@@ -274,6 +277,7 @@ class VoiceCoreEngineImpl(
             activeSessionId = sessionData.session.id
             activeUserId    = userId
             sessionStartMs  = System.currentTimeMillis()
+            durationJob?.cancel()
             durationJob = engineScope.launch {
                 while (isActive) {
                     delay(1000L)
@@ -401,6 +405,7 @@ class VoiceCoreEngineImpl(
             audioPipeline.release()
             config = null
         }
+        durationJob?.cancel()
         engineScope.cancel()
         Log.d(TAG, "Engine destroyed")
     }
