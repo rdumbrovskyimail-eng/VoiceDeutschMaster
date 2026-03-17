@@ -34,8 +34,8 @@ class AvatarAudioAnalyzer {
 
     companion object {
         // ── Speech detection ──────────────────────────────────────────────
-        private const val SPEAKING_ONSET_THRESHOLD = 0.08f   // start speaking
-        private const val SPEAKING_OFFSET_THRESHOLD = 0.04f  // stop speaking (hysteresis)
+        private const val SPEAKING_ONSET_THRESHOLD = 0.05f   // снижено с 0.08 — синтетика ~0.15-0.85
+        private const val SPEAKING_OFFSET_THRESHOLD = 0.025f  // снижено с 0.04 — гистерезис
 
         // ── Emotion timing ────────────────────────────────────────────────
         private const val SILENCE_THINKING_MS = 1200L
@@ -215,8 +215,10 @@ class AvatarAudioAnalyzer {
 
     fun onAmplitude(amplitude: Float) {
         val now = System.currentTimeMillis()
-        // Skip synthetic data if spectral frame arrived recently
-        if (now - lastAudioFrameMs < 100L) return
+        // Skip synthetic data if real spectral frame arrived recently (<200ms)
+        // 200ms = ~4 Visualizer frames at 20Hz — ensures spectral data has priority
+        // but synthetic recovers quickly when Visualizer goes silent
+        if (now - lastAudioFrameMs < 200L) return
         syntheticCount++
 
         // ── ДИАГНОСТИКА: логируем синтетический фоллбек ──
