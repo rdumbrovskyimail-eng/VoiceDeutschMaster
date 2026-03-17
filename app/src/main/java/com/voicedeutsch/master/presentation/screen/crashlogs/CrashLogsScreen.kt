@@ -31,8 +31,10 @@ fun CrashLogsScreen(onBack: () -> Unit) {
     var currentDir by remember { mutableStateOf(context.filesDir) }
     var selectedFile by remember { mutableStateOf<File?>(null) }
     var dirStack by remember { mutableStateOf(listOf<File>()) }
+    var fileToDelete by remember { mutableStateOf<File?>(null) }
+    var refreshKey by remember { mutableIntStateOf(0) }
 
-    val files = remember(currentDir) {
+    val files = remember(currentDir, refreshKey) {
         currentDir.listFiles()
             ?.sortedWith(compareBy({ !it.isDirectory }, { it.name }))
             ?: emptyList()
@@ -40,6 +42,24 @@ fun CrashLogsScreen(onBack: () -> Unit) {
 
     selectedFile?.let { file ->
         FileViewerDialog(file = file, onDismiss = { selectedFile = null })
+    }
+
+    fileToDelete?.let { file ->
+        AlertDialog(
+            onDismissRequest = { fileToDelete = null },
+            title = { Text("Удалить файл?") },
+            text = { Text("${file.name} будет удалён без возможности восстановления.") },
+            confirmButton = {
+                Button(onClick = {
+                    file.delete()
+                    refreshKey++
+                    fileToDelete = null
+                }) { Text("Удалить") }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { fileToDelete = null }) { Text("Отмена") }
+            },
+        )
     }
 
     Scaffold(
@@ -131,6 +151,14 @@ fun CrashLogsScreen(onBack: () -> Unit) {
                             }
                             if (file.isDirectory) {
                                 Text("▶", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            } else {
+                                IconButton(onClick = { fileToDelete = file }) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Delete,
+                                        contentDescription = "Удалить",
+                                        tint = MaterialTheme.colorScheme.error,
+                                    )
+                                }
                             }
                         }
                     }
