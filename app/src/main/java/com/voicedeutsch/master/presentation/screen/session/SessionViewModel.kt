@@ -161,13 +161,24 @@ class SessionViewModel(
         currentAmplitude.floatValue = 0f
 
         viewModelScope.launch {
+            // ✅ FIX SIGSEGV: ПОРЯДОК КРИТИЧЕН!
+            // 1) Сначала isSessionActive = false →
+            //    AnimatedVisibility скрывает AvatarSceneView →
+            //    DisposableEffect очищает кости/морфы →
+            //    Filament Engine уничтожается через rememberEngine()
+            _uiState.update { it.copy(isSessionActive = false) }
+
+            // 2) Даём Filament render thread 500ms завершить текущий кадр
+            //    и отработать cleanup DisposableEffect + Engine.destroy()
+            kotlinx.coroutines.delay(500L)
+
+            // 3) Теперь безопасно останавливаем Gemini-сессию
             _uiState.update { it.copy(isLoading = true) }
 
             val result = runCatching {
                 voiceCoreEngine.endSession()
             }.getOrNull()
 
-            // ✅ FIX 2: Останавливаем foreground service вместе с сессией
             runCatching {
                 context.startService(VoiceSessionService.stopIntent(context))
             }.onFailure { e ->
@@ -176,9 +187,8 @@ class SessionViewModel(
 
             _uiState.update {
                 it.copy(
-                    isLoading       = false,
-                    isSessionActive = false,
-                    sessionResult   = result,
+                    isLoading     = false,
+                    sessionResult = result,
                 )
             }
         }
