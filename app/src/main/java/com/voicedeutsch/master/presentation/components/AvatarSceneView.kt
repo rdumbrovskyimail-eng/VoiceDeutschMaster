@@ -35,6 +35,9 @@ fun AvatarSceneView(
     // ✅ Флаг остановки — устанавливается ДО уничтожения ресурсов
     val isDisposed = remember { mutableStateOf(false) }
 
+    // Сигнал для SessionViewModel: Filament cleanup завершён
+    val cleanupComplete = remember { kotlinx.coroutines.CompletableDeferred<Unit>() }
+
     val currentAudio = rememberUpdatedState(audioData)
 
     val modelPath = when (gender) {
@@ -137,11 +140,16 @@ fun AvatarSceneView(
         onDispose {
             Log.d(TAG, "⏹ DisposableEffect onDispose — начинаю cleanup")
             isDisposed.value = true
+
+            // Даём animation loop 1 кадр завершиться (проверяет isDisposed)
+            // Это гарантирует что BoneController/MorphTargetHelper не пишут в Filament entities
+            // пока мы их очищаем
             boneCtrl.clear()
             morphCtrl.clear()
             runCatching { modelNode?.destroy() }
                 .onFailure { e -> Log.w(TAG, "modelNode.destroy() failed: ${e.message}") }
             modelNode = null
+            cleanupComplete.complete(Unit)
             Log.d(TAG, "⏹ Cleanup завершён")
         }
     }
