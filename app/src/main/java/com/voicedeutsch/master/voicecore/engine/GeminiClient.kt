@@ -104,7 +104,9 @@ class GeminiClient(
                 tools = toolsList,
             )
 
-            val session = liveModel.connect()
+            val session = kotlinx.coroutines.withTimeout(15_000L) {
+                liveModel.connect()
+            }
 
             sessionMutex.withLock {
                 liveSession = session
