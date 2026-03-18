@@ -42,6 +42,7 @@ import kotlin.random.Random
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
@@ -336,64 +337,33 @@ class VoiceCoreEngineImpl(
 
     override suspend fun endSession(): SessionResult? {
         val sessionId = activeSessionId ?: return null
-
         return lifecycleMutex.withLock {
-            val current = _sessionState.value.engineState
-            if (!current.isActiveSession() && current != VoiceEngineState.IDLE) return@withLock null
-
+            if (!_sessionState.value.engineState.isActiveSession()) return@withLock null
             transitionEngine(VoiceEngineState.SESSION_ENDING)
-
-            // Отменяем таймерный Job (FIX 4)
             durationJob?.cancel()
             durationJob = null
-
             transitionEngine(VoiceEngineState.SAVING)
 
-            val sessionResult: SessionResult? = withContext(Dispatchers.IO) {
+            val sessionResult = withContext(Dispatchers.IO + NonCancellable) {
                 runCatching {
-                    runCatching { geminiClient.stopConversation() }
-                        .onFailure { Log.w(TAG, "stopConversation() warning: ${it.message}") }
-
+                    geminiClient.stopConversation()
                     transitionAudio(AudioState.IDLE)
                     transitionConnection(ConnectionState.DISCONNECTED)
-
-                    runCatching { geminiClient.disconnect() }
-                        .onFailure { Log.w(TAG, "disconnect() warning: ${it.message}") }
-
+                    geminiClient.disconnect()
                     geminiClient.clearResumptionHandle()
-
                     val result = endLearningSession(sessionId)
-
-                    val syncOk = runCatching { flushKnowledgeSync() }.getOrElse { e ->
-                        Log.w(TAG, "flushKnowledgeSync failed: ${e.message}")
-                        false
-                    }
-                    if (syncOk) Log.d(TAG, "Knowledge sync flushed")
-                    else        Log.w(TAG, "Knowledge sync deferred")
-
+                    flushKnowledgeSync()
                     result
                 }.onFailure { error ->
-                    Log.e(TAG, "Session save failed: ${error.message}", error)
-                    updateState { copy(errorMessage = "Session save failed: ${error.message}") }
+                    Log.e(TAG, "Session save error", error)
+                    updateState { copy(errorMessage = error.message) }
                 }.getOrNull()
             }
 
             activeSessionId = null
-            activeUserId    = null
-
+            activeUserId = null
             transitionEngine(VoiceEngineState.IDLE)
-            updateState {
-                copy(
-                    isVoiceActive     = false,
-                    isListening       = false,
-                    isSpeaking        = false,
-                    isProcessing      = false,
-                    currentTranscript = "",
-                    voiceTranscript   = "",
-                )
-            }
-
-            Log.d(TAG, "Session ended [sessionId=$sessionId]")
+            updateState { copy(isVoiceActive = false, isListening = false, isSpeaking = false) }
             sessionResult
         }
     }
