@@ -419,13 +419,16 @@ class VoiceCoreEngineImpl(
     override fun startListening() {
         if (!_sessionState.value.isSessionActive || _sessionState.value.isListening) return
 
+        // Немедленно переводим состояние в RECORDING, чтобы amplitudeFlow начал генерацию
+        transitionAudio(AudioState.RECORDING)
+
         engineScope.launch {
-            runCatching {
+            try {
                 geminiClient.startConversation(::handleFunctionCall)
-                // Только после успешного старта переводим в RECORDING
-                transitionAudio(AudioState.RECORDING)
-            }.onFailure { e ->
+                // Сюда попадём только после окончания разговора (например, при stopConversation)
+            } catch (e: Exception) {
                 Log.e(TAG, "startConversation failed", e)
+                // При ошибке возвращаем состояние в IDLE
                 transitionAudio(AudioState.IDLE)
                 handleSessionError(e)
             }
