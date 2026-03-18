@@ -57,41 +57,31 @@ class AvatarViewModel(
 
     fun startCapture() {
         viewModelScope.launch {
-            // Ждём появления аудио от Firebase SDK (до 15 сек)
-            // вместо hardcoded 5000ms delay
             val maxWaitMs = 15_000L
             val startMs = System.currentTimeMillis()
-
             while (System.currentTimeMillis() - startMs < maxWaitMs) {
-                val am = context.getSystemService(android.content.Context.AUDIO_SERVICE)
-                    as android.media.AudioManager
-                val configs = am.activePlaybackConfigurations
-                if (configs.isNotEmpty()) {
-                    Log.d(TAG, "AudioTrack detected after ${System.currentTimeMillis() - startMs}ms")
-                    break
-                }
+                val am = context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+                if (am.activePlaybackConfigurations.isNotEmpty()) break
                 kotlinx.coroutines.delay(500L)
             }
-
-            // Дополнительная задержка чтобы AudioTrack начал реально воспроизводить
             kotlinx.coroutines.delay(1000L)
 
             val started = try {
-                withContext(Dispatchers.IO) { audioCapture.start(0) }
+                withContext(Dispatchers.IO) { audioCapture.startWithDiscovery(context) }
             } catch (e: Exception) {
-                Log.e(TAG, "Visualizer(0) failed: ${e.message}", e)
+                Log.e(TAG, "Visualizer start failed", e)
                 false
             }
 
             if (started) {
-                Log.d(TAG, "✅ Visualizer active on global mix")
+                Log.d(TAG, "✅ Visualizer active")
                 audioCapture.frames
                     .conflate()
                     .onEach { frame -> audioAnalyzer.onAudioFrame(frame) }
-                    .catch { e -> Log.e(TAG, "Visualizer frame error: ${e.message}") }
+                    .catch { e -> Log.e(TAG, "Frame error", e) }
                     .launchIn(viewModelScope)
             } else {
-                Log.w(TAG, "⚠ Visualizer unavailable — synthetic fallback only")
+                Log.w(TAG, "⚠ Visualizer unavailable — synthetic fallback")
             }
         }
     }
