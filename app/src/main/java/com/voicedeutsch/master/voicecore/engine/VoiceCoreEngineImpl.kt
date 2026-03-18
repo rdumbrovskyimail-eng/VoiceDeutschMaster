@@ -594,6 +594,7 @@ class VoiceCoreEngineImpl(
                     Log.e(TAG, "Max reconnect attempts reached — giving up")
                     transitionConnection(ConnectionState.FAILED)
                     transitionEngine(VoiceEngineState.IDLE)
+                    updateState { copy(errorMessage = null) }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Reconnect failed: ${e.message}", e)
