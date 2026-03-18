@@ -68,10 +68,6 @@ class AvatarViewModel(
                 val configs = am.activePlaybackConfigurations
                 if (configs.isNotEmpty()) {
                     Log.d(TAG, "AudioTrack detected after ${System.currentTimeMillis() - startMs}ms")
-                    configs.forEachIndexed { i, cfg ->
-                        Log.d(TAG, "PlaybackConfig[$i]: usage=${cfg.audioAttributes.usage}, " +
-                            "contentType=${cfg.audioAttributes.contentType}")
-                    }
                     break
                 }
                 kotlinx.coroutines.delay(500L)
