@@ -571,7 +571,6 @@ class VoiceCoreEngineImpl(
         Log.e(TAG, "Session error [attempts=${reconnectAttempts.get()}/$maxAttempts]: ${error.message}", error)
 
         engineScope.launch {
-            // ✅ FIX #2: Один tryLock, reconnectInternal() вызывается внутри
             if (!reconnectMutex.tryLock()) {
                 Log.w(TAG, "handleSessionError: reconnect already in progress — ignoring")
                 return@launch
@@ -590,7 +589,6 @@ class VoiceCoreEngineImpl(
                     transitionConnection(ConnectionState.RECONNECTING)
                     delay(delayMs)
 
-                    // ✅ FIX: вызываем reconnect напрямую, мьютекс уже захвачен
                     reconnectInternal()
                 } else {
                     Log.e(TAG, "Max reconnect attempts reached — giving up")
