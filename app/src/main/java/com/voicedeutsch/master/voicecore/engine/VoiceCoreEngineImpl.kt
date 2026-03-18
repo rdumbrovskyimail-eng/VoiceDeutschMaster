@@ -339,7 +339,7 @@ class VoiceCoreEngineImpl(
 
         return lifecycleMutex.withLock {
             val current = _sessionState.value.engineState
-            if (!current.isActiveSession()) return@withLock null
+            if (!current.isActiveSession() && current != VoiceEngineState.IDLE) return@withLock null
 
             transitionEngine(VoiceEngineState.SESSION_ENDING)
 
