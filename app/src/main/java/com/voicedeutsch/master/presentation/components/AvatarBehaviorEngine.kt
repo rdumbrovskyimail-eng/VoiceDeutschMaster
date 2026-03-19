@@ -309,6 +309,37 @@ class AvatarBehaviorEngine {
         )
     }
 
+    // ── Perlin noise update & application to head/eye bones ──────────────
+
+    private data class PerlinNoises(
+        val head: BoneAngles,
+        val neck: BoneAngles,
+        val body: BoneAngles,
+    )
+
+    /**
+     * Updates all Perlin noise generators and applies them to head, neck, and body bones.
+     * Eye saccade offsets (eyeCurrentX/Y) are also driven by Perlin noise via updateEyeSaccades().
+     */
+    private fun updatePerlinAndApply(): PerlinNoises {
+        val headNoise = BoneAngles(
+            pitch = noiseHead.fbm(time * 0.4f) * 1.5f,
+            yaw   = noiseHead.fbm(time * 0.35f + 10f) * 2f,
+            roll  = noiseHead.fbm(time * 0.3f + 20f) * 0.8f,
+        )
+        val neckNoise = BoneAngles(
+            pitch = noiseNeck.fbm(time * 0.3f) * 0.6f,
+            yaw   = noiseNeck.fbm(time * 0.25f + 10f) * 0.8f,
+            roll  = noiseNeck.fbm(time * 0.2f + 20f) * 0.4f,
+        )
+        val bodyNoise = BoneAngles(
+            pitch = noiseBody.fbm(time * 0.15f) * 0.3f,
+            yaw   = noiseBody.fbm(time * 0.12f + 10f) * 0.2f,
+            roll  = noiseBody.fbm(time * 0.1f + 20f) * 0.15f,
+        )
+        return PerlinNoises(head = headNoise, neck = neckNoise, body = bodyNoise)
+    }
+
     // ── State determination ───────────────────────────────────────────────
 
     private fun determineState(
