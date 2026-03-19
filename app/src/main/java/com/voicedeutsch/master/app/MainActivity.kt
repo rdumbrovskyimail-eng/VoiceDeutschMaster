@@ -51,8 +51,8 @@ class MainActivity : ComponentActivity() {
             val crashLogger = CrashLogger.getInstance() ?: return
             val latestCrash = crashLogger.getLatestCrashLog() ?: return
 
-            val fiveMinutesAgo = System.currentTimeMillis() - (5 * 60 * 1000)
-            if (latestCrash.lastModified() > fiveMinutesAgo) {
+            val fifteenMinutesAgo = System.currentTimeMillis() - (15 * 60 * 1000)
+            if (latestCrash.lastModified() > fifteenMinutesAgo) {
                 val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
 
                 Log.w(TAG, "━".repeat(80))
