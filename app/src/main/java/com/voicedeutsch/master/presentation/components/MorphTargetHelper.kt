@@ -195,6 +195,48 @@ class MorphTargetHelper(private val engine: Engine) {
         }
     }
 
+    /**
+     * Updates morph targets based on audio features (RMS energy + spectral centroid).
+     * Drives jaw opening and lip shapes proportionally to audio loudness and brightness.
+     *
+     * @param rms        Root-mean-square energy in [0.0, 1.0]
+     * @param spectral   Normalised spectral centroid in [0.0, 1.0] (0 = bass, 1 = bright)
+     */
+    fun updateFromAudio(rms: Float, spectral: Float = 0.5f) {
+        if (!isReady()) return
+
+        val jawOpen     = rms.coerceIn(0f, 1f)
+        val mouthOpen   = (rms * 0.8f).coerceIn(0f, 1f)
+        val mouthPucker = ((1f - spectral) * rms * 0.5f).coerceIn(0f, 1f)
+        val mouthSmile  = (spectral * rms * 0.4f).coerceIn(0f, 1f)
+
+        applyMorphs(
+            mapOf(
+                "jawOpen"     to jawOpen,
+                "mouthOpen"   to mouthOpen,
+                "mouthPucker" to mouthPucker,
+                "mouthSmile"  to mouthSmile,
+            )
+        )
+    }
+
+    /**
+     * Convenience wrapper — applies a morph map and logs if none of the names were found.
+     * Use this instead of calling [setWeights] directly when audio-driven.
+     */
+    fun applyMorphs(weights: Map<String, Float>) {
+        if (!isReady()) {
+            Log.w(TAG, "applyMorphs called before init()")
+            return
+        }
+        val recognised = weights.keys.count { it in nameToEntityIndex }
+        if (recognised == 0) {
+            Log.w(TAG, "applyMorphs: none of the requested names found — ${weights.keys}. " +
+                    "Available: ${getAvailableNames()}")
+        }
+        setWeights(weights)
+    }
+
     /** Returns all discovered morph target names (for debugging). */
     fun getAvailableNames(): Set<String> =
         morphableEntities.flatMap { it.nameToIndex.keys }.toSet()
