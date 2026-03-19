@@ -11,6 +11,7 @@ import com.voicedeutsch.master.voicecore.engine.GeminiConfig
 import com.voicedeutsch.master.voicecore.engine.VoiceCoreEngine
 import com.voicedeutsch.master.voicecore.service.VoiceSessionService
 import com.voicedeutsch.master.voicecore.session.VoiceSessionState
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -154,37 +155,47 @@ class SessionViewModel(
         }
     }
 
+    private val crashHandler = CoroutineExceptionHandler { _, e ->
+        com.voicedeutsch.master.util.CrashLogger.getInstance()?.logCrash(e as? Exception ?: Exception(e))
+        _uiState.update { it.copy(isLoading = false, errorMessage = e.message ?: "Unknown error ending session") }
+    }
+
     private fun endSession() {
         amplitudeJob?.cancel()
         amplitudeJob = null
         currentAmplitude.floatValue = 0f
 
-        viewModelScope.launch {
-            // 1) Скрываем аватар
-            _uiState.update { it.copy(isSessionActive = false) }
+        viewModelScope.launch(crashHandler) {
+            try {
+                // 1) Скрываем аватар
+                _uiState.update { it.copy(isSessionActive = false) }
 
-            // 2) Ждём завершения Filament cleanup:
-            //    fadeOut(300ms) + DisposableEffect dispatch(~100ms) + Engine.destroy(~200ms) + GPU flush(~200ms)
-            kotlinx.coroutines.delay(900L)
+                // 2) Ждём завершения Filament cleanup:
+                //    fadeOut(300ms) + DisposableEffect dispatch(~100ms) + Engine.destroy(~200ms) + GPU flush(~200ms)
+                kotlinx.coroutines.delay(900L)
 
-            // 3) Останавливаем Gemini
-            _uiState.update { it.copy(isLoading = true) }
+                // 3) Останавливаем Gemini
+                _uiState.update { it.copy(isLoading = true) }
 
-            val result = runCatching {
-                voiceCoreEngine.endSession()
-            }.getOrNull()
+                val result = runCatching {
+                    voiceCoreEngine.endSession()
+                }.getOrNull()
 
-            runCatching {
-                context.startService(VoiceSessionService.stopIntent(context))
-            }.onFailure { e ->
-                android.util.Log.w("SessionViewModel", "Could not stop foreground service: ${e.message}")
-            }
+                runCatching {
+                    context.startService(VoiceSessionService.stopIntent(context))
+                }.onFailure { e ->
+                    android.util.Log.w("SessionViewModel", "Could not stop foreground service: ${e.message}")
+                }
 
-            _uiState.update {
-                it.copy(
-                    isLoading     = false,
-                    sessionResult = result,
-                )
+                _uiState.update {
+                    it.copy(
+                        isLoading     = false,
+                        sessionResult = result,
+                    )
+                }
+            } catch (e: Exception) {
+                com.voicedeutsch.master.util.CrashLogger.getInstance()?.logCrash(e)
+                _uiState.update { it.copy(isLoading = false, errorMessage = e.message ?: "Unknown error ending session") }
             }
         }
     }
