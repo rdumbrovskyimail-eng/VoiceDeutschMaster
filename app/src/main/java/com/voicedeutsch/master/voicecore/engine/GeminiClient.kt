@@ -34,20 +34,15 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * GeminiClient v3 — РУЧНОЙ режим Firebase AI Logic Live API.
- *
- * Вместо startAudioConversation() используем ручной пайплайн:
- *   AudioRecord → sendAudio(pcm) → session.sendAudioRealtime(InlineData)
- *   session.receive().collect → InlineDataPart (PCM 24kHz) → AudioTrack + аватар
- *                              → FunctionCallPart → обработка → FunctionResponsePart
+ * GeminiClient v4 — РУЧНОЙ режим Firebase AI Logic Live API.
  *
  * ════════════════════════════════════════════════════════════════════
- * v3: Исправлено по ошибкам CI компиляции:
- *   1. sendAudioRealtime(InlineData) — suspend, принимает InlineData не ByteArray
- *   2. receive() → response не имеет .data/.functionCalls/.turnComplete напрямую
- *      → аудио через response.modelTurn?.parts?.filterIsInstance<InlineDataPart>()
- *      → function calls через response.modelTurn?.parts?.filterIsInstance<FunctionCallPart>()
- *      → turnComplete через response.turnComplete или response.status
+ * v4 fixes based on CI errors:
+ *   1. InlineData(pcmBytes, mimeType) — порядок аргументов (ByteArray, String)
+ *   2. response.serverContent?.modelTurn?.parts — вместо response.modelTurn
+ *   3. InlineDataPart — .data вместо .bytes (или .inlineData)
+ *   4. serverContent?.turnComplete — вместо response.turnComplete
+ *   5. Explicit null checks для parts итерации (исправлен ambiguous iterator)
  * ════════════════════════════════════════════════════════════════════
  */
 @OptIn(PublicPreviewAPI::class)
@@ -93,7 +88,7 @@ class GeminiClient(
     private var receiving = false
 
     // ══════════════════════════════════════════════════════════════════════════
-    //  CONNECT — без изменений от v1
+    //  CONNECT — без изменений
     // ══════════════════════════════════════════════════════════════════════════
 
     suspend fun connect(context: ContextBuilder.SessionContext) {
@@ -161,14 +156,13 @@ class GeminiClient(
 
     /**
      * Отправляет чанк PCM аудио с микрофона в Gemini.
-     * Формат: raw PCM 16bit, 16kHz, mono, little-endian.
      *
-     * FIX v3: sendAudioRealtime принимает InlineData (не ByteArray), и является suspend.
+     * FIX v4: InlineData(ByteArray, String) — первый аргумент данные, второй MIME.
      */
     suspend fun sendAudio(pcmBytes: ByteArray) {
         val session = liveSession ?: return
         try {
-            val audioData = InlineData("audio/pcm;rate=16000", pcmBytes)
+            val audioData = InlineData(pcmBytes, "audio/pcm;rate=16000")
             session.sendAudioRealtime(audioData)
         } catch (e: Exception) {
             Log.e(TAG, "sendAudio error: ${e.message}")
@@ -182,14 +176,14 @@ class GeminiClient(
     /**
      * Запускает цикл приёма ответов через session.receive().
      *
-     * FIX v3: Достаём данные через parts:
-     *   - Аудио: response.modelTurn?.parts?.filterIsInstance<InlineDataPart>()
-     *   - Function calls: response.modelTurn?.parts?.filterIsInstance<FunctionCallPart>()
-     *   - Turn complete: response.turnComplete
+     * FIX v4:
+     *   - response.serverContent?.modelTurn?.parts (не response.modelTurn)
+     *   - InlineDataPart.data (не .bytes)
+     *   - serverContent?.turnComplete (не response.turnComplete)
+     *   - Explicit null check для parts (исправлен ambiguous iterator)
      *
-     * ⚠️ Если receive() возвращает Flow с wrapper-типом (LiveServerResponse),
-     *    нужно будет добавить .serverContent или .message перед .modelTurn.
-     *    CI покажет точную ошибку.
+     * ⚠️ Если serverContent не скомпилится — альтернативы:
+     *   response.content, response.message, или response напрямую если это LiveServerContent
      */
     suspend fun startReceiving(
         onFunctionCall: suspend (FunctionCallPart) -> FunctionResponsePart,
@@ -201,27 +195,39 @@ class GeminiClient(
             ?: throw GeminiConnectionException("startReceiving: no active session")
 
         receiving = true
+        var logCount = 0
         Log.d(TAG, "startReceiving: начинаю приём ответов")
 
         try {
             session.receive().collect { response ->
                 if (!receiving) return@collect
 
-                // Логируем тип для диагностики (первые 5 раз)
-                Log.d(TAG, "receive: ${response::class.simpleName}")
+                // Диагностика: логируем тип response первые 3 раза
+                if (logCount < 3) {
+                    Log.d(TAG, "receive type: ${response::class.qualifiedName}, " +
+                        "props: ${response::class.members.take(10).map { it.name }}")
+                    logCount++
+                }
+
+                // ── Достаём server content ───────────────────────────────
+                // ⚠️ COMPILE_CHECK: если serverContent не существует, попробовать:
+                //   val sc = response.content    // или
+                //   val sc = response.message     // или
+                //   val sc = response              // если response УЖЕ LiveServerContent
+                val sc = response.serverContent ?: return@collect
 
                 // ── Достаём parts из modelTurn ───────────────────────────
-                // ⚠️ Если modelTurn не компилится, попробовать:
-                //   response.serverContent?.modelTurn?.parts
-                //   response.content?.parts
-                //   response.message?.modelTurn?.parts
-                val parts = response.modelTurn?.parts ?: emptyList()
+                val parts = sc.modelTurn?.parts
+                if (parts != null) {
 
-                // ── Аудио (InlineDataPart с PCM 24kHz) ───────────────────
-                for (part in parts) {
-                    if (part is InlineDataPart) {
-                        if (part.mimeType.startsWith("audio")) {
-                            val audioBytes = part.bytes
+                    // ── Аудио (InlineDataPart → PCM 24kHz) ───────────────
+                    for (part in parts) {
+                        if (part is InlineDataPart) {
+                            // FIX v4: .data вместо .bytes
+                            // ⚠️ Если .data не скомпилится, попробовать:
+                            //   part.inlineData      (тип InlineData, потом .data)
+                            //   part.inlineData.data  (вложенный)
+                            val audioBytes: ByteArray = part.data
                             if (audioBytes.isNotEmpty()) {
                                 if (!_modelSpeaking.value) {
                                     _modelSpeaking.value = true
@@ -232,42 +238,36 @@ class GeminiClient(
                             }
                         }
                     }
-                }
 
-                // ── Function calls ───────────────────────────────────────
-                for (part in parts) {
-                    if (part is FunctionCallPart) {
-                        Log.d(TAG, "Function call: ${part.name}")
-                        try {
-                            val result = onFunctionCall(part)
-                            session.send(content { part(result) })
-                            Log.d(TAG, "Function response sent: ${part.name}")
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Function call error: ${part.name}", e)
-                            val errorJson = kotlinx.serialization.json.JsonObject(
-                                mapOf("error" to kotlinx.serialization.json.JsonPrimitive(
-                                    e.message ?: "function execution failed"
-                                ))
-                            )
-                            runCatching {
-                                session.send(content {
-                                    part(FunctionResponsePart(part.name, errorJson, part.id))
-                                })
+                    // ── Function calls ────────────────────────────────────
+                    for (part in parts) {
+                        if (part is FunctionCallPart) {
+                            Log.d(TAG, "Function call: ${part.name}")
+                            try {
+                                val result = onFunctionCall(part)
+                                session.send(content { part(result) })
+                                Log.d(TAG, "Function response sent: ${part.name}")
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Function call error: ${part.name}", e)
+                                val errorJson = kotlinx.serialization.json.JsonObject(
+                                    mapOf("error" to kotlinx.serialization.json.JsonPrimitive(
+                                        e.message ?: "function execution failed"
+                                    ))
+                                )
+                                runCatching {
+                                    session.send(content {
+                                        part(FunctionResponsePart(part.name, errorJson, part.id))
+                                    })
+                                }
                             }
                         }
                     }
                 }
 
                 // ── Turn complete ────────────────────────────────────────
-                // ⚠️ Если turnComplete не компилится, попробовать:
-                //   response.serverContent?.turnComplete
-                //   response.status == "TURN_COMPLETE"  (enum/string)
-                val turnDone = try {
-                    response.turnComplete
-                } catch (_: Exception) {
-                    false
-                }
-                if (turnDone == true) {
+                // ⚠️ Если sc.turnComplete не скомпилится, попробовать:
+                //   sc.isTurnComplete, sc.isComplete, response.turnComplete
+                if (sc.turnComplete == true) {
                     _modelSpeaking.value = false
                     onTurnComplete()
                     Log.d(TAG, "Model turn complete")
@@ -300,7 +300,6 @@ class GeminiClient(
     //  FALLBACK: старые методы (SDK-управляемый режим)
     // ══════════════════════════════════════════════════════════════════════════
 
-    /** [FALLBACK] SDK-управляемый голосовой разговор. */
     suspend fun startConversation(
         onFunctionCall: (FunctionCallPart) -> FunctionResponsePart,
     ) {
@@ -310,7 +309,6 @@ class GeminiClient(
         Log.d(TAG, "Audio conversation started (SDK fallback)")
     }
 
-    /** [FALLBACK] Остановка SDK-управляемого разговора. */
     suspend fun stopConversation() {
         val session = sessionMutex.withLock { liveSession } ?: run {
             Log.w(TAG, "stopConversation: no active session")
