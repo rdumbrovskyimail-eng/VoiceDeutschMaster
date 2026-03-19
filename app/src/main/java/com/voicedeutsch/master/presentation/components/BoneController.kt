@@ -69,7 +69,7 @@ class BoneController(private val engine: Engine) {
 
     // Idle animation state
     private var idleTime = 0f
-    private companion object IdleConfig {
+    private object IdleConfig {
         const val IDLE_SPEED = 0.8f          // cycles per second
         const val IDLE_AMPLITUDE_YAW = 1.2f  // degrees left/right
         const val IDLE_AMPLITUDE_PITCH = 0.6f // degrees forward/back
@@ -240,15 +240,15 @@ class BoneController(private val engine: Engine) {
 
         // Idle breathing: gentle spine sway on Y axis
         idleTime += deltaTime
-        val idleYaw = sin(idleTime * IDLE_SPEED) * IDLE_AMPLITUDE_YAW
-        val idlePitch = sin(idleTime * IDLE_SPEED * 0.5f) * IDLE_AMPLITUDE_PITCH
+        val idleYaw = sin(idleTime * IdleConfig.IDLE_SPEED) * IdleConfig.IDLE_AMPLITUDE_YAW
+        val idlePitch = sin(idleTime * IdleConfig.IDLE_SPEED * 0.5f) * IdleConfig.IDLE_AMPLITUDE_PITCH
 
         if (hasBone("Spine")) rotate("Spine", idlePitch * 0.3f, idleYaw * 0.3f, 0f)
         if (hasBone("Spine1")) rotate("Spine1", idlePitch * 0.4f, idleYaw * 0.4f, 0f)
         if (hasBone("Spine2")) rotate("Spine2", idlePitch * 0.3f, idleYaw * 0.3f, 0f)
 
         // Head follows idle with a slight additional subtle nod
-        val headPitch = idlePitch * 0.5f + sin(idleTime * IDLE_SPEED * 1.3f) * 0.3f
+        val headPitch = idlePitch * 0.5f + sin(idleTime * IdleConfig.IDLE_SPEED * 1.3f) * 0.3f
         val headYaw   = idleYaw * 0.5f
         if (hasBone("Head")) rotate("Head", headPitch, headYaw, 0f)
         if (hasBone("Neck")) rotate("Neck", headPitch * 0.5f, headYaw * 0.5f, 0f)
