@@ -3,9 +3,11 @@ package com.voicedeutsch.master.voicecore.engine
 import android.util.Log
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
+import com.google.firebase.ai.type.Content
 import com.google.firebase.ai.type.FunctionCallPart
 import com.google.firebase.ai.type.FunctionDeclaration
 import com.google.firebase.ai.type.FunctionResponsePart
+import com.google.firebase.ai.type.InlineData
 import com.google.firebase.ai.type.InlineDataPart
 import com.google.firebase.ai.type.LiveSession
 import com.google.firebase.ai.type.PublicPreviewAPI
@@ -32,27 +34,20 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * GeminiClient v2 — РУЧНОЙ режим Firebase AI Logic Live API.
+ * GeminiClient v3 — РУЧНОЙ режим Firebase AI Logic Live API.
  *
- * ВМЕСТО startAudioConversation() (SDK сам управляет аудио) используем:
- *   - sendAudio(pcm)        → отправляем PCM с микрофона
- *   - session.receive()     → получаем PCM ответа + function calls
- *
- * Это даёт ПРЯМОЙ ДОСТУП к сырым PCM байтам Gemini → SpectralFeatureExtractor → аватар.
+ * Вместо startAudioConversation() используем ручной пайплайн:
+ *   AudioRecord → sendAudio(pcm) → session.sendAudioRealtime(InlineData)
+ *   session.receive().collect → InlineDataPart (PCM 24kHz) → AudioTrack + аватар
+ *                              → FunctionCallPart → обработка → FunctionResponsePart
  *
  * ════════════════════════════════════════════════════════════════════
- * Основано на официальном Kotlin-сниппете из документации Firebase:
- *
- *   session.receive().collect {
- *       if (it.turnComplete) { session.stopReceiving() }
- *       playAudio(it.data)  // PCM 16bit 24kHz
- *   }
- *
- * ⚠️ BOM ВЕРСИЯ: требуется firebase-bom ≥ 34.8.0 для sendAudioRealtime.
- *    Если у тебя 34.5.0 — нужно обновить в libs.versions.toml.
- *
- * ⚠️ PREVIEW API: типы могут отличаться от документации.
- *    Помечены комментариями ⚠️COMPILE_CHECK — места возможных ошибок.
+ * v3: Исправлено по ошибкам CI компиляции:
+ *   1. sendAudioRealtime(InlineData) — suspend, принимает InlineData не ByteArray
+ *   2. receive() → response не имеет .data/.functionCalls/.turnComplete напрямую
+ *      → аудио через response.modelTurn?.parts?.filterIsInstance<InlineDataPart>()
+ *      → function calls через response.modelTurn?.parts?.filterIsInstance<FunctionCallPart>()
+ *      → turnComplete через response.turnComplete или response.status
  * ════════════════════════════════════════════════════════════════════
  */
 @OptIn(PublicPreviewAPI::class)
@@ -82,9 +77,6 @@ class GeminiClient(
     )
 
     // ── PCM audio output flow ─────────────────────────────────────────────────
-    // Сырые PCM байты (16bit, 24kHz, mono) из ответов Gemini.
-    // Подписчики: AudioTrack (воспроизведение) + AvatarAudioAnalyzer (аватар)
-
     private val _audioOutput = MutableSharedFlow<ByteArray>(
         replay = 0,
         extraBufferCapacity = 32,
@@ -93,13 +85,10 @@ class GeminiClient(
     val audioOutput: SharedFlow<ByteArray> = _audioOutput.asSharedFlow()
 
     // ── Model speaking state ──────────────────────────────────────────────────
-    // true когда Gemini говорит → пауза микрофона + анимация аватара
-
     private val _modelSpeaking = MutableStateFlow(false)
     val modelSpeaking: StateFlow<Boolean> = _modelSpeaking.asStateFlow()
 
     // ── Receive control ───────────────────────────────────────────────────────
-
     @Volatile
     private var receiving = false
 
@@ -174,14 +163,13 @@ class GeminiClient(
      * Отправляет чанк PCM аудио с микрофона в Gemini.
      * Формат: raw PCM 16bit, 16kHz, mono, little-endian.
      *
-     * ⚠️COMPILE_CHECK: метод может называться иначе в твоей версии SDK.
-     *   Альтернативы: sendAudioRealtime(InlineDataPart), sendRealtimeInput(...)
+     * FIX v3: sendAudioRealtime принимает InlineData (не ByteArray), и является suspend.
      */
-    fun sendAudio(pcmBytes: ByteArray) {
+    suspend fun sendAudio(pcmBytes: ByteArray) {
         val session = liveSession ?: return
         try {
-            // ⚠️COMPILE_CHECK: sendAudioRealtime(ByteArray)
-            session.sendAudioRealtime(pcmBytes)
+            val audioData = InlineData("audio/pcm;rate=16000", pcmBytes)
+            session.sendAudioRealtime(audioData)
         } catch (e: Exception) {
             Log.e(TAG, "sendAudio error: ${e.message}")
         }
@@ -192,16 +180,16 @@ class GeminiClient(
     // ══════════════════════════════════════════════════════════════════════════
 
     /**
-     * Запускает цикл приёма ответов от Gemini через session.receive().
+     * Запускает цикл приёма ответов через session.receive().
      *
-     * Из документации Firebase (Kotlin):
-     *   session.receive().collect {
-     *       if (it.turnComplete) { session.stopReceiving() }
-     *       playAudio(it.data)
-     *   }
+     * FIX v3: Достаём данные через parts:
+     *   - Аудио: response.modelTurn?.parts?.filterIsInstance<InlineDataPart>()
+     *   - Function calls: response.modelTurn?.parts?.filterIsInstance<FunctionCallPart>()
+     *   - Turn complete: response.turnComplete
      *
-     * PCM байты эмитятся в [audioOutput] → AudioTrack + AvatarAudioAnalyzer.
-     * Function calls обрабатываются через [onFunctionCall].
+     * ⚠️ Если receive() возвращает Flow с wrapper-типом (LiveServerResponse),
+     *    нужно будет добавить .serverContent или .message перед .modelTurn.
+     *    CI покажет точную ошибку.
      */
     suspend fun startReceiving(
         onFunctionCall: suspend (FunctionCallPart) -> FunctionResponsePart,
@@ -216,55 +204,70 @@ class GeminiClient(
         Log.d(TAG, "startReceiving: начинаю приём ответов")
 
         try {
-            // ⚠️COMPILE_CHECK: session.receive() возвращает Flow<???>.
-            // Из документации — элементы имеют .data (ByteArray?) и .turnComplete (Boolean).
-            // Если тип другой (LiveServerResponse, LiveContentResponse) — исправим по ошибке CI.
             session.receive().collect { response ->
                 if (!receiving) return@collect
 
-                // ── PCM audio data ───────────────────────────────────────
-                // ⚠️COMPILE_CHECK: response.data — может быть .audioData, .bytes, или
-                //   нужно доставать из response.serverContent?.modelTurn?.parts
-                //     ?.filterIsInstance<InlineDataPart>()
-                //     ?.firstOrNull { it.mimeType.startsWith("audio") }?.bytes
-                val pcmData = response.data
-                if (pcmData != null && pcmData.isNotEmpty()) {
-                    if (!_modelSpeaking.value) {
-                        _modelSpeaking.value = true
-                        onTurnStarted()
-                        Log.d(TAG, "Model turn started")
+                // Логируем тип для диагностики (первые 5 раз)
+                Log.d(TAG, "receive: ${response::class.simpleName}")
+
+                // ── Достаём parts из modelTurn ───────────────────────────
+                // ⚠️ Если modelTurn не компилится, попробовать:
+                //   response.serverContent?.modelTurn?.parts
+                //   response.content?.parts
+                //   response.message?.modelTurn?.parts
+                val parts = response.modelTurn?.parts ?: emptyList()
+
+                // ── Аудио (InlineDataPart с PCM 24kHz) ───────────────────
+                for (part in parts) {
+                    if (part is InlineDataPart) {
+                        if (part.mimeType.startsWith("audio")) {
+                            val audioBytes = part.bytes
+                            if (audioBytes.isNotEmpty()) {
+                                if (!_modelSpeaking.value) {
+                                    _modelSpeaking.value = true
+                                    onTurnStarted()
+                                    Log.d(TAG, "Model turn started")
+                                }
+                                _audioOutput.tryEmit(audioBytes)
+                            }
+                        }
                     }
-                    _audioOutput.tryEmit(pcmData)
                 }
 
                 // ── Function calls ───────────────────────────────────────
-                // ⚠️COMPILE_CHECK: response.functionCalls — может не существовать.
-                //   Альтернатива: response.serverContent?.modelTurn?.parts
-                //     ?.filterIsInstance<FunctionCallPart>()
-                response.functionCalls.forEach { functionCall ->
-                    Log.d(TAG, "Function call: ${functionCall.name}")
-                    try {
-                        val result = onFunctionCall(functionCall)
-                        session.send(content { part(result) })
-                        Log.d(TAG, "Function response sent: ${functionCall.name}")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Function call error: ${functionCall.name}", e)
-                        val errorJson = kotlinx.serialization.json.JsonObject(
-                            mapOf("error" to kotlinx.serialization.json.JsonPrimitive(
-                                e.message ?: "function execution failed"
-                            ))
-                        )
-                        runCatching {
-                            session.send(content {
-                                part(FunctionResponsePart(functionCall.name, errorJson, functionCall.id))
-                            })
+                for (part in parts) {
+                    if (part is FunctionCallPart) {
+                        Log.d(TAG, "Function call: ${part.name}")
+                        try {
+                            val result = onFunctionCall(part)
+                            session.send(content { part(result) })
+                            Log.d(TAG, "Function response sent: ${part.name}")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Function call error: ${part.name}", e)
+                            val errorJson = kotlinx.serialization.json.JsonObject(
+                                mapOf("error" to kotlinx.serialization.json.JsonPrimitive(
+                                    e.message ?: "function execution failed"
+                                ))
+                            )
+                            runCatching {
+                                session.send(content {
+                                    part(FunctionResponsePart(part.name, errorJson, part.id))
+                                })
+                            }
                         }
                     }
                 }
 
                 // ── Turn complete ────────────────────────────────────────
-                // ⚠️COMPILE_CHECK: response.turnComplete — может быть Boolean или Boolean?
-                if (response.turnComplete == true) {
+                // ⚠️ Если turnComplete не компилится, попробовать:
+                //   response.serverContent?.turnComplete
+                //   response.status == "TURN_COMPLETE"  (enum/string)
+                val turnDone = try {
+                    response.turnComplete
+                } catch (_: Exception) {
+                    false
+                }
+                if (turnDone == true) {
                     _modelSpeaking.value = false
                     onTurnComplete()
                     Log.d(TAG, "Model turn complete")
@@ -295,7 +298,6 @@ class GeminiClient(
 
     // ══════════════════════════════════════════════════════════════════════════
     //  FALLBACK: старые методы (SDK-управляемый режим)
-    //  Оставлены для быстрого отката если ручной режим не заработает.
     // ══════════════════════════════════════════════════════════════════════════
 
     /** [FALLBACK] SDK-управляемый голосовой разговор. */
@@ -325,7 +327,7 @@ class GeminiClient(
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    //  TEXT / DISCONNECT / RELEASE — без изменений от v1
+    //  TEXT / DISCONNECT / RELEASE — без изменений
     // ══════════════════════════════════════════════════════════════════════════
 
     suspend fun sendText(text: String) {
@@ -369,7 +371,7 @@ class GeminiClient(
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    //  Маппинг функций — без изменений от v1
+    //  Маппинг функций — без изменений
     // ══════════════════════════════════════════════════════════════════════════
 
     private fun mapToFirebaseDeclaration(decl: GeminiFunctionDeclaration): FunctionDeclaration? {
