@@ -78,7 +78,13 @@ class VoiceCoreEngineImpl(
 
     // ── Coroutine infrastructure ──────────────────────────────────────────────
 
-    private val engineScope    = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val crashHandler = CoroutineExceptionHandler { _, throwable ->
+        com.voicedeutsch.master.util.CrashLogger.getInstance()?.logCrash(throwable)
+            ?: android.util.Log.e("VoiceCore", "Unhandled coroutine crash", throwable)
+        com.google.firebase.crashlytics.FirebaseCrashlytics.getInstance().recordException(throwable)
+    }
+
+    private val engineScope    = CoroutineScope(SupervisorJob() + Dispatchers.Main + crashHandler)
     private val lifecycleMutex = Mutex()
 
     // ── State ─────────────────────────────────────────────────────────────────
@@ -279,7 +285,7 @@ class VoiceCoreEngineImpl(
             activeUserId    = userId
             sessionStartMs  = System.currentTimeMillis()
             durationJob?.cancel()
-            durationJob = engineScope.launch {
+            durationJob = engineScope.launch(crashHandler) {
                 while (isActive) {
                     delay(1000L)
                     updateState { copy(sessionDurationMs = System.currentTimeMillis() - sessionStartMs) }
@@ -392,7 +398,7 @@ class VoiceCoreEngineImpl(
         // Немедленно переводим состояние в RECORDING, чтобы amplitudeFlow начал генерацию
         transitionAudio(AudioState.RECORDING)
 
-        engineScope.launch {
+        engineScope.launch(crashHandler) {
             try {
                 geminiClient.startConversation(::handleFunctionCall)
                 // Сюда попадём только после окончания разговора (например, при stopConversation)
@@ -412,7 +418,7 @@ class VoiceCoreEngineImpl(
         if (!_sessionState.value.isListening) return
         transitionAudio(AudioState.IDLE)
 
-        engineScope.launch {
+        engineScope.launch(crashHandler) {
             runCatching { geminiClient.stopConversation() }
                 .onFailure { Log.w(TAG, "stopConversation failed: ${it.message}") }
         }
@@ -540,7 +546,7 @@ class VoiceCoreEngineImpl(
         val maxAttempts = config?.reconnectMaxAttempts ?: GeminiConfig.DEFAULT_RECONNECT_ATTEMPTS
         Log.e(TAG, "Session error [attempts=${reconnectAttempts.get()}/$maxAttempts]: ${error.message}", error)
 
-        engineScope.launch {
+        engineScope.launch(crashHandler) {
             if (!reconnectMutex.tryLock()) {
                 Log.w(TAG, "handleSessionError: reconnect already in progress — ignoring")
                 return@launch
