@@ -4,6 +4,8 @@ import android.content.ContentValues
 import android.content.Context
 import android.os.Build
 import android.provider.MediaStore
+import com.google.firebase.crashlytics.ktx.crashlytics
+import com.google.firebase.ktx.Firebase
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -58,6 +60,10 @@ class CrashLogger private constructor(
     private fun install() {
         try {
             Thread.setDefaultUncaughtExceptionHandler(this)
+            val handler = this
+            Thread.getAllStackTraces().keys.forEach { thread ->
+                if (!thread.isDaemon) thread.setUncaughtExceptionHandler(handler)
+            }
             android.util.Log.i(TAG, "✅ CrashLogger installed")
             android.util.Log.i(TAG, "📁 Logs directory: ${logDirectory.absolutePath}")
         } catch (e: Exception) {
@@ -210,7 +216,10 @@ class CrashLogger private constructor(
         }?.sortedByDescending { it.timestamp } ?: emptyList()
     }
 
-    fun getLatestCrashLog(): File? = getAllLogs().firstOrNull { it.type == LogType.CRASH }?.file
+    fun getLatestCrashLog(): File? {
+        val fifteenMinutesAgo = System.currentTimeMillis() - (15 * 60 * 1000)
+        return getAllLogs().firstOrNull { it.type == LogType.CRASH && it.timestamp >= fifteenMinutesAgo }?.file
+    }
 
     fun cleanOldLogs(keepCount: Int = 20) {
         val all = getAllLogs()
@@ -292,6 +301,15 @@ class CrashLogger private constructor(
             append("=".repeat(70)).append("\n")
             lines.drop(lines.size / 2).forEach { appendLine(it) }
         }
+    }
+
+    fun logCrash(throwable: Throwable) {
+        val ts = timestamp()
+        saveCrashLog(throwable, Thread.currentThread(), ts)
+        dumpSessionLog(ts)
+        val crashFile = File(logDirectory, "${CRASH_PREFIX}${ts}.txt")
+        android.util.Log.e(TAG, "Crash saved: ${crashFile.name}", throwable)
+        Firebase.crashlytics.recordException(throwable)
     }
 
     fun hasPendingCrashLog(): Boolean = getLatestCrashLog() != null
