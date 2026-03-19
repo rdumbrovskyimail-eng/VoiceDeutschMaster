@@ -1,4 +1,3 @@
-```kotlin
 package com.voicedeutsch.master.presentation.screen.session
 
 import android.util.Log
@@ -98,7 +97,4 @@ class AvatarViewModel(
         runCatching { audioCapture.stop() }
         audioAnalyzer.reset()
     }
-}
-```
-
-Изменения минимальные: убран `var avatarSceneView`, убран импорт `isActive` (он больше не нужен), и `startAvatar()` заменён на заглушку с комментарием.
+} 
