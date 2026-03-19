@@ -19,6 +19,7 @@ import com.voicedeutsch.master.voicecore.session.ConnectionState
 import com.voicedeutsch.master.voicecore.session.VoiceEngineState
 import com.voicedeutsch.master.voicecore.session.VoiceSessionState
 import com.voicedeutsch.master.voicecore.strategy.StrategySelector
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -45,6 +46,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
