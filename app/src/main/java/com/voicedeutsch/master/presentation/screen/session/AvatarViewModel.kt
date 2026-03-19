@@ -10,9 +10,24 @@ import com.voicedeutsch.master.voicecore.engine.AvatarAudioData
 import com.voicedeutsch.master.voicecore.engine.AvatarGender
 import com.voicedeutsch.master.voicecore.engine.VoiceCoreEngine
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.SharingStarted
+</replace>
+<block>
+<search>
+    companion object {
+        private const val TAG = "AvatarVM"
+    }
+</search>
+<replace>
+    companion object {
+        private const val TAG = "AvatarVM"
+    }
+
+    var avatarSceneView: io.github.sceneview.SceneView? = null
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
@@ -55,7 +70,26 @@ class AvatarViewModel(
             .launchIn(viewModelScope)
     }
 
+    fun startAvatar() {
+        viewModelScope.launch {
+            while (isActive) {
+                delay(16) // ~60 fps
+                avatarSceneView?.requestRender()
+            }
+        }
+    }
+
+    fun startAvatar() {
+        viewModelScope.launch {
+            while (isActive) {
+                delay(16) // ~60 fps
+                avatarSceneView?.requestRender()
+            }
+        }
+    }
+
     fun startCapture() {
+        startAvatar()
         viewModelScope.launch {
             val maxWaitMs = 15_000L
             val startMs = System.currentTimeMillis()
