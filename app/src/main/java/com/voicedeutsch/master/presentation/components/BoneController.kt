@@ -67,6 +67,14 @@ class BoneController(private val engine: Engine) {
     // Cache of already-logged rotate() misses (to avoid 30fps log spam)
     private val loggedMisses = mutableSetOf<String>()
 
+    // Idle animation state
+    private var idleTime = 0f
+    private companion object IdleConfig {
+        const val IDLE_SPEED = 0.8f          // cycles per second
+        const val IDLE_AMPLITUDE_YAW = 1.2f  // degrees left/right
+        const val IDLE_AMPLITUDE_PITCH = 0.6f // degrees forward/back
+    }
+
     /**
      * Scans all entities, discovers bones by matching naming conventions.
      * After init(), you can call rotate("Head", ...) regardless of the actual
@@ -221,6 +229,31 @@ class BoneController(private val engine: Engine) {
         tm.setTransform(inst, m)
     }
 
+    /**
+     * Updates idle animations and head movement each frame.
+     * Call this from your render loop with the elapsed time in seconds.
+     *
+     * @param deltaTime Elapsed time since last frame, in seconds.
+     */
+    fun update(deltaTime: Float) {
+        if (bones.isEmpty()) return
+
+        // Idle breathing: gentle spine sway on Y axis
+        idleTime += deltaTime
+        val idleYaw = sin(idleTime * IDLE_SPEED) * IDLE_AMPLITUDE_YAW
+        val idlePitch = sin(idleTime * IDLE_SPEED * 0.5f) * IDLE_AMPLITUDE_PITCH
+
+        if (hasBone("Spine")) rotate("Spine", idlePitch * 0.3f, idleYaw * 0.3f, 0f)
+        if (hasBone("Spine1")) rotate("Spine1", idlePitch * 0.4f, idleYaw * 0.4f, 0f)
+        if (hasBone("Spine2")) rotate("Spine2", idlePitch * 0.3f, idleYaw * 0.3f, 0f)
+
+        // Head follows idle with a slight additional subtle nod
+        val headPitch = idlePitch * 0.5f + sin(idleTime * IDLE_SPEED * 1.3f) * 0.3f
+        val headYaw   = idleYaw * 0.5f
+        if (hasBone("Head")) rotate("Head", headPitch, headYaw, 0f)
+        if (hasBone("Neck")) rotate("Neck", headPitch * 0.5f, headYaw * 0.5f, 0f)
+    }
+
     /** Resets a bone to its original bind-pose. */
     fun reset(name: String) {
         val state = bones[name] ?: return
@@ -241,6 +274,7 @@ class BoneController(private val engine: Engine) {
         bones.clear()
         allEntityNames.clear()
         loggedMisses.clear()
+        idleTime = 0f
     }
 
     fun isReady() = bones.isNotEmpty()
