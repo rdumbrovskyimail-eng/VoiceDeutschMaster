@@ -2,6 +2,7 @@ package com.voicedeutsch.master.presentation.components
 
 import android.util.Log
 import androidx.compose.runtime.*
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Modifier
 import com.voicedeutsch.master.voicecore.engine.AvatarAudioData
 import com.voicedeutsch.master.voicecore.engine.AvatarGender
@@ -86,6 +87,9 @@ fun AvatarSceneView(
         }
     }
 
+    var idleAnimIndex by remember { mutableIntStateOf(-1) }
+    var idleAnimTime by remember { mutableFloatStateOf(0f) }
+
     // ── Scene rendering ────────────────────────────────────────────────
     Scene(
         modifier = modifier,
@@ -96,24 +100,24 @@ fun AvatarSceneView(
         onFrame = { frameTime ->
             if (!isDisposed.value && modelNode != null) {
                 val audio = currentAudio.value
-                val dt = (frameTime.intervalSeconds).toFloat().coerceIn(0.008f, 0.1f)
+                val dt = 0.016f
                 val frame = behavior.update(audio, dt)
                 applyFrame(frame, boneCtrl, morphCtrl)
 
-                // Play idle animation if no animation is currently running
                 modelNode?.modelInstance?.animator?.let { animator ->
-                    val animCount = animator.animationCount
-                    if (animCount > 0) {
-                        var idleIndex = -1
-                        for (i in 0 until animCount) {
-                            if (animator.getAnimationName(i).lowercase().contains("idle")) {
-                                idleIndex = i
-                                break
-                            }
+                    val count = animator.animationCount
+                    if (count > 0) {
+                        // Найти idle-анимацию один раз
+                        if (idleAnimIndex < 0) {
+                            idleAnimIndex = (0 until count).indexOfFirst {
+                                animator.getAnimationName(it).lowercase().contains("idle")
+                            }.takeIf { it >= 0 } ?: 0
                         }
-                        if (idleIndex >= 0 && !animator.isPlaying(idleIndex)) {
-                            animator.setLooping(idleIndex, true)
-                            animator.play(idleIndex)
+                        val duration = animator.getAnimationDuration(idleAnimIndex)
+                        if (duration > 0f) {
+                            idleAnimTime = (idleAnimTime + dt) % duration
+                            animator.applyAnimation(idleAnimIndex, idleAnimTime)
+                            animator.updateBoneMatrices()
                         }
                     }
                 }
@@ -127,14 +131,9 @@ fun AvatarSceneView(
             Log.d(TAG, "⏹ DisposableEffect onDispose — начинаю cleanup")
             isDisposed.value = true
 
-            // Stop any running animations
-            runCatching {
-                modelNode?.modelInstance?.animator?.let { animator ->
-                    for (i in 0 until animator.animationCount) {
-                        animator.stop(i)
-                    }
-                }
-            }.onFailure { e -> Log.w(TAG, "animator.stop() failed: ${e.message}") }
+            // Filament 1.52: нет метода stop(), просто сбрасываем время
+            idleAnimTime = 0f
+            idleAnimIndex = -1
 
             // Даём animation loop 1 кадр завершиться (проверяет isDisposed)
             // Это гарантирует что BoneController/MorphTargetHelper не пишут в Filament entities
