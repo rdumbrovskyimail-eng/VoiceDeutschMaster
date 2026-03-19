@@ -12,22 +12,7 @@ import com.voicedeutsch.master.voicecore.engine.VoiceCoreEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.SharingStarted
-</replace>
-<block>
-<search>
-    companion object {
-        private const val TAG = "AvatarVM"
-    }
-</search>
-<replace>
-    companion object {
-        private const val TAG = "AvatarVM"
-    }
-
-    var avatarSceneView: io.github.sceneview.SceneView? = null
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
@@ -57,6 +42,8 @@ class AvatarViewModel(
         private const val TAG = "AvatarVM"
     }
 
+    var avatarSceneView: io.github.sceneview.SceneView? = null
+
     val audioData: StateFlow<AvatarAudioData> = audioAnalyzer.audioData
 
     val gender: StateFlow<AvatarGender> = avatarRepository.observeGenderChanges()
@@ -69,6 +56,56 @@ class AvatarViewModel(
             .catch { e -> Log.w(TAG, "synthetic error: ${e.message}") }
             .launchIn(viewModelScope)
     }
+
+    fun startAvatar() {
+        viewModelScope.launch {
+            while (isActive) {
+                delay(16) // ~60 fps
+                avatarSceneView?.requestRender()
+            }
+        }
+    }
+
+    fun startCapture() {
+        startAvatar()
+        viewModelScope.launch {
+            val maxWaitMs = 15_000L
+            val startMs = System.currentTimeMillis()
+            while (System.currentTimeMillis() - startMs < maxWaitMs) {
+                val am = context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+                if (am.activePlaybackConfigurations.isNotEmpty()) break
+                delay(500L)
+            }
+            delay(1000L)
+
+            val started = try {
+                withContext(Dispatchers.IO) { audioCapture.startWithDiscovery(context) }
+            } catch (e: Exception) {
+                Log.e(TAG, "Visualizer start failed", e)
+                false
+            }
+
+            if (started) {
+                Log.d(TAG, "✅ Visualizer active")
+                audioCapture.frames
+                    .conflate()
+                    .onEach { frame -> audioAnalyzer.onAudioFrame(frame) }
+                    .catch { e -> Log.e(TAG, "Frame error", e) }
+                    .launchIn(viewModelScope)
+            } else {
+                Log.w(TAG, "⚠ Visualizer unavailable — synthetic fallback")
+            }
+        }
+    }
+
+    fun triggerHappy() = audioAnalyzer.triggerHappy()
+
+    override fun onCleared() {
+        super.onCleared()
+        runCatching { audioCapture.stop() }
+        audioAnalyzer.reset()
+    }
+}
 
     fun startAvatar() {
         viewModelScope.launch {
