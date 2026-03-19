@@ -218,6 +218,8 @@ class MorphTargetHelper(private val engine: Engine) {
                 "mouthSmile"  to mouthSmile,
             )
         )
+
+        Log.d(TAG, "updateFromAudio: rms=$rms spectral=$spectral → jaw=$jawOpen mouth=$mouthOpen pucker=$mouthPucker smile=$mouthSmile")
     }
 
     /**
