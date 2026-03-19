@@ -84,4 +84,9 @@ class PerlinNoise(seed: Long = System.nanoTime()) {
         2 -> x - y
         else -> -x - y
     }
+
+    /** Convenience method for AvatarBehaviorEngine — returns breathing + head jitter */
+    fun update(time: Float): Float {
+        return fbm(time * 0.8f, octaves = 4, lacunarity = 2.2f, gain = 0.45f)
+    }
 }
