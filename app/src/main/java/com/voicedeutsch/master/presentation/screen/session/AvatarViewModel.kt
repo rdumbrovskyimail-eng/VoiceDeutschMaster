@@ -1,3 +1,4 @@
+```kotlin
 package com.voicedeutsch.master.presentation.screen.session
 
 import android.util.Log
@@ -11,7 +12,6 @@ import com.voicedeutsch.master.voicecore.engine.AvatarGender
 import com.voicedeutsch.master.voicecore.engine.VoiceCoreEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
@@ -42,8 +42,6 @@ class AvatarViewModel(
         private const val TAG = "AvatarVM"
     }
 
-    var avatarSceneView: io.github.sceneview.SceneView? = null
-
     val audioData: StateFlow<AvatarAudioData> = audioAnalyzer.audioData
 
     val gender: StateFlow<AvatarGender> = avatarRepository.observeGenderChanges()
@@ -58,12 +56,7 @@ class AvatarViewModel(
     }
 
     fun startAvatar() {
-        viewModelScope.launch {
-            while (isActive) {
-                delay(16) // ~60 fps
-                avatarSceneView?.requestRender()
-            }
-        }
+        // SceneView 2.x renders continuously via Filament — no manual requestRender() needed
     }
 
     fun startCapture() {
@@ -106,3 +99,6 @@ class AvatarViewModel(
         audioAnalyzer.reset()
     }
 }
+```
+
+Изменения минимальные: убран `var avatarSceneView`, убран импорт `isActive` (он больше не нужен), и `startAvatar()` заменён на заглушку с комментарием.
