@@ -1,4 +1,3 @@
-```kotlin
 package com.voicedeutsch.master.voicecore.engine
 
 import android.annotation.SuppressLint
@@ -10,12 +9,12 @@ import android.util.Log
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.AudioTranscriptionConfig
+import com.google.firebase.ai.type.BlobPart
 import com.google.firebase.ai.type.FunctionCallPart
 import com.google.firebase.ai.type.FunctionDeclaration
 import com.google.firebase.ai.type.FunctionResponsePart
 import com.google.firebase.ai.type.GenerativeBackend
 import com.google.firebase.ai.type.InlineData
-import com.google.firebase.ai.type.InlineDataPart
 import com.google.firebase.ai.type.LiveSession
 import com.google.firebase.ai.type.PublicPreviewAPI
 import com.google.firebase.ai.type.ResponseModality
@@ -49,16 +48,14 @@ class GeminiClient(
     companion object {
         private const val TAG = "GeminiClient"
 
-        // Микрофон: 16kHz, 16bit PCM little-endian
-        private const val MIC_SAMPLE_RATE   = 16_000
-        private const val MIC_CHANNEL_IN    = AudioFormat.CHANNEL_IN_MONO
-        private const val MIC_ENCODING      = AudioFormat.ENCODING_PCM_16BIT
-        private const val MIC_MIME          = "audio/pcm;rate=16000"
+        private const val MIC_SAMPLE_RATE = 16_000
+        private const val MIC_CHANNEL_IN  = AudioFormat.CHANNEL_IN_MONO
+        private const val MIC_ENCODING    = AudioFormat.ENCODING_PCM_16BIT
+        private const val MIC_MIME        = "audio/pcm;rate=16000"
 
-        // Спикер: 24kHz, 16bit PCM little-endian (Gemini output)
-        private const val SPK_SAMPLE_RATE   = 24_000
-        private const val SPK_CHANNEL_OUT   = AudioFormat.CHANNEL_OUT_MONO
-        private const val SPK_ENCODING      = AudioFormat.ENCODING_PCM_16BIT
+        private const val SPK_SAMPLE_RATE = 24_000
+        private const val SPK_CHANNEL_OUT = AudioFormat.CHANNEL_OUT_MONO
+        private const val SPK_ENCODING    = AudioFormat.ENCODING_PCM_16BIT
     }
 
     // ── Session ───────────────────────────────────────────────────────────────
@@ -73,12 +70,12 @@ class GeminiClient(
         private set
 
     data class TokenUsage(
-        val promptTokenCount: Int    = 0,
-        val responseTokenCount: Int  = 0,
-        val totalTokenCount: Int     = 0,
+        val promptTokenCount: Int   = 0,
+        val responseTokenCount: Int = 0,
+        val totalTokenCount: Int    = 0,
     )
 
-    // ── Manual audio infra ────────────────────────────────────────────────────
+    // ── Audio infra ───────────────────────────────────────────────────────────
 
     private val audioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -131,16 +128,8 @@ class GeminiClient(
         }
     }
 
-    // ── START / STOP CONVERSATION (ручной режим) ──────────────────────────────
+    // ── START CONVERSATION ────────────────────────────────────────────────────
 
-    /**
-     * Запускает ручной режим:
-     *  - AudioRecord → sendAudioRealtime (отправка PCM на Gemini)
-     *  - session.receive() → AudioTrack (воспроизведение ответа)
-     *  - function calls → onFunctionCall callback
-     *
-     * Блокирует до вызова stopConversation().
-     */
     @SuppressLint("MissingPermission")
     suspend fun startConversation(
         onFunctionCall: (FunctionCallPart) -> FunctionResponsePart,
@@ -150,7 +139,7 @@ class GeminiClient(
 
         Log.d(TAG, "startConversation: запуск ручного режима")
 
-        // ── AudioTrack для воспроизведения ответа ────────────────────────────
+        // AudioTrack для воспроизведения
         val bufSize = AudioTrack.getMinBufferSize(SPK_SAMPLE_RATE, SPK_CHANNEL_OUT, SPK_ENCODING)
         val track = AudioTrack.Builder()
             .setAudioFormat(
@@ -166,7 +155,7 @@ class GeminiClient(
         track.play()
         audioTrack = track
 
-        // ── Запись микрофона и отправка в Gemini ─────────────────────────────
+        // Запись микрофона → Gemini
         recordJob = audioScope.launch {
             val minBuf = AudioRecord.getMinBufferSize(MIC_SAMPLE_RATE, MIC_CHANNEL_IN, MIC_ENCODING)
             val recorder = AudioRecord(
@@ -184,10 +173,9 @@ class GeminiClient(
                 while (isActive) {
                     val read = recorder.read(buf, 0, buf.size)
                     if (read > 0) {
-                        val chunk = buf.copyOf(read)
                         runCatching {
-                            session.sendAudioRealtime(InlineData(chunk, MIC_MIME))
-                        }.onFailure { Log.w(TAG, "sendAudioRealtime error: ${it.message}") }
+                            session.sendAudioRealtime(InlineData(buf.copyOf(read), MIC_MIME))
+                        }.onFailure { Log.w(TAG, "sendAudioRealtime: ${it.message}") }
                     }
                 }
             } finally {
@@ -197,32 +185,41 @@ class GeminiClient(
             }
         }
 
-        // ── Приём ответа от Gemini ────────────────────────────────────────────
+        // Приём ответа от Gemini
         receiveJob = audioScope.launch {
             Log.d(TAG, "receive loop started")
             try {
                 session.receive().collect { response ->
-                    // Аудио PCM 24kHz
-                    val parts = response.serverContent?.modelTurn?.parts
-                    parts?.forEach { part ->
-                        if (part is InlineDataPart) {
-                            val pcm = part.data
-                            if (pcm.isNotEmpty()) {
-                                audioTrack?.write(pcm, 0, pcm.size)
-                            }
-                        }
-                        if (part is FunctionCallPart) {
-                            Log.d(TAG, "Function call: ${part.name}")
-                            try {
-                                val result = onFunctionCall(part)
-                                session.send(content { part(result) })
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Function call error: ${part.name}", e)
+                    // В firebase-ai 17.x ответ приходит через candidates
+                    response.candidates?.forEach { candidate ->
+                        candidate.content?.parts?.forEach { part ->
+                            when (part) {
+                                is BlobPart -> {
+                                    val pcm = part.blob.data
+                                    if (pcm.isNotEmpty()) {
+                                        audioTrack?.write(pcm, 0, pcm.size)
+                                    }
+                                }
+                                is FunctionCallPart -> {
+                                    Log.d(TAG, "Function call: ${part.name}")
+                                    runCatching {
+                                        val result = onFunctionCall(part)
+                                        session.send(content { part(result) })
+                                    }.onFailure {
+                                        Log.e(TAG, "Function call error: ${part.name}", it)
+                                    }
+                                }
+                                else -> Unit
                             }
                         }
                     }
-                    if (response.serverContent?.turnComplete == true) {
-                        Log.d(TAG, "Turn complete")
+                    // usageMetadata если есть
+                    response.usageMetadata?.let { meta ->
+                        lastTokenUsage = TokenUsage(
+                            promptTokenCount   = meta.promptTokenCount   ?: 0,
+                            responseTokenCount = meta.candidatesTokenCount ?: 0,
+                            totalTokenCount    = meta.totalTokenCount    ?: 0,
+                        )
                     }
                 }
             } catch (e: Exception) {
@@ -232,13 +229,11 @@ class GeminiClient(
             }
         }
 
-        // Ждём завершения receive (до stopConversation)
         receiveJob?.join()
     }
 
-    /**
-     * Останавливает ручной режим.
-     */
+    // ── STOP ──────────────────────────────────────────────────────────────────
+
     suspend fun stopConversation() {
         Log.d(TAG, "stopConversation")
         recordJob?.cancelAndJoin()
@@ -258,7 +253,7 @@ class GeminiClient(
             return
         }
         runCatching { session.send(content { text(text) }) }
-            .onFailure { Log.e(TAG, "sendText error: ${it.message}") }
+            .onFailure { Log.e(TAG, "sendText: ${it.message}") }
     }
 
     // ── DISCONNECT ────────────────────────────────────────────────────────────
@@ -325,4 +320,3 @@ class GeminiConnectionException(
     message: String,
     cause: Throwable? = null,
 ) : Exception(message, cause)
-```
