@@ -1,25 +1,18 @@
 package com.voicedeutsch.master.voicecore.engine
 
-import android.annotation.SuppressLint
-import android.media.AudioFormat
-import android.media.AudioRecord
-import android.media.AudioTrack
-import android.media.MediaRecorder
 import android.util.Log
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
-import com.google.firebase.ai.type.AudioTranscriptionConfig
-import com.google.firebase.ai.type.BlobPart
 import com.google.firebase.ai.type.FunctionCallPart
 import com.google.firebase.ai.type.FunctionDeclaration
 import com.google.firebase.ai.type.FunctionResponsePart
-import com.google.firebase.ai.type.GenerativeBackend
-import com.google.firebase.ai.type.InlineData
 import com.google.firebase.ai.type.LiveSession
 import com.google.firebase.ai.type.PublicPreviewAPI
 import com.google.firebase.ai.type.ResponseModality
 import com.google.firebase.ai.type.Schema
+import com.google.firebase.ai.type.AudioTranscriptionConfig
 import com.google.firebase.ai.type.SpeechConfig
+import com.google.firebase.ai.type.GenerativeBackend
 import com.google.firebase.ai.type.Tool
 import com.google.firebase.ai.type.Voice
 import com.google.firebase.ai.type.content
@@ -27,17 +20,15 @@ import com.google.firebase.ai.type.liveGenerationConfig
 import com.voicedeutsch.master.voicecore.context.ContextBuilder
 import com.voicedeutsch.master.voicecore.functions.GeminiFunctionDeclaration
 import com.voicedeutsch.master.voicecore.functions.GeminiProperty
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withTimeout
-
+/**
+ * GeminiClient — обёртка над Firebase AI Logic Live API SDK.
+ *
+ * Использует startAudioConversation / stopAudioConversation:
+ * SDK **сам** управляет микрофоном, отправкой аудио, приёмом ответов,
+ * воспроизведением голоса AI, обработкой function calls через callback.
+ */
 @OptIn(PublicPreviewAPI::class)
 class GeminiClient(
     config: GeminiConfig,
@@ -47,18 +38,7 @@ class GeminiClient(
 
     companion object {
         private const val TAG = "GeminiClient"
-
-        private const val MIC_SAMPLE_RATE = 16_000
-        private const val MIC_CHANNEL_IN  = AudioFormat.CHANNEL_IN_MONO
-        private const val MIC_ENCODING    = AudioFormat.ENCODING_PCM_16BIT
-        private const val MIC_MIME        = "audio/pcm;rate=16000"
-
-        private const val SPK_SAMPLE_RATE = 24_000
-        private const val SPK_CHANNEL_OUT = AudioFormat.CHANNEL_OUT_MONO
-        private const val SPK_ENCODING    = AudioFormat.ENCODING_PCM_16BIT
     }
-
-    // ── Session ───────────────────────────────────────────────────────────────
 
     @Volatile private var liveSession: LiveSession? = null
     private val sessionMutex = Mutex()
@@ -70,56 +50,67 @@ class GeminiClient(
         private set
 
     data class TokenUsage(
-        val promptTokenCount: Int   = 0,
+        val promptTokenCount: Int = 0,
         val responseTokenCount: Int = 0,
-        val totalTokenCount: Int    = 0,
+        val totalTokenCount: Int = 0,
     )
 
-    // ── Audio infra ───────────────────────────────────────────────────────────
+    // ── Public API ────────────────────────────────────────────────────────────
 
-    private val audioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-    @Volatile private var recordJob:  Job? = null
-    @Volatile private var receiveJob: Job? = null
-    @Volatile private var audioTrack: AudioTrack? = null
-
-    // ── CONNECT ───────────────────────────────────────────────────────────────
-
+    /**
+     * Подключается к Gemini Live API с полной конфигурацией.
+     */
     suspend fun connect(context: ContextBuilder.SessionContext) {
         try {
-            Log.d(TAG, "Connecting [model=${config.modelName}]")
+            Log.d(TAG, "Connecting to Gemini Live API [model=${config.modelName}]")
+
+            val declNames = context.functionDeclarations.map { it.name }
+            Log.d(TAG, "Function declarations to register (${declNames.size}): $declNames")
 
             val firebaseDeclarations = context.functionDeclarations.mapNotNull { decl ->
                 runCatching { mapToFirebaseDeclaration(decl) }
-                    .onFailure { Log.w(TAG, "Skip ${decl.name}: ${it.message}") }
+                    .onFailure { Log.w(TAG, "Skipping invalid function ${decl.name}: ${it.message}") }
                     .getOrNull()
             }
 
+            Log.d(TAG, "Successfully mapped ${firebaseDeclarations.size}/${declNames.size} declarations")
+
             val toolsList = buildList<Tool> {
-                if (firebaseDeclarations.isNotEmpty())
+                if (firebaseDeclarations.isNotEmpty()) {
                     add(Tool.functionDeclarations(firebaseDeclarations))
-                if (config.enableSearchGrounding)
+                }
+                if (config.enableSearchGrounding) {
                     add(Tool.googleSearch())
+                    Log.d(TAG, "Google Search grounding enabled")
+                }
             }
 
             val liveConfig = liveGenerationConfig {
                 responseModality = ResponseModality.AUDIO
-                speechConfig     = SpeechConfig(voice = Voice(config.voiceName))
-                if (config.transcriptionConfig.outputTranscriptionEnabled)
+                speechConfig = SpeechConfig(voice = Voice(config.voiceName))
+
+                if (config.transcriptionConfig.outputTranscriptionEnabled) {
                     outputAudioTranscription = AudioTranscriptionConfig()
-                if (config.transcriptionConfig.inputTranscriptionEnabled)
-                    inputAudioTranscription  = AudioTranscriptionConfig()
+                }
+                if (config.transcriptionConfig.inputTranscriptionEnabled) {
+                    inputAudioTranscription = AudioTranscriptionConfig()
+                }
             }
 
             val liveModel = Firebase.ai(backend = GenerativeBackend.googleAI()).liveModel(
-                modelName         = config.modelName,
-                generationConfig  = liveConfig,
+                modelName = config.modelName,
+                generationConfig = liveConfig,
                 systemInstruction = content { text(context.fullContext) },
-                tools             = toolsList,
+                tools = toolsList,
             )
 
-            val session = withTimeout(15_000L) { liveModel.connect() }
-            sessionMutex.withLock { liveSession = session }
+            val session = kotlinx.coroutines.withTimeout(15_000L) {
+                liveModel.connect()
+            }
+
+            sessionMutex.withLock {
+                liveSession = session
+            }
 
             Log.d(TAG, "LiveSession established")
         } catch (e: Exception) {
@@ -128,151 +119,77 @@ class GeminiClient(
         }
     }
 
-    // ── START CONVERSATION ────────────────────────────────────────────────────
-
-    @SuppressLint("MissingPermission")
+    /**
+     * Запускает голосовой разговор.
+     * SDK сам управляет микрофоном, отправкой/приёмом аудио и воспроизведением.
+     * Function calls обрабатываются синхронно через [onFunctionCall] callback.
+     */
     suspend fun startConversation(
         onFunctionCall: (FunctionCallPart) -> FunctionResponsePart,
     ) {
         val session = sessionMutex.withLock { liveSession }
             ?: throw GeminiConnectionException("startConversation: no active session")
 
-        Log.d(TAG, "startConversation: запуск ручного режима")
-
-        // AudioTrack для воспроизведения
-        val bufSize = AudioTrack.getMinBufferSize(SPK_SAMPLE_RATE, SPK_CHANNEL_OUT, SPK_ENCODING)
-        val track = AudioTrack.Builder()
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setSampleRate(SPK_SAMPLE_RATE)
-                    .setEncoding(SPK_ENCODING)
-                    .setChannelMask(SPK_CHANNEL_OUT)
-                    .build()
-            )
-            .setBufferSizeInBytes(bufSize * 4)
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .build()
-        track.play()
-        audioTrack = track
-
-        // Запись микрофона → Gemini
-        recordJob = audioScope.launch {
-            val minBuf = AudioRecord.getMinBufferSize(MIC_SAMPLE_RATE, MIC_CHANNEL_IN, MIC_ENCODING)
-            val recorder = AudioRecord(
-                MediaRecorder.AudioSource.VOICE_COMMUNICATION,
-                MIC_SAMPLE_RATE,
-                MIC_CHANNEL_IN,
-                MIC_ENCODING,
-                minBuf * 4,
-            )
-            recorder.startRecording()
-            Log.d(TAG, "AudioRecord started")
-
-            val buf = ByteArray(minBuf)
-            try {
-                while (isActive) {
-                    val read = recorder.read(buf, 0, buf.size)
-                    if (read > 0) {
-                        runCatching {
-                            session.sendAudioRealtime(InlineData(buf.copyOf(read), MIC_MIME))
-                        }.onFailure { Log.w(TAG, "sendAudioRealtime: ${it.message}") }
-                    }
-                }
-            } finally {
-                recorder.stop()
-                recorder.release()
-                Log.d(TAG, "AudioRecord stopped")
-            }
-        }
-
-        // Приём ответа от Gemini
-        receiveJob = audioScope.launch {
-            Log.d(TAG, "receive loop started")
-            try {
-                session.receive().collect { response ->
-                    // В firebase-ai 17.x ответ приходит через candidates
-                    response.candidates?.forEach { candidate ->
-                        candidate.content?.parts?.forEach { part ->
-                            when (part) {
-                                is BlobPart -> {
-                                    val pcm = part.blob.data
-                                    if (pcm.isNotEmpty()) {
-                                        audioTrack?.write(pcm, 0, pcm.size)
-                                    }
-                                }
-                                is FunctionCallPart -> {
-                                    Log.d(TAG, "Function call: ${part.name}")
-                                    runCatching {
-                                        val result = onFunctionCall(part)
-                                        session.send(content { part(result) })
-                                    }.onFailure {
-                                        Log.e(TAG, "Function call error: ${part.name}", it)
-                                    }
-                                }
-                                else -> Unit
-                            }
-                        }
-                    }
-                    // usageMetadata если есть
-                    response.usageMetadata?.let { meta ->
-                        lastTokenUsage = TokenUsage(
-                            promptTokenCount   = meta.promptTokenCount   ?: 0,
-                            responseTokenCount = meta.candidatesTokenCount ?: 0,
-                            totalTokenCount    = meta.totalTokenCount    ?: 0,
-                        )
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "receive loop ended: ${e.message}")
-            } finally {
-                Log.d(TAG, "receive loop finished")
-            }
-        }
-
-        receiveJob?.join()
+        session.startAudioConversation(onFunctionCall)
+        Log.d(TAG, "Audio conversation started")
     }
 
-    // ── STOP ──────────────────────────────────────────────────────────────────
-
+    /**
+     * Останавливает голосовой разговор.
+     * Микрофон и воспроизведение останавливаются SDK-ом.
+     */
     suspend fun stopConversation() {
-        Log.d(TAG, "stopConversation")
-        recordJob?.cancelAndJoin()
-        recordJob = null
-        receiveJob?.cancelAndJoin()
-        receiveJob = null
-        audioTrack?.stop()
-        audioTrack?.release()
-        audioTrack = null
-    }
-
-    // ── TEXT ──────────────────────────────────────────────────────────────────
-
-    suspend fun sendText(text: String) {
         val session = sessionMutex.withLock { liveSession } ?: run {
-            Log.w(TAG, "sendText: no session")
+            Log.w(TAG, "stopConversation: no active session")
             return
         }
-        runCatching { session.send(content { text(text) }) }
-            .onFailure { Log.e(TAG, "sendText: ${it.message}") }
+        runCatching {
+            kotlinx.coroutines.withTimeout(5000L) {
+                session.stopAudioConversation()
+            }
+            Log.d(TAG, "Audio conversation stopped")
+        }.onFailure { e ->
+            Log.w(TAG, "stopConversation error/timeout: ${e.message}")
+        }
     }
 
-    // ── DISCONNECT ────────────────────────────────────────────────────────────
-
+    /**
+     * Закрывает LiveSession и освобождает ресурсы соединения.
+     */
     suspend fun disconnect() {
-        stopConversation()
         try {
-            withTimeout(3_000L) {
+            kotlinx.coroutines.withTimeout(3000L) {
                 sessionMutex.withLock {
                     liveSession?.close()
                     liveSession = null
                 }
             }
-            Log.d(TAG, "Disconnected")
+            Log.d(TAG, "LiveSession closed")
         } catch (e: Exception) {
-            Log.w(TAG, "disconnect warning: ${e.message}")
-            sessionMutex.withLock { liveSession = null }
+            Log.w(TAG, "disconnect() warning/timeout: ${e.message}")
+            // Force nullify even on timeout
+            sessionMutex.withLock {
+                liveSession = null
+            }
         }
     }
+
+    /**
+     * Отправляет текстовое сообщение в Gemini Live API.
+     */
+    suspend fun sendText(text: String) {
+        val session = sessionMutex.withLock { liveSession } ?: run {
+            Log.w(TAG, "sendText: no active session")
+            return
+        }
+        runCatching {
+            session.send(content { text(text) })
+        }.onFailure { e ->
+            Log.e(TAG, "sendText error: ${e.message}", e)
+        }
+    }
+
+    // ── Release ───────────────────────────────────────────────────────────────
 
     fun release() {
         sessionResumptionHandle = null
@@ -283,36 +200,55 @@ class GeminiClient(
         sessionResumptionHandle = null
     }
 
-    // ── Function mapping ──────────────────────────────────────────────────────
+    // ── Нативный маппинг функций ──────────────────────────────────────────────
 
     private fun mapToFirebaseDeclaration(decl: GeminiFunctionDeclaration): FunctionDeclaration? {
         val params = decl.parameters
+
         if (params == null || params.properties.isEmpty()) {
+            Log.d(TAG, "  ${decl.name} — no parameters (injecting dummy optional param)")
             return FunctionDeclaration(
-                name               = decl.name,
-                description        = decl.description,
-                parameters         = mapOf("unused_parameter" to Schema.boolean("Ignored")),
-                optionalParameters = listOf("unused_parameter"),
+                name = decl.name,
+                description = decl.description,
+                parameters = mapOf(
+                    "unused_parameter" to Schema.boolean("Ignored parameter for Live API compatibility")
+                ),
+                optionalParameters = listOf("unused_parameter")
             )
         }
-        val properties = params.properties.mapValues { (_, p) -> mapPropertyToSchema(p) }
-        val optional   = properties.keys.filter { it !in params.required }
+
+        val properties = params.properties.mapValues { (_, prop) ->
+            mapPropertyToSchema(prop)
+        }
+
+        val optionalProperties = properties.keys.filter { it !in params.required }
+
+        Log.d(TAG, "  ${decl.name} — params: ${properties.keys}, " +
+                "required: ${params.required}, optional: $optionalProperties")
+
         return FunctionDeclaration(
-            name               = decl.name,
-            description        = decl.description,
-            parameters         = properties,
-            optionalParameters = optional,
+            name = decl.name,
+            description = decl.description,
+            parameters = properties,
+            optionalParameters = optionalProperties
         )
     }
 
-    private fun mapPropertyToSchema(prop: GeminiProperty): Schema = when (prop.type.uppercase()) {
-        "STRING"  -> if (prop.enum != null) Schema.enumeration(prop.enum, prop.description)
-                     else Schema.string(prop.description)
-        "INTEGER" -> Schema.integer(prop.description)
-        "NUMBER"  -> Schema.double(prop.description)
-        "BOOLEAN" -> Schema.boolean(prop.description)
-        "ARRAY"   -> Schema.array(Schema.string(), prop.description)
-        else      -> Schema.string(prop.description)
+    private fun mapPropertyToSchema(prop: GeminiProperty): Schema {
+        return when (prop.type.uppercase()) {
+            "STRING" -> {
+                if (prop.enum != null) {
+                    Schema.enumeration(values = prop.enum, description = prop.description)
+                } else {
+                    Schema.string(description = prop.description)
+                }
+            }
+            "INTEGER" -> Schema.integer(description = prop.description)
+            "NUMBER"  -> Schema.double(description = prop.description)
+            "BOOLEAN" -> Schema.boolean(description = prop.description)
+            "ARRAY"   -> Schema.array(items = Schema.string(), description = prop.description)
+            else      -> Schema.string(description = prop.description)
+        }
     }
 }
 
