@@ -99,6 +99,24 @@ fun AvatarSceneView(
                 val dt = (frameTime.intervalSeconds).toFloat().coerceIn(0.008f, 0.1f)
                 val frame = behavior.update(audio, dt)
                 applyFrame(frame, boneCtrl, morphCtrl)
+
+                // Play idle animation if no animation is currently running
+                modelNode?.modelInstance?.animator?.let { animator ->
+                    val animCount = animator.animationCount
+                    if (animCount > 0) {
+                        var idleIndex = -1
+                        for (i in 0 until animCount) {
+                            if (animator.getAnimationName(i).lowercase().contains("idle")) {
+                                idleIndex = i
+                                break
+                            }
+                        }
+                        if (idleIndex >= 0 && !animator.isPlaying(idleIndex)) {
+                            animator.setLooping(idleIndex, true)
+                            animator.play(idleIndex)
+                        }
+                    }
+                }
             }
         },
     )
@@ -108,6 +126,15 @@ fun AvatarSceneView(
         onDispose {
             Log.d(TAG, "⏹ DisposableEffect onDispose — начинаю cleanup")
             isDisposed.value = true
+
+            // Stop any running animations
+            runCatching {
+                modelNode?.modelInstance?.animator?.let { animator ->
+                    for (i in 0 until animator.animationCount) {
+                        animator.stop(i)
+                    }
+                }
+            }.onFailure { e -> Log.w(TAG, "animator.stop() failed: ${e.message}") }
 
             // Даём animation loop 1 кадр завершиться (проверяет isDisposed)
             // Это гарантирует что BoneController/MorphTargetHelper не пишут в Filament entities
