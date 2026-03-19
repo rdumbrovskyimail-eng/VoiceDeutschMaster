@@ -73,59 +73,16 @@ fun AvatarSceneView(
         }
     }
 
-    // ── Animation loop (30fps) ────────────────────────────────────────
+    // ── Diagnostic log (every 3s) ─────────────────────────────────────
     LaunchedEffect(modelNode) {
-        val node = modelNode ?: return@LaunchedEffect
-        var lastMs = System.currentTimeMillis()
-        var animFrameCount = 0
-        var lastAnimLogMs = System.currentTimeMillis()
-
+        if (modelNode == null) return@LaunchedEffect
         while (isActive && !isDisposed.value) {
-            val now = System.currentTimeMillis()
-            val dt = ((now - lastMs) / 1000f).coerceIn(0.008f, 0.1f)
-            lastMs = now
-
-            if ((boneCtrl.isReady() || morphCtrl.isReady()) && !isDisposed.value) {
-                runCatching {
-                    if (isDisposed.value) return@runCatching  // double-check after potential suspend
-                    val audio = currentAudio.value
-                    val frame = behavior.update(audio, dt)
-                    applyFrame(frame, boneCtrl, morphCtrl)
-
-                    // ✅ КРИТИЧНО: Принудительно инвалидируем SceneView.
-                    // BoneController и MorphTargetHelper меняют Filament entities
-                    // через TransformManager/RenderableManager напрямую,
-                    // но SceneView об этом не знает и не перерисовывает.
-                    // Принудительно инвалидируем позицию с микро-сдвигом (identity assignment
-                    // может быть оптимизирована SceneView). Epsilon = 1e-7 — невидимо глазу.
-                    val pos = node.position
-                    node.position = Position(
-                        x = pos.x + if ((animFrameCount % 2) == 0) 1e-7f else -1e-7f,
-                        y = pos.y,
-                        z = pos.z,
-                    )
-
-                    animFrameCount++
-
-                    // Диагностика каждые 3 секунды
-                    if (now - lastAnimLogMs > 3000L) {
-                        val headP = frame.head.pitch
-                        val jawOpen = frame.morphs["jawOpen"] ?: 0f
-                        val smile = frame.morphs["mouthSmile"] ?: 0f
-                        Log.d(TAG, "🦴 Anim: frames=$animFrameCount, " +
-                            "headPitch=${"%.1f".format(headP)}, " +
-                            "jaw=${"%.3f".format(jawOpen)}, smile=${"%.3f".format(smile)}, " +
-                            "audioAmp=${"%.3f".format(audio.amplitude)}, " +
-                            "speaking=${audio.isSpeaking}, emotion=${audio.emotion}")
-                        lastAnimLogMs = now
-                    }
-                }.onFailure { e ->
-                    if (!isDisposed.value) Log.w(TAG, "Frame apply failed: ${e.message}")
-                    break
-                }
+            delay(3000L)
+            if (!isDisposed.value) {
+                val audio = currentAudio.value
+                Log.d(TAG, "🦴 Anim alive: audioAmp=${"%.3f".format(audio.amplitude)}, " +
+                    "speaking=${audio.isSpeaking}, emotion=${audio.emotion}")
             }
-
-            delay(33L)
         }
     }
 
@@ -136,9 +93,14 @@ fun AvatarSceneView(
         modelLoader = modelLoader,
         childNodes = listOfNotNull(modelNode),
         isOpaque = false,
-        // ✅ FIX: Включаем постоянный рендер — иначе Filament не обновляет
-        //    трансформы костей/морфов без явного запроса нового кадра
-        onFrame = { /* no-op, но наличие callback включает continuous render */ },
+        onFrame = { frameTime ->
+            if (!isDisposed.value && modelNode != null) {
+                val audio = currentAudio.value
+                val dt = (frameTime.intervalSeconds).toFloat().coerceIn(0.008f, 0.1f)
+                val frame = behavior.update(audio, dt)
+                applyFrame(frame, boneCtrl, morphCtrl)
+            }
+        },
     )
 
     // ── Cleanup ────────────────────────────────────────────────────────
