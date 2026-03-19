@@ -1,12 +1,5 @@
-
 package com.voicedeutsch.master.voicecore.engine
 
-import android.content.Context
-import android.media.AudioAttributes
-import android.media.AudioManager
-import android.media.AudioPlaybackConfiguration
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
@@ -29,7 +22,6 @@ import com.voicedeutsch.master.voicecore.functions.GeminiFunctionDeclaration
 import com.voicedeutsch.master.voicecore.functions.GeminiProperty
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-
 /**
  * GeminiClient — обёртка над Firebase AI Logic Live API SDK.
  *
@@ -40,7 +32,6 @@ import kotlinx.coroutines.sync.withLock
 @OptIn(PublicPreviewAPI::class)
 class GeminiClient(
     config: GeminiConfig,
-    private val context: Context,
 ) {
     var config: GeminiConfig = config
         internal set
@@ -57,8 +48,6 @@ class GeminiClient(
 
     @Volatile var lastTokenUsage: TokenUsage? = null
         private set
-
-    private var audioPlaybackCallback: AudioManager.AudioPlaybackCallback? = null
 
     data class TokenUsage(
         val promptTokenCount: Int = 0,
@@ -141,35 +130,6 @@ class GeminiClient(
         val session = sessionMutex.withLock { liveSession }
             ?: throw GeminiConnectionException("startConversation: no active session")
 
-        // ── ДИАГНОСТИКА AudioAttributes ──────────────────────────────────────
-        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val callback = object : AudioManager.AudioPlaybackCallback() {
-            override fun onPlaybackConfigChanged(configs: List<AudioPlaybackConfiguration>) {
-                if (configs.isEmpty()) {
-                    Log.d(TAG, "=== AUDIO PLAYBACK: no active configs ===")
-                    return
-                }
-                configs.forEach { cfg ->
-                    Log.d(TAG, "=== AUDIO PLAYBACK CONFIG ===")
-                    Log.d(TAG, "  usage       = ${cfg.audioAttributes.usage}")
-                    Log.d(TAG, "  usageStr    = ${AudioAttributes.usageToString(cfg.audioAttributes.usage)}")
-                    Log.d(TAG, "  contentType = ${cfg.audioAttributes.contentType}")
-                    Log.d(TAG, "  uid         = ${cfg.clientUid}")
-                    Log.d(TAG, "  pid         = ${cfg.clientPid}")
-                    Log.d(TAG, "  capturable  = ${
-                        cfg.audioAttributes.usage in listOf(
-                            AudioAttributes.USAGE_MEDIA,
-                            AudioAttributes.USAGE_GAME,
-                            AudioAttributes.USAGE_UNKNOWN,
-                        )
-                    }")
-                }
-            }
-        }
-        audioManager.registerAudioPlaybackCallback(callback, Handler(Looper.getMainLooper()))
-        audioPlaybackCallback = callback
-        // ─────────────────────────────────────────────────────────────────────
-
         session.startAudioConversation(onFunctionCall)
         Log.d(TAG, "Audio conversation started")
     }
@@ -183,14 +143,6 @@ class GeminiClient(
             Log.w(TAG, "stopConversation: no active session")
             return
         }
-
-        // Снять callback диагностики
-        audioPlaybackCallback?.let {
-            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            audioManager.unregisterAudioPlaybackCallback(it)
-            audioPlaybackCallback = null
-        }
-
         runCatching {
             kotlinx.coroutines.withTimeout(5000L) {
                 session.stopAudioConversation()
@@ -215,6 +167,7 @@ class GeminiClient(
             Log.d(TAG, "LiveSession closed")
         } catch (e: Exception) {
             Log.w(TAG, "disconnect() warning/timeout: ${e.message}")
+            // Force nullify even on timeout
             sessionMutex.withLock {
                 liveSession = null
             }
